@@ -11,7 +11,8 @@
     "build:renderer": "esbuild src/renderer/renderer.ts --bundle --outfile=dist/renderer/renderer.js --format=iife --target=es2022 --sourcemap",
     "watch": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "start": "npm run build && electron .",
+    "start": "electron .",
+    "dev": "npm run build && electron .",
     "pet:validate": "python tools/validate_pet.py"
   },
   "devDependencies": {
