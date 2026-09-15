@@ -1,0 +1,137 @@
+// Electron 主进程入口：装配「宠物内核」与「宿主适配层」。
+//
+// 分工：
+//   - 内核（src/kernel）负责解析宠物包、状态机、播帧 —— 纯 TS，不 import electron
+//   - 宿主（src/host）负责窗口与系统能力 —— 目前只有覆盖窗口与全屏检测
+//   - 播帧循环跑在渲染层：避免每帧 IPC，内核代码放哪都能跑
+import { app, ipcMain } from 'electron';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join, resolve, dirname } from 'node:path';
+import { loadPack } from '../kernel/pack';
+import { createOverlayWindow } from '../host/overlay-window';
+import { detectFullscreen, startFullscreenWatch, fullscreenUnavailableReason } from '../host/fullscreen';
+import { CH, type DragDelta, type RendererInit } from '../shared/ipc';
+
+/** 宠物包目录：默认工程根目录，可用 --pet=绝对路径 覆盖。 */
+function resolvePackDir(): string {
+  const arg = process.argv.find((a) => a.startsWith('--pet='));
+  if (arg) return resolve(arg.slice('--pet='.length));
+  // dist/main/index.js → 上两级是工程根
+  return resolve(__dirname, '..', '..');
+}
+
+function toDataUrl(path: string, format: 'webp' | 'png'): string {
+  const mime = format === 'png' ? 'image/png' : 'image/webp';
+  return `data:${mime};base64,${readFileSync(path).toString('base64')}`;
+}
+
+function boot(): void {
+  const packDir = resolvePackDir();
+  console.log('[pet] 加载宠物包：' + packDir);
+  const pack = loadPack(packDir);
+  for (const w of pack.warnings) console.warn('[pet][warn] ' + w);
+  console.log(`[pet] ${pack.manifest.displayName ?? pack.manifest.id} · ${pack.sheet.width}x${pack.sheet.height} ` +
+    `· ${pack.grid.columns}x${pack.grid.rows} @ ${pack.cell.width}x${pack.cell.height} · ${Object.keys(pack.states).length} 个状态`);
+
+  const width = Math.round(pack.cell.width * pack.scale);
+  const height = Math.round(pack.cell.height * pack.scale);
+
+  const overlay = createOverlayWindow({
+    width, height,
+    htmlPath: join(__dirname, '..', 'renderer', 'index.html'),
+    preloadPath: join(__dirname, 'preload.js'),
+  });
+
+  // init 载荷要等渲染层脚本就绪后再下发：ready-to-show 时页面脚本往往还没执行，
+  // 过早 send 会丢消息（表现为宠物不显示、渲染层无任何日志）。
+  let payload: RendererInit | null = null;
+  const buildPayload = (): RendererInit => ({
+    sheetDataUrl: toDataUrl(pack.sheetPath, pack.sheet.format),
+    cell: pack.cell,
+    grid: pack.grid,
+    scale: pack.scale,
+    states: pack.states,
+    initialState: 'idle',
+    warnings: pack.warnings,
+    petId: pack.manifest.id,
+    displayName: pack.manifest.displayName ?? pack.manifest.id,
+  });
+
+  overlay.browserWindow.once('ready-to-show', () => {
+    overlay.showInactive();
+    console.log('[pet] 窗口已显示，位置', JSON.stringify(overlay.position()));
+  });
+
+  overlay.browserWindow.loadFile(join(__dirname, '..', 'renderer', 'index.html'));
+
+  // 渲染层的 console 与加载错误转发到主进程日志，否则页面里的异常完全看不见
+  type ConsoleMessageParams = { level: number; message: string; lineNumber: number; sourceId: string };
+  const wc = overlay.browserWindow.webContents as unknown as {
+    on(event: 'console-message', listener: (e: ConsoleMessageParams) => void): void;
+  };
+  wc.on('console-message', (e) => {
+    console.log(`[pet][renderer:${e.level}] ${e.message} @ ${e.sourceId}:${e.lineNumber}`);
+  });
+  overlay.browserWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    console.error(`[pet] 页面加载失败 ${code} ${desc} ${url}`);
+  });
+  overlay.browserWindow.webContents.on('preload-error', (_e, preloadPath, error) => {
+    console.error(`[pet] preload 出错 ${preloadPath}: ${error}`);
+  });
+
+  ipcMain.on(CH.ready, () => {
+    payload ??= buildPayload();
+    overlay.browserWindow.webContents.send(CH.init, payload);
+    scheduleSelfCheck();
+  });
+
+  // —— 拖动：渲染层只上报增量，窗口移动由宿主完成 ——
+  // —— 自检：--screenshot=<前缀> 抓两帧存盘后退出，用于验证"动画确实在播" ——
+  async function scheduleSelfCheck(): Promise<void> {
+    const arg = process.argv.find((a) => a.startsWith('--screenshot='));
+    if (!arg) return;
+    const prefix = resolve(arg.slice('--screenshot='.length));
+    mkdirSync(dirname(prefix), { recursive: true });
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    try {
+      await wait(1200);
+      const a = await overlay.browserWindow.webContents.capturePage();
+      writeFileSync(`${prefix}-a.png`, a.toPNG());
+      await wait(400);
+      const b = await overlay.browserWindow.webContents.capturePage();
+      writeFileSync(`${prefix}-b.png`, b.toPNG());
+      console.log(`[pet] 自检截图已保存：${prefix}-a.png / ${prefix}-b.png`);
+    } catch (e) {
+      console.error('[pet] 自检截图失败：', e);
+    }
+    app.quit();
+  }
+
+  ipcMain.on(CH.drag, (_e, delta: DragDelta) => {
+    overlay.moveBy(Math.round(delta.dx), Math.round(delta.dy));
+  });
+
+  ipcMain.on(CH.log, (_e, message: string) => console.log('[pet][renderer] ' + message));
+
+  // —— 全屏让位：命中即隐藏，退出后恢复 ——
+  if (!detectFullscreen().available) {
+    console.warn('[pet] 全屏检测不可用：' + (fullscreenUnavailableReason() ?? '未知原因') + '（宠物将不会自动让位）');
+  }
+  startFullscreenWatch((status) => {
+    if (status.coversMonitor) {
+      overlay.hide();
+      console.log('[pet] 检测到全屏应用「' + status.fgTitle + '」，已让位隐藏');
+    } else {
+      overlay.show();
+      console.log('[pet] 全屏应用已退出，恢复显示');
+    }
+    overlay.browserWindow.webContents.send(CH.fullscreen, { hidden: status.coversMonitor, fgTitle: status.fgTitle });
+  }, 600);
+}
+
+app.whenReady().then(boot).catch((e) => {
+  console.error('[pet] 启动失败：', e);
+  app.quit();
+});
+
+app.on('window-all-closed', () => app.quit());

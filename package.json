@@ -1,0 +1,25 @@
+{
+  "name": "desktop-pet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "自研 Windows 桌面宠物运行时：解析 Codex/ChatGPT 宠物包，把 agent 活动状态可视化为可交互桌宠",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "build": "npm run build:main && npm run build:preload && npm run build:renderer && node tools/copy-assets.mjs",
+    "build:main": "tsc -p tsconfig.json",
+    "build:preload": "esbuild src/main/preload.ts --bundle --outfile=dist/main/preload.js --format=cjs --platform=node --external:electron",
+    "build:renderer": "esbuild src/renderer/renderer.ts --bundle --outfile=dist/renderer/renderer.js --format=iife --target=es2022 --sourcemap",
+    "watch": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "npm run build && electron .",
+    "pet:validate": "python tools/validate_pet.py"
+  },
+  "devDependencies": {
+    "electron": "44.4.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "koffi": "^3.3.0"
+  }
+}

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<!-- 无任何远程内容：脚本/样式只取自自身，图片只走 data URL。
+     style-src 放开 unsafe-inline 是因为本页的内联 <style> 是静态的、不含任何外部输入。 -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src data:;" />
+<title>desktop-pet</title>
+<style>
+  /* 背景必须严格透明：alpha=0 的像素会把点击让给下层应用（M0 实测结论） */
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+  <canvas id="stage"></canvas>
+  <script src="renderer.js"></script>
+</body>
+</html>
