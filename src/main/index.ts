@@ -4,13 +4,13 @@
 //   - 内核（src/kernel）负责解析宠物包、状态机、播帧 —— 纯 TS，不 import electron
 //   - 宿主（src/host）负责窗口与系统能力 —— 目前只有覆盖窗口与全屏检测
 //   - 播帧循环跑在渲染层：避免每帧 IPC，内核代码放哪都能跑
-import { app, ipcMain } from 'electron';
+import { app, ipcMain, screen } from 'electron';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { loadPack } from '../kernel/pack';
 import { createOverlayWindow } from '../host/overlay-window';
 import { detectFullscreen, startFullscreenWatch, fullscreenUnavailableReason } from '../host/fullscreen';
-import { CH, type DragDelta, type RendererInit } from '../shared/ipc';
+import { CH, type DragDelta, type HitState, type PointerHint, type RendererInit } from '../shared/ipc';
 
 /** 宠物包目录：默认工程根目录，可用 --pet=绝对路径 覆盖。 */
 function resolvePackDir(): string {
@@ -84,7 +84,46 @@ function boot(): void {
     payload ??= buildPayload();
     overlay.browserWindow.webContents.send(CH.init, payload);
     scheduleSelfCheck();
+    pushPointerHint();
   });
+
+  // —— 命中测试：渲染层判定"光标落在实体像素上"才让窗口可交互，否则整窗穿透 ——
+  // 2026-09-15 实测：Windows 对分层窗口的逐像素命中测试在此组合下不生效，生效区域
+  // 是整个窗口矩形（窗口内 90/90 采样点全部吃掉点击）。故改由渲染层显式接管，见 ADR 008。
+  ipcMain.on(CH.interactive, (_e, state: HitState) => {
+    overlay.setInteractive(Boolean(state?.interactive));
+  });
+
+  /** 光标在窗口内容区里的位置（DIP，与渲染层 CSS 像素一致）。 */
+  function cursorHint(): PointerHint | null {
+    const win = overlay.browserWindow;
+    if (win.isDestroyed() || !win.isVisible()) return null;
+    const cp = screen.getCursorScreenPoint();   // DIP
+    const cb = win.getContentBounds();          // DIP
+    return { cssX: cp.x - cb.x, cssY: cp.y - cb.y };
+  }
+  function pushPointerHint(): void {
+    const hint = cursorHint();
+    if (hint) overlay.browserWindow.webContents.send(CH.pointerHint, hint);
+  }
+
+  /**
+   * 光标轮询：命中判定必须跟着光标走，而 `setIgnoreMouseEvents(true)` 下
+   * **鼠标移动不会转发到渲染层**（2026-09-15 实测：注入拖动期间渲染层收到 0 次
+   * pointermove，只靠 300ms 兜底轮询驱动，表现为"点击宠物有时穿透、有时吃到"）。
+   * 所以这里自己以 ~60Hz 轮询光标，只在光标位置真的变化时才发消息。
+   * 实测把命中延迟从"最长 300ms"降到"最长 16ms"，误穿透归零。
+   */
+  let lastCursor: { x: number; y: number } | null = null;
+  function pollPointer(): void {
+    const win = overlay.browserWindow;
+    if (win.isDestroyed() || !win.isVisible()) return;
+    const cp = screen.getCursorScreenPoint();
+    if (lastCursor && cp.x === lastCursor.x && cp.y === lastCursor.y) return;
+    lastCursor = { x: cp.x, y: cp.y };
+    pushPointerHint();
+  }
+  setInterval(pollPointer, 16);
 
   // —— 拖动：渲染层只上报增量，窗口移动由宿主完成 ——
   // —— 自检：--screenshot=<前缀> 抓两帧存盘后退出，用于验证"动画确实在播" ——

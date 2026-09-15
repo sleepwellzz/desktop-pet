@@ -1,0 +1,65 @@
+[
+ {
+  "label": "初始",
+  "dipW": 148,
+  "dipH": 160,
+  "contentW": 148,
+  "contentH": 160,
+  "physW": 221,
+  "physH": 239
+ },
+ {
+  "label": "第1次移动",
+  "dipW": 149,
+  "dipH": 161,
+  "contentW": 148,
+  "contentH": 160,
+  "physW": 222,
+  "physH": 240
+ },
+ {
+  "label": "第2次移动",
+  "dipW": 150,
+  "dipH": 162,
+  "contentW": 150,
+  "contentH": 162,
+  "physW": 224,
+  "physH": 242
+ },
+ {
+  "label": "第3次移动",
+  "dipW": 151,
+  "dipH": 163,
+  "contentW": 150,
+  "contentH": 162,
+  "physW": 225,
+  "physH": 243
+ },
+ {
+  "label": "第4次移动",
+  "dipW": 152,
+  "dipH": 164,
+  "contentW": 152,
+  "contentH": 164,
+  "physW": 227,
+  "physH": 245
+ },
+ {
+  "label": "第5次移动",
+  "dipW": 153,
+  "dipH": 165,
+  "contentW": 152,
+  "contentH": 164,
+  "physW": 228,
+  "physH": 246
+ },
+ {
+  "label": "第6次移动",
+  "dipW": 154,
+  "dipH": 166,
+  "contentW": 154,
+  "contentH": 166,
+  "physW": 230,
+  "physH": 248
+ }
+]

@@ -8,6 +8,15 @@ export const CH = {
   fullscreen: 'pet:fullscreen',
   drag: 'pet:drag',
   log: 'pet:log',
+  /**
+   * 渲染层 → 主进程：当前光标是否落在宠物实体像素上。
+   * 决定窗口是"可交互"还是"整窗穿透"——命中区域完全由渲染层的 alpha 采样定义，
+   * 不再依赖 Windows 对分层窗口的逐像素命中测试（2026-09-15 实测该机制不生效，
+   * 生效区域是整个窗口矩形，见 ADR 008）。
+   */
+  interactive: 'pet:interactive',
+  /** 主进程 → 渲染层：光标在窗口客户区中的位置提示（DIP/CSS 像素），用于窗口移动后重新采样。 */
+  pointerHint: 'pet:pointer-hint',
 } as const;
 
 /** 主进程 → 渲染层：宠物包与渲染所需的全部信息。 */
@@ -31,5 +40,11 @@ export interface RendererInit {
 
 /** 渲染层 → 主进程：拖动增量（DIP，与 Electron 窗口坐标同一坐标系）。 */
 export interface DragDelta { dx: number; dy: number }
+
+/** 渲染层 → 主进程：命中状态。interactive=false 时窗口整体穿透。 */
+export interface HitState { interactive: boolean }
+
+/** 主进程 → 渲染层：光标位置（窗口客户区 CSS 像素），窗口移动后用它重新采样。 */
+export interface PointerHint { cssX: number; cssY: number }
 
 export interface FullscreenNotice { hidden: boolean; fgTitle: string }

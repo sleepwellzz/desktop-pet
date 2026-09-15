@@ -11,6 +11,11 @@ const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d', { alpha: true })!;
 
 let sheet: HTMLCanvasElement | null = null;
+/** 阈值清理后的整张精灵图像素（RGBA）。命中测试直接查它，不做任何回读。 */
+let sheetData: Uint8ClampedArray | null = null;
+let sheetW = 0;
+let sheetH = 0;
+let hitThreshold = 16;
 let player: PetPlayer | null = null;
 let init: RendererInit | null = null;
 let lastTs = 0;
@@ -18,22 +23,24 @@ let lastTs = 0;
 /**
  * 落实 desktop-pet.json 的 `render.hitTest = "alpha-threshold"` + `hitTestAlphaThreshold`。
  *
- * 为什么必须在渲染层做：点击是否穿透由 Windows 的分层窗口命中测试决定，它只看
- * **alpha > 0**。而精灵图经 WebP 有损压缩后，宠物轮廓外的空白区会残留 alpha 1~15
- * 的散点噪声（实测全图 7907 个），人眼完全看不见，却会被判成"实体"——
- * 表现就是"点在宠物旁边的空白处，有时也会触发挥手"（散点，所以是"有时"）。
+ * 为什么必须在渲染层做：**Windows 对分层窗口的逐像素命中测试在这个组合下并不生效**。
+ * 2026-09-15 用真实鼠标点击逐点实测（spikes/m2-hittest，169 个采样点）：
+ * 窗口矩形内的 90 个点**全部**被宠物吃掉，包括精灵轮廓外 46 DIP 的纯透明带；
+ * 而"应该命中"的判定与精灵 alpha 完全无关 —— 生效命中区域 = 整个窗口矩形。
  *
- * 这里把低于阈值的像素连同 RGB 一起清零，让系统判定退化成"与人眼所见一致"，
- * 不必引入 setIgnoreMouseEvents 之类的运行时开关（那会带来延迟与闪烁）。
+ * 所以命中区域改由我们自己定义：主进程常态整窗穿透，渲染层按当前帧精灵 alpha
+ * 判定光标是否落在实体上，命中才切回可交互（见下方 evaluateHit 与 CH.interactive）。
+ * 这里把低于阈值的像素连同 RGB 一起清零，一是让画面干净（WebP 有损压缩会在轮廓外
+ * 留下 alpha 1~15 的散点噪声，实测全图 7907 个），二是让这份像素同时充当命中掩码。
  */
 function applyAlphaThreshold(
   img: HTMLImageElement,
   threshold: number,
-): { canvas: HTMLCanvasElement; cleared: number } {
+): { canvas: HTMLCanvasElement; image: ImageData; cleared: number } {
   const c = document.createElement('canvas');
   c.width = img.naturalWidth;
   c.height = img.naturalHeight;
-  const cx = c.getContext('2d', { alpha: true })!;
+  const cx = c.getContext('2d', { alpha: true, willReadFrequently: true })!;
   cx.drawImage(img, 0, 0);
 
   const image = cx.getImageData(0, 0, c.width, c.height);
@@ -47,7 +54,7 @@ function applyAlphaThreshold(
     }
   }
   cx.putImageData(image, 0, 0);
-  return { canvas: c, cleared };
+  return { canvas: c, image, cleared };
 }
 
 // 系统「减少动态效果」：只画第 0 帧（desktop-pet.json reducedMotion 策略）
@@ -59,6 +66,7 @@ window.pet.onInit((payload) => {
   const cssW = Math.round(payload.cell.width * payload.scale);
   const cssH = Math.round(payload.cell.height * payload.scale);
   const dpr = window.devicePixelRatio || 1;
+  hitThreshold = payload.hitTestAlphaThreshold ?? 16;
 
   canvas.style.width = `${cssW}px`;
   canvas.style.height = `${cssH}px`;
@@ -71,12 +79,14 @@ window.pet.onInit((payload) => {
 
   const img = new Image();
   img.onload = () => {
-    const threshold = payload.hitTestAlphaThreshold ?? 1;
-    const applied = applyAlphaThreshold(img, threshold);
+    const applied = applyAlphaThreshold(img, hitThreshold);
     sheet = applied.canvas;
+    sheetData = applied.image.data;
+    sheetW = applied.image.width;
+    sheetH = applied.image.height;
     window.pet.log(
       `精灵图就绪 ${img.naturalWidth}x${img.naturalHeight}，DPR=${dpr}；` +
-      `按 alpha<${threshold} 清空 ${applied.cleared} 个空白像素`,
+      `按 alpha<${hitThreshold} 清空 ${applied.cleared} 个空白像素`,
     );
     requestAnimationFrame(tick);
   };
@@ -108,6 +118,45 @@ function draw(): void {
     f.column * cw, f.row * ch, cw, ch,
     0, f.offsetY * s, cw * s, ch * s
   );
+}
+
+// —— 命中测试：把"哪些像素算实体"交给我们自己判定 ——
+// 主进程常态整窗穿透（setIgnoreMouseEvents(true, { forward: true })），鼠标移动仍会转发到这里；
+// 光标落在实体像素上才切回可交互，离开立刻释放。见 ADR 008。
+let interactive = false;
+function setInteractive(on: boolean): void {
+  if (on === interactive) return;
+  interactive = on;
+  window.pet.setInteractive(on);
+}
+
+/**
+ * 精灵图上给定坐标是否算"实体"。
+ *
+ * 刻意**只查单点、不做邻域膨胀**。曾经为了对齐"浏览器双线性插值后看得见的那一圈"
+ * 而取 3x3 邻域，实测结果是：误吃（应穿透却被吃）从 0 涨到 4，而漏吃（应命中却穿透）
+ * 一点没降 —— 说明漏吃并非边缘 1px 造成（真实原因是动画帧在采样期间变化，
+ * 探针基准帧过期，见 ADR 008）。单点判定是这几组实测里唯一做到"误吃 = 0"的配置。
+ */
+function solidAt(sx: number, sy: number): boolean {
+  if (!sheetData) return false;
+  if (sx < 0 || sy < 0 || sx >= sheetW || sy >= sheetH) return false;
+  return (sheetData[(sy * sheetW + sx) * 4 + 3] ?? 0) >= hitThreshold;
+}
+
+/** 当前帧在窗口客户区坐标 cssX/cssY 处是否命中实体。 */
+function hitAt(cssX: number, cssY: number): boolean {
+  if (!init || !player || !sheetData) return false;
+  const f = player.frame();
+  const s = init.scale;
+  const { width: cw, height: ch } = init.cell;
+  const localX = Math.floor(cssX / s);
+  const localY = Math.floor(cssY / s - f.offsetY);
+  return solidAt(f.column * cw + localX, f.row * ch + localY);
+}
+
+function evaluateHit(cssX: number, cssY: number): void {
+  setInteractive(hitAt(cssX, cssY));
 }
 
 // —— 交互：按住拖动；单击（未拖动）触发一次性挥手 ——
@@ -143,7 +192,25 @@ canvas.addEventListener('pointerup', (e) => {
     // 一次性动作：播完由播放器自动回落到 idle
     if (!player.setState('waving')) player.setState('idle');
   }
+  evaluateHit(e.clientX, e.clientY);   // 拖完可能已不在实体像素上，立刻复评
 });
+
+// 光标在窗口内移动时复评。注意：常态整窗穿透时 Windows **不会**把鼠标移动转发
+// 到渲染层（实测 0 次），所以真正的驱动源是主进程 ~60Hz 的光标轮询（onPointerHint）。
+// 这个监听器只在窗口已经可交互（光标就在宠物身上）时生效，属于锦上添花。
+window.addEventListener('pointermove', (e) => {
+  if (dragging) return;
+  evaluateHit(e.clientX, e.clientY);
+}, true);
+
+// 兜底释放。转发不可用时这两个事件不会到达，释放由 16ms 轮询的采样负责。
+const releaseIfIdle = (): void => { if (!dragging) setInteractive(false); };
+window.addEventListener('mouseleave', releaseIfIdle);
+window.addEventListener('pointerleave', releaseIfIdle);
+window.addEventListener('blur', releaseIfIdle);
+
+// 主进程按光标位置回报采样点，窗口被拖动后也靠它重新定位。
+window.pet.onPointerHint((hint) => { if (!dragging) evaluateHit(hint.cssX, hint.cssY); });
 
 window.pet.onFullscreen((n) => window.pet.log(n.hidden ? `让位隐藏（前台：${n.fgTitle}）` : '恢复显示'));
 
