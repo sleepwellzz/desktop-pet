@@ -1,0 +1,18 @@
+{
+  "name": "m0-window",
+  "version": "0.0.1",
+  "private": true,
+  "description": "M0 技术验证：窗口层三项能力（逐像素穿透 / 不夺焦点 / 全屏让位）",
+  "main": "main.js",
+  "scripts": {
+    "probe": "node probe/hit-test-probe.js",
+    "electron": "electron .",
+    "check": "node check/run-checks.js"
+  },
+  "devDependencies": {
+    "electron": "44.4.0"
+  },
+  "dependencies": {
+    "koffi": "^3.3.0"
+  }
+}

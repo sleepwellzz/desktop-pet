@@ -1,0 +1,41 @@
+{
+  "at": "2026-09-15T19:40:27.938Z",
+  "mode": "nchittest",
+  "petRectPhysical": {
+    "x": 480,
+    "y": 1091,
+    "w": 333,
+    "h": 365
+  },
+  "points": {
+    "opaque": {
+      "x": 630,
+      "y": 1274
+    },
+    "transparent": {
+      "x": 483,
+      "y": 1094
+    }
+  },
+  "transparentClick": {
+    "childGotIt": true,
+    "petGotIt": false
+  },
+  "opaqueClick": {
+    "childGotIt": true,
+    "petGotIt": false
+  },
+  "childClickCounts": {
+    "before": 0,
+    "afterTransparent": 1,
+    "afterOpaque": 2
+  },
+  "petClicks": [],
+  "focus": {
+    "before": "WorkBuddy",
+    "after": "M0-TARGET",
+    "stolen": true
+  },
+  "hitTestCount": 0,
+  "lastHit": null
+}

@@ -1,0 +1,45 @@
+{
+  "at": "2026-09-15T19:27:29.578Z",
+  "monitor": {
+    "left": 0,
+    "top": 0,
+    "right": 1707,
+    "bottom": 1067
+  },
+  "steps": [
+    {
+      "label": "baseline-无全屏窗口",
+      "fgTitle": "WorkBuddy",
+      "foregroundCoversMonitor": false,
+      "fgRect": "-7,-7,1714,1034",
+      "quns": "ACCEPTS_NOTIFICATIONS",
+      "scanCovers": true,
+      "scanWindows": [
+        "Microsoft Text Input Application"
+      ]
+    },
+    {
+      "label": "fullscreen-铺满窗口已存在",
+      "fgTitle": "M0-TARGET",
+      "foregroundCoversMonitor": true,
+      "fgRect": "0,0,1707,1067",
+      "quns": "BUSY",
+      "scanCovers": true,
+      "scanWindows": [
+        "M0-TARGET",
+        "Microsoft Text Input Application"
+      ]
+    },
+    {
+      "label": "after-撤掉全屏窗口",
+      "fgTitle": "WorkBuddy",
+      "foregroundCoversMonitor": false,
+      "fgRect": "-7,-7,1714,1034",
+      "quns": "ACCEPTS_NOTIFICATIONS",
+      "scanCovers": true,
+      "scanWindows": [
+        "Microsoft Text Input Application"
+      ]
+    }
+  ]
+}

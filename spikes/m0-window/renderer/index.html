@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>M0 Window Spike</title>
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  body { font: 12px/1.5 "Microsoft YaHei", system-ui, sans-serif; color: #d8e6ff; }
+  #stage { position: relative; width: 220px; height: 240px; }
+  canvas { position: absolute; left: 0; top: 0; }
+  #hud {
+    position: absolute; left: 224px; top: 0; width: 320px; padding: 8px 10px;
+    background: rgba(12, 18, 32, .86); border: 1px solid #2a3d63; border-radius: 6px;
+    white-space: pre-wrap; font-size: 11px; pointer-events: none;
+  }
+  #hud b { color: #7fd1ff; font-weight: 600; }
+  .ok { color: #4ade80; } .bad { color: #f87171; }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <canvas id="cv" width="220" height="240"></canvas>
+    <div id="hud">等待初始化…</div>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>
