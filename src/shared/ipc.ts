@@ -17,6 +17,11 @@ export interface RendererInit {
   cell: { width: number; height: number };
   grid: { columns: number; rows: number };
   scale: number;
+  /**
+   * 命中测试的 alpha 阈值（来自 desktop-pet.json → render.hitTestAlphaThreshold）。
+   * 低于该值的像素一律视为空白：渲染层会把它清零，让系统的逐像素命中测试与人眼感知一致。
+   */
+  hitTestAlphaThreshold: number;
   states: Record<string, ResolvedState>;
   initialState: string;
   warnings: string[];

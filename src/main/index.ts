@@ -50,6 +50,7 @@ function boot(): void {
     cell: pack.cell,
     grid: pack.grid,
     scale: pack.scale,
+    hitTestAlphaThreshold: pack.runtime.render.hitTestAlphaThreshold ?? 1,
     states: pack.states,
     initialState: 'idle',
     warnings: pack.warnings,

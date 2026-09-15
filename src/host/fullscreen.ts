@@ -30,14 +30,18 @@ interface Win32 {
   GetDesktopWindow: () => unknown;
   GetWindowTextLengthW: (hwnd: unknown) => number;
   GetWindowTextW: (hwnd: unknown, buf: Buffer, n: number) => number;
-  GetWindowRect: (hwnd: unknown, rect: unknown) => boolean;
+  GetWindowRect: (hwnd: unknown, rect: Buffer) => boolean;
   IsWindowVisible: (hwnd: unknown) => boolean;
   IsIconic: (hwnd: unknown) => boolean;
   MonitorFromWindow: (hwnd: unknown, flags: number) => unknown;
   GetMonitorInfoW: (hMonitor: unknown, info: Buffer) => boolean;
   SHQueryUserNotificationState: (out: number[]) => number;
+  RECT_SIZE: number;
   MONITORINFO_SIZE: number;
 }
+
+/** MONITOR_DEFAULTTONEAREST：要"窗口所在"的那块屏，不是主屏。 */
+const MONITOR_DEFAULTTONEAREST = 2;
 
 let win32: Win32 | null = null;
 let loadError: string | null = null;
@@ -64,6 +68,7 @@ function ensureLoaded(): Win32 | null {
       MonitorFromWindow: user32.func('void *MonitorFromWindow(void *hwnd, uint flags)'),
       GetMonitorInfoW: user32.func('bool GetMonitorInfoW(void *hMonitor, void *info)'),
       SHQueryUserNotificationState: shell32.func('int SHQueryUserNotificationState(_Out_ int *state)'),
+      RECT_SIZE: koffi.sizeof('DP_RECT'),
       MONITORINFO_SIZE: koffi.sizeof('DP_MONITORINFO'),
     };
     return win32;
@@ -73,13 +78,23 @@ function ensureLoaded(): Win32 | null {
   }
 }
 
-/** koffi 不会把嵌套结构体回写进 JS 对象，所以传 Buffer 手工解。 */
-function decodeMonitorInfo(buf: Buffer) {
-  const rect = (off: number) => ({
+/**
+ * koffi 不会把结构体回写进 JS 对象，所以 RECT / MONITORINFO 一律传 Buffer 手工解。
+ *
+ * 2026-09-15 实测教训：`GetWindowRect(fg, jsObject)` 传 JS 对象时，koffi 返回 true
+ * 但对象上读不到任何字段（全 undefined），于是 `rect.right >= m.right` 恒为 false，
+ * `coversMonitor` 永远 false —— 表现为"全屏播放视频时宠物不消失"，且没有任何报错。
+ * 与 M0 里嵌套结构体踩的是同一个坑（见 ADR 004）。
+ */
+function decodeRect(buf: Buffer, off: number) {
+  return {
     left: buf.readInt32LE(off), top: buf.readInt32LE(off + 4),
     right: buf.readInt32LE(off + 8), bottom: buf.readInt32LE(off + 12),
-  });
-  return { rcMonitor: rect(4), rcWork: rect(20) };
+  };
+}
+
+function decodeMonitorInfo(buf: Buffer) {
+  return { rcMonitor: decodeRect(buf, 4), rcWork: decodeRect(buf, 20) };
 }
 
 export function detectFullscreen(): FullscreenStatus {
@@ -107,20 +122,24 @@ export function detectFullscreen(): FullscreenStatus {
   if (String(fg) === String(shell) || String(fg) === String(desktop)) return status;
   if (!w.IsWindowVisible(fg) || w.IsIconic(fg)) return status;
 
-  const rect: Record<string, number> = {};
-  if (!w.GetWindowRect(fg, rect)) return status;
-  status.fgRect = `${rect.left},${rect.top},${rect.right},${rect.bottom}`;
+  const rectBuf = Buffer.alloc(w.RECT_SIZE);
+  if (!w.GetWindowRect(fg, rectBuf)) return status;
+  const rc = decodeRect(rectBuf, 0);
+  status.fgRect = `${rc.left},${rc.top},${rc.right},${rc.bottom}`;
 
-  const hMon = w.MonitorFromWindow(fg, 1 /* MONITOR_DEFAULTTOPRIMARY */);
+  const hMon = w.MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST);
   const mi = Buffer.alloc(w.MONITORINFO_SIZE);
   mi.writeUInt32LE(w.MONITORINFO_SIZE, 0);
   if (!w.GetMonitorInfoW(hMon, mi)) return status;
 
   const m = decodeMonitorInfo(mi).rcMonitor;
   status.monitorRect = `${m.left},${m.top},${m.right},${m.bottom}`;
+
+  // 主判据：前台窗口矩形包含整块显示器（覆盖最大化 / 无边框全屏）。
+  // 辅助判据：QUNS 报告独占 D3D 全屏（部分游戏的全屏窗口矩形与显示器不完全重合）。
   status.coversMonitor =
-    (rect.left ?? 0) <= m.left && (rect.top ?? 0) <= m.top &&
-    (rect.right ?? 0) >= m.right && (rect.bottom ?? 0) >= m.bottom;
+    (rc.left <= m.left && rc.top <= m.top && rc.right >= m.right && rc.bottom >= m.bottom) ||
+    status.quns === 'RUNNING_D3D_FULL_SCREEN';
 
   return status;
 }
@@ -130,8 +149,13 @@ export function startFullscreenWatch(onChange: (s: FullscreenStatus) => void, in
   let last: boolean | null = null;
   const timer = setInterval(() => {
     const s = detectFullscreen();
-    // 首次轮询只记录基线，不回调：否则启动瞬间会误报一次"全屏已退出"
-    if (last === null) { last = s.coversMonitor; return; }
+    if (last === null) {
+      // 首次只记录基线，且仅当"启动瞬间就已在全屏"时才回调——
+      // 否则会抢在 ready-to-show 之前调 show()，把还没加载完的窗口顶出来。
+      last = s.coversMonitor;
+      if (s.coversMonitor) onChange(s);
+      return;
+    }
     if (s.coversMonitor !== last) {
       last = s.coversMonitor;
       onChange(s);

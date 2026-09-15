@@ -10,10 +10,45 @@ import type { RendererInit } from '../shared/ipc';
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d', { alpha: true })!;
 
-let sheet: HTMLImageElement | null = null;
+let sheet: HTMLCanvasElement | null = null;
 let player: PetPlayer | null = null;
 let init: RendererInit | null = null;
 let lastTs = 0;
+
+/**
+ * 落实 desktop-pet.json 的 `render.hitTest = "alpha-threshold"` + `hitTestAlphaThreshold`。
+ *
+ * 为什么必须在渲染层做：点击是否穿透由 Windows 的分层窗口命中测试决定，它只看
+ * **alpha > 0**。而精灵图经 WebP 有损压缩后，宠物轮廓外的空白区会残留 alpha 1~15
+ * 的散点噪声（实测全图 7907 个），人眼完全看不见，却会被判成"实体"——
+ * 表现就是"点在宠物旁边的空白处，有时也会触发挥手"（散点，所以是"有时"）。
+ *
+ * 这里把低于阈值的像素连同 RGB 一起清零，让系统判定退化成"与人眼所见一致"，
+ * 不必引入 setIgnoreMouseEvents 之类的运行时开关（那会带来延迟与闪烁）。
+ */
+function applyAlphaThreshold(
+  img: HTMLImageElement,
+  threshold: number,
+): { canvas: HTMLCanvasElement; cleared: number } {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth;
+  c.height = img.naturalHeight;
+  const cx = c.getContext('2d', { alpha: true })!;
+  cx.drawImage(img, 0, 0);
+
+  const image = cx.getImageData(0, 0, c.width, c.height);
+  const px = image.data;
+  let cleared = 0;
+  for (let i = 3; i < px.length; i += 4) {
+    const a = px[i] ?? 0;
+    if (a < threshold) {
+      px[i - 3] = 0; px[i - 2] = 0; px[i - 1] = 0; px[i] = 0;
+      cleared += 1;
+    }
+  }
+  cx.putImageData(image, 0, 0);
+  return { canvas: c, cleared };
+}
 
 // 系统「减少动态效果」：只画第 0 帧（desktop-pet.json reducedMotion 策略）
 const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
@@ -36,8 +71,13 @@ window.pet.onInit((payload) => {
 
   const img = new Image();
   img.onload = () => {
-    sheet = img;
-    window.pet.log(`精灵图就绪 ${img.naturalWidth}x${img.naturalHeight}，DPR=${dpr}`);
+    const threshold = payload.hitTestAlphaThreshold ?? 1;
+    const applied = applyAlphaThreshold(img, threshold);
+    sheet = applied.canvas;
+    window.pet.log(
+      `精灵图就绪 ${img.naturalWidth}x${img.naturalHeight}，DPR=${dpr}；` +
+      `按 alpha<${threshold} 清空 ${applied.cleared} 个空白像素`,
+    );
     requestAnimationFrame(tick);
   };
   img.onerror = () => window.pet.log('精灵图加载失败');
