@@ -1,0 +1,122 @@
+{
+  "ground": 202,
+  "rows": [
+    {
+      "row": 0,
+      "name": "idle",
+      "frames": 6,
+      "topY": 7,
+      "bottomY": 200,
+      "leftX": 29,
+      "rightX": 162,
+      "centerX": 95.5,
+      "height": 194,
+      "width": 134,
+      "bottomJitter": 0
+    },
+    {
+      "row": 1,
+      "name": "running-right",
+      "frames": 8,
+      "topY": 24,
+      "bottomY": 183,
+      "leftX": 8,
+      "rightX": 183,
+      "centerX": 95.5,
+      "height": 160,
+      "width": 176,
+      "bottomJitter": 5
+    },
+    {
+      "row": 2,
+      "name": "running-left",
+      "frames": 8,
+      "topY": 25,
+      "bottomY": 182,
+      "leftX": 8,
+      "rightX": 183,
+      "centerX": 95.5,
+      "height": 158,
+      "width": 176,
+      "bottomJitter": 12
+    },
+    {
+      "row": 3,
+      "name": "waving",
+      "frames": 4,
+      "topY": 6,
+      "bottomY": 201,
+      "leftX": 43,
+      "rightX": 148,
+      "centerX": 95.5,
+      "height": 196,
+      "width": 106,
+      "bottomJitter": 0
+    },
+    {
+      "row": 4,
+      "name": "jumping",
+      "frames": 5,
+      "topY": 6,
+      "bottomY": 201,
+      "leftX": 48,
+      "rightX": 143,
+      "centerX": 95.5,
+      "height": 196,
+      "width": 96,
+      "bottomJitter": 43
+    },
+    {
+      "row": 5,
+      "name": "failed",
+      "frames": 8,
+      "topY": 66,
+      "bottomY": 141,
+      "leftX": 13,
+      "rightX": 178,
+      "centerX": 95.5,
+      "height": 76,
+      "width": 166,
+      "bottomJitter": 1
+    },
+    {
+      "row": 6,
+      "name": "waiting",
+      "frames": 6,
+      "topY": 8,
+      "bottomY": 200,
+      "leftX": 9,
+      "rightX": 181,
+      "centerX": 95.0,
+      "height": 193,
+      "width": 173,
+      "bottomJitter": 0
+    },
+    {
+      "row": 7,
+      "name": "running",
+      "frames": 6,
+      "topY": 5,
+      "bottomY": 202,
+      "leftX": 47,
+      "rightX": 143,
+      "centerX": 95.0,
+      "height": 198,
+      "width": 97,
+      "bottomJitter": 0
+    },
+    {
+      "row": 8,
+      "name": "review",
+      "frames": 6,
+      "topY": 5,
+      "bottomY": 202,
+      "leftX": 45,
+      "rightX": 145,
+      "centerX": 95.0,
+      "height": 198,
+      "width": 101,
+      "bottomJitter": 1
+    }
+  ]
+}

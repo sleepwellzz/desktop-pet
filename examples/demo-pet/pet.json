@@ -1,0 +1,7 @@
+{
+  "id": "demo-sentinel",
+  "displayName": "Demo Sentinel",
+  "description": "A synthetic 9-state pet used to verify the atlas contract and the validator.",
+  "spritesheetPath": "spritesheet.webp",
+  "spriteVersionNumber": 1
+}

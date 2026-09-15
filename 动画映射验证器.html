@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>淘淘 New · 动画映射验证器</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#ffffff; --line:#e2e5ea; --txt:#1c2024; --dim:#6b7280;
+    --accent:#c2410c; --accent2:#0e7490; --warn:#b45309; --danger:#b91c1c; --ok:#15803d;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.6}
+  header{padding:16px 22px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:17px;font-weight:650;letter-spacing:.2px}
+  header p{margin:4px 0 0;color:var(--dim);font-size:12px}
+  .wrap{display:grid;grid-template-columns:236px 1fr 268px;gap:14px;padding:14px 22px 26px;align-items:start}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 13px}
+  .card h2{margin:0 0 9px;font-size:12px;font-weight:650;color:var(--dim);letter-spacing:.6px;text-transform:uppercase}
+  label.row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:7px 0;font-size:12px}
+  input[type=range]{width:110px;accent-color:var(--accent)}
+  select{font:inherit;font-size:12px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--txt)}
+  .btn{display:block;width:100%;text-align:left;font:inherit;font-size:12.5px;padding:7px 9px;margin:4px 0;
+    background:#fff;border:1px solid var(--line);border-radius:7px;cursor:pointer;color:var(--txt);transition:.12s}
+  .btn:hover{border-color:#c8ccd3;background:#fafbfc}
+  .btn.on{background:#fff7ed;border-color:var(--accent);color:var(--accent);font-weight:600}
+  .btn small{color:var(--dim);font-weight:400}
+  #stage{position:relative;height:392px;border:1px solid var(--line);border-radius:10px;overflow:hidden;
+    background:
+      linear-gradient(180deg,#eef2f7 0%,#e6ebf2 62%,#dfe5ec 100%);}
+  #stage .sun{position:absolute;inset:0;background:
+      radial-gradient(560px 240px at 72% 4%,rgba(255,255,255,.95),rgba(255,255,255,0) 70%);pointer-events:none}
+  #ground{position:absolute;left:0;right:0;height:1px;background:repeating-linear-gradient(90deg,var(--accent) 0 7px,transparent 7px 14px);opacity:.55}
+  #groundLabel{position:absolute;right:8px;font-size:10.5px;color:var(--accent);opacity:.85;transform:translateY(-14px)}
+  #pet{position:absolute;width:192px;height:208px;transform-origin:top left;
+    background-image:url("spritesheet.webp");background-repeat:no-repeat;image-rendering:auto;
+    filter:drop-shadow(0 10px 10px rgba(20,30,50,.20));will-change:transform,background-position}
+  #cellbox{position:absolute;width:192px;height:208px;transform-origin:top left;border:1px dashed rgba(14,116,144,.5);pointer-events:none;display:none}
+  #gridov{position:absolute;inset:0;pointer-events:none;display:none;opacity:.5}
+  #bubble{position:absolute;transform:translate(-50%,-100%);background:#fff;border:1px solid var(--line);
+    border-radius:9px;padding:5px 10px;font-size:12px;white-space:nowrap;box-shadow:0 4px 14px rgba(20,30,50,.13);display:none}
+  #bubble b{color:var(--accent)}
+  #bubble::after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-5px;width:9px;height:9px;
+    background:#fff;border-right:1px solid var(--line);border-bottom:1px solid var(--line);transform:rotate(45deg)}
+  #readout{margin-top:10px;font-size:12px;color:var(--dim)}
+  #readout code{background:#f1f3f6;border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--txt);font-size:11.5px}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th,td{text-align:left;padding:4px 5px;border-bottom:1px solid #eef0f3}
+  th{color:var(--dim);font-weight:600;font-size:10.5px;letter-spacing:.3px}
+  tr.act td{background:#fff7ed;color:var(--accent);font-weight:600}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .warn{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;font-size:11.5px;color:#7c4a03;margin-top:9px}
+  .ok{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;font-size:11.5px;color:#14532d;margin-top:9px}
+  .hint{font-size:11px;color:var(--dim);margin-top:7px}
+  .sep{height:1px;background:var(--line);margin:11px 0}
+  #status dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
+</style>
+</head>
+<body>
+<header>
+  <h1>淘淘 New · 动画映射验证器</h1>
+  <p>验证 sprite 分帧、帧率、锚点基线与「任务状态 → 动画」映射。直接读取同一目录下的 spritesheet.webp 与行为映射表。</p>
+</header>
+
+<div class="wrap">
+
+  <!-- 左：控制 -->
+  <div class="card">
+    <h2>播放控制</h2>
+    <label class="row">播放 <input type="checkbox" id="play" checked></label>
+    <label class="row">帧率 <span><input type="range" id="fps" min="2" max="24" value="8"><code id="fpsv">8</code></span></label>
+    <label class="row">缩放 <span><input type="range" id="scale" min="50" max="200" value="100"><code id="scalev">1.00×</code></span></label>
+    <div class="sep"></div>
+    <h2>渲染开关</h2>
+    <label class="row">基线校准 <input type="checkbox" id="anchor" checked></label>
+    <label class="row">显示单元格 <input type="checkbox" id="cell"></label>
+    <label class="row">显示全图网格 <input type="checkbox" id="grid"></label>
+    <label class="row">减少动态效果 <input type="checkbox" id="rm"></label>
+    <div class="warn" id="anchorWarn" style="display:none">
+      已关闭基线校准：正在用「单元格底边」对齐地面。切到 <b>running-*</b> 或 <b>failed</b> 可见角色悬浮 / 下沉 —— 这就是未做锚点校准的真实后果。
+    </div>
+    <div class="sep"></div>
+    <h2>自主漫游</h2>
+    <label class="row">启用漫游 <input type="checkbox" id="roam"></label>
+    <div class="hint">启用后角色用 running-left / running-right 在舞台内往返，碰到边缘自动翻转朝向。</div>
+  </div>
+
+  <!-- 中：舞台 -->
+  <div>
+    <div id="stage">
+      <div class="sun"></div>
+      <div id="gridov"></div>
+      <div id="cellbox"></div>
+      <div id="bubble"><b id="bubbleTxt"></b><div id="bubbleSub" style="font-size:11px;color:#6b7280"></div></div>
+      <div id="ground"></div>
+      <div id="groundLabel">地平线 = 单元格 y=202</div>
+      <div id="pet"></div>
+    </div>
+    <div id="readout">状态：<code id="roState">idle</code> 行 <code id="roRow">0</code> 列 <code id="roCol">0</code> / <code id="roFrames">6</code>　锚点 <code id="roAnchor">202</code>　偏移 <code id="roOffset">0</code></div>
+
+    <div class="card" style="margin-top:13px">
+      <h2>模拟任务状态源（驱动动画选择）</h2>
+      <button class="btn" data-drive="idle">无任务 · idle <small>— 待机循环</small></button>
+      <button class="btn" data-drive="running">任务进行中 · running <small>— 原地忙碌循环</small></button>
+      <button class="btn" data-drive="needs-input">需要输入 · waiting <small>— 停在操作闸口 + 脉冲提示</small></button>
+      <button class="btn" data-drive="ready">就绪未读 · waving → review <small>— 一次性挥手后转入检查</small></button>
+      <button class="btn" data-drive="blocked">已受阻 · failed <small>— 趴卧，可恢复态</small></button>
+      <div class="hint">优先级：需要输入 &gt; 已受阻 &gt; 就绪 &gt; 运行中。多条会话同时活动时，宠物只呈现优先级最高的一条。</div>
+    </div>
+  </div>
+
+  <!-- 右：映射表 -->
+  <div class="card">
+    <h2>状态 → 行 → 帧</h2>
+    <table>
+      <thead><tr><th>行</th><th>状态</th><th class="num">帧</th><th class="num">fps</th><th>循环</th></tr></thead>
+      <tbody id="tbl"></tbody>
+    </table>
+    <div class="ok">9 行实测帧数 <b>[6,8,8,4,5,8,6,6,6]</b>，与 Codex Pets V1 官方规格逐行一致，共 57 帧。</div>
+    <div class="sep"></div>
+    <h2>基线校准数据</h2>
+    <table>
+      <thead><tr><th>状态</th><th class="num">触地点 y</th><th class="num">补偿</th></tr></thead>
+      <tbody id="tbl2"></tbody>
+    </table>
+    <div class="hint">横向实测中心 cx=95.5~95.0（单元格中心 96），已居中，无需补偿。纵向各姿态差异显著：趴卧帧必须补偿 61px，否则会悬浮。</div>
+  </div>
+</div>
+
+<script>
+const SHEET = {
+  cols: 8, rows: 9, CW: 192, CH: 208, W: 1536, H: 1872, GROUND: 202,
+  states: [
+    {name:'idle',          row:0, frames:6, fps:8,  loop:true,  baseline:200, intent:'待机 / 保持在场感'},
+    {name:'running-right', row:1, frames:8, fps:14, loop:true,  baseline:183, intent:'向右位移'},
+    {name:'running-left',  row:2, frames:8, fps:14, loop:true,  baseline:182, intent:'向左位移'},
+    {name:'waving',        row:3, frames:4, fps:8,  loop:false, baseline:201, intent:'一次性信号 / 致意'},
+    {name:'jumping',       row:4, frames:5, fps:10, loop:false, baseline:201, intent:'一次性动作 / 庆祝'},
+    {name:'failed',        row:5, frames:8, fps:5,  loop:true,  baseline:141, intent:'受阻 / 可恢复失败'},
+    {name:'waiting',       row:6, frames:6, fps:6,  loop:true,  baseline:200, intent:'等待输入 / 操作闸口'},
+    {name:'running',       row:7, frames:6, fps:12, loop:true,  baseline:202, intent:'处理中'},
+    {name:'review',        row:8, frames:6, fps:8,  loop:true,  baseline:202, intent:'检查产出 / 未读结果'}
+  ]
+};
+const DRIVE = {
+  'idle':       {state:'idle',    bubble:null,        sub:''},
+  'running':    {state:'running', bubble:'运行中',     sub:'3 个会话正在处理'},
+  'needs-input':{state:'waiting', bubble:'需要输入',   sub:'等待你批准 · 优先级最高', pulse:true},
+  'ready':      {state:'waving',  then:'review', bubble:'就绪', sub:'有未读完成结果'},
+  'blocked':    {state:'failed',  bubble:'已受阻',     sub:'执行失败，可重试'}
+};
+
+const $ = id => document.getElementById(id);
+const pet = $('pet'), stage = $('stage'), cellbox = $('cellbox'), gridov = $('gridov'), bubble = $('bubble');
+let cur = SHEET.states[0], col = 0, drive = 'idle', pendingThen = null;
+let roam = {on:false, x:null, dir:-1, speed:96};
+let last = performance.now(), accum = 0, roamAccum = 0;
+
+// —— 构建映射表 ——
+SHEET.states.forEach((s,i)=>{
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${s.row}</td><td>${s.name}</td><td class="num">${s.frames}</td><td class="num">${s.fps}</td><td>${s.loop?'循环':'单次'}</td>`;
+  tr.dataset.i = i; $('tbl').appendChild(tr);
+  const tr2 = document.createElement('tr');
+  const off = SHEET.GROUND - s.baseline;
+  tr2.innerHTML = `<td>${s.name}</td><td class="num">${s.baseline}</td><td class="num" style="color:${off>5?'#b45309':'#15803d'}">${off>0?'+':''}${off}</td>`;
+  $('tbl2').appendChild(tr2);
+});
+
+// —— 舞台几何 ——
+function layout(){
+  const r = stage.getBoundingClientRect();
+  const G = r.height * 0.72;
+  $('ground').style.top = G + 'px';
+  return {W:r.width, H:r.height, G};
+}
+function scale(){ return parseInt($('scale').value,10)/100; }
+function baseline(){ return $('anchor').checked ? cur.baseline : SHEET.GROUND; }
+
+function place(){
+  const g = layout(), s = scale();
+  const useBase = baseline();
+  let x;
+  if(roam.on && roam.x !== null){ x = roam.x; }
+  else { x = (g.W - SHEET.CW*s)/2; roam.x = null; }
+  const y = g.G - useBase*s;
+  pet.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
+  pet.style.backgroundPosition = `${-col*SHEET.CW}px ${-cur.row*SHEET.CH}px`;
+  pet.style.width = SHEET.CW+'px'; pet.style.height = SHEET.CH+'px';
+  // 单元格框：随 sprite 一起缩放定位
+  cellbox.style.transform = pet.style.transform;
+  cellbox.style.backgroundPosition = pet.style.backgroundPosition;
+  cellbox.style.backgroundImage = 'none';
+  // 提示气泡
+  const d = DRIVE[drive];
+  if(d && d.bubble){
+    bubble.style.display = 'block';
+    const bx = (roam.on && roam.x!==null ? roam.x : (g.W - SHEET.CW*s)/2) + SHEET.CW*s/2;
+    const by = y - 6;
+    bubble.style.left = Math.max(88, Math.min(g.W-88, bx)) + 'px';
+    bubble.style.top = by + 'px';
+    $('bubbleTxt').textContent = d.bubble + (d.pulse ? ' ●' : '');
+    $('bubbleSub').textContent = d.sub || '';
+    bubble.style.borderColor = d.pulse ? '#c2410c' : '#e2e5ea';
+  } else bubble.style.display = 'none';
+  $('cellbox').style.display = $('cell').checked ? 'block' : 'none';
+}
+
+// —— 网格叠加 ——
+function drawGrid(){
+  if(!$('grid').checked){ gridov.style.display='none'; return; }
+  gridov.style.display='block';
+  const s = scale(), g = layout();
+  let svg = `<svg width="100%" height="100%">`;
+  for(let c=0;c<=SHEET.cols;c++)
+    svg += `<line x1="${c*SHEET.CW*s}" y1="0" x2="${c*SHEET.CW*s}" y2="${g.H}" stroke="#b91c1c" stroke-opacity=".28"/>`;
+  for(let r=0;r<=SHEET.rows;r++)
+    svg += `<line x1="0" y1="${r*SHEET.CH*s}" x2="${g.W}" y2="${r*SHEET.CH*s}" stroke="#0e7490" stroke-opacity=".28"/>`;
+  svg += `</svg>`;
+  gridov.innerHTML = svg;
+}
+
+// —— 每帧 ——
+function tick(t){
+  const dt = Math.min(0.25, (t-last)/1000); last = t;
+  const rm = $('rm').checked;
+  if($('play').checked && !rm){
+    const fps = parseInt($('fps').value,10);
+    accum += dt * fps;
+    const total = cur.frames;
+    if(accum >= 1){
+      const step = Math.floor(accum); accum -= step;
+      let nc = col + step;
+      if(nc >= total){
+        if(cur.loop){ nc = nc % total; }
+        else {
+          if(pendingThen){ const n = SHEET.states.find(s=>s.name===pendingThen); pendingThen=null; cur=n; nc=0; }
+          else { cur = SHEET.states[0]; nc = 0; }
+        }
+      }
+      col = nc;
+    }
+  }
+  // 漫游
+  if(roam.on && !rm){
+    const g = layout(), s = scale();
+    if(roam.x === null){
+      roam.x = (g.W - SHEET.CW*s)/2;
+      const want = roam.dir < 0 ? 'running-left' : 'running-right';
+      cur = SHEET.states.find(x=>x.name===want);
+    }
+    roamAccum += dt;
+    if(roamAccum > 0.1){
+      roamAccum = 0;
+      roam.x += roam.dir * 96 * s * 0.1;
+      const maxX = g.W - SHEET.CW*s;
+      if(roam.x < 0){ roam.x = 0; roam.dir = 1; cur = SHEET.states.find(x=>x.name==='running-right'); }
+      if(roam.x > maxX){ roam.x = maxX; roam.dir = -1; cur = SHEET.states.find(x=>x.name==='running-left'); }
+      if(roam.x < 4) { roam.x = 4; roam.dir = 1; }
+      if(roam.x > maxX-4){ roam.x = maxX-4; roam.dir = -1; }
+      roam.x = Math.max(0, Math.min(maxX, roam.x));
+    }
+  }
+  place(); drawGrid();
+  $('roState').textContent = cur.name;
+  $('roRow').textContent = cur.row;
+  $('roCol').textContent = col;
+  $('roFrames').textContent = cur.frames;
+  $('roAnchor').textContent = $('anchor').checked ? cur.baseline : SHEET.GROUND + ' (未校准)';
+  $('roOffset').textContent = ($('anchor').checked ? (SHEET.GROUND-cur.baseline) : 0);
+  document.querySelectorAll('#tbl tr').forEach(tr=>tr.classList.toggle('act', +tr.dataset.i === SHEET.states.indexOf(cur)));
+  requestAnimationFrame(tick);
+}
+
+// —— 交互 ——
+function setState(name, then){
+  roam.on = false; $('roam').checked = false; roam.x = null;
+  cur = SHEET.states.find(s=>s.name===name) || SHEET.states[0];
+  col = 0; pendingThen = then || null;
+}
+document.querySelectorAll('[data-drive]').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('[data-drive]').forEach(o=>o.classList.remove('on'));
+    b.classList.add('on');
+    drive = b.dataset.drive;
+    const d = DRIVE[drive];
+    setState(d.state, d.then);
+    $('fps').value = cur.fps; $('fpsv').textContent = cur.fps;
+  });
+});
+$('play').addEventListener('change', ()=>{ if($('play').checked) last = performance.now(); });
+$('fps').addEventListener('input', e=>{ $('fpsv').textContent = e.target.value; });
+$('scale').addEventListener('input', e=>{ $('scalev').textContent = (+e.target.value/100).toFixed(2)+'×'; roam.x=null; });
+$('anchor').addEventListener('change', ()=>{ $('anchorWarn').style.display = $('anchor').checked ? 'none':'block'; });
+$('roam').addEventListener('change', e=>{
+  roam.on = e.target.checked; roam.x = null;
+  if(roam.on){ drive='idle'; document.querySelectorAll('[data-drive]').forEach(o=>o.classList.remove('on')); cur = SHEET.states.find(s=>s.name==='running-left'); col=0; }
+});
+window.addEventListener('resize', ()=>{ roam.x = null; });
+
+// 初始化
+document.querySelector('[data-drive="idle"]').classList.add('on');
+requestAnimationFrame(t=>{ last = t; tick(t); });
+</script>
+</body>
+</html>

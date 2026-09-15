@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Windows 桌面宠物 · 开发构想与设计方案</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --panel:#fff; --line:#e3e6ea; --line2:#eef0f3;
+    --txt:#1b1f24; --dim:#656d78; --accent:#c2410c; --accent-bg:#fff7ed;
+    --teal:#0e7490; --teal-bg:#ecfeff; --warn:#b45309; --warn-bg:#fffbeb;
+    --ok:#15803d; --ok-bg:#f0fdf4; --danger:#b91c1c; --danger-bg:#fef2f2;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+    font-size:14px;line-height:1.75}
+  .page{max-width:1000px;margin:0 auto;padding:34px 26px 70px}
+  header.doc{background:linear-gradient(135deg,#1f2937,#374151);color:#f9fafb;
+    border-radius:14px;padding:26px 28px;margin-bottom:22px}
+  header.doc h1{margin:0 0 8px;font-size:23px;font-weight:680;letter-spacing:.3px;color:#fff}
+  header.doc p{margin:0;color:#d1d5db;font-size:13px;line-height:1.7}
+  .meta{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+  .meta span{font-size:11.5px;padding:3px 9px;border-radius:20px;background:rgba(255,255,255,.12);
+    color:#e5e7eb;border:1px solid rgba(255,255,255,.16)}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:22px 24px;margin-bottom:16px}
+  h2{font-size:17px;margin:0 0 4px;font-weight:660;letter-spacing:.2px}
+  h2 .n{display:inline-block;min-width:26px;height:26px;line-height:26px;text-align:center;
+    background:var(--accent);color:#fff;border-radius:7px;font-size:13px;margin-right:9px;
+    font-weight:600;vertical-align:2px}
+  h3{font-size:14.5px;margin:20px 0 6px;font-weight:660;color:#111827}
+  h3:first-of-type{margin-top:12px}
+  h4{font-size:13.5px;margin:15px 0 4px;font-weight:640;color:var(--teal)}
+  p{margin:7px 0}
+  .sub{color:var(--dim);font-size:12.5px;margin:0 0 14px}
+  ul,ol{margin:7px 0 7px 20px;padding:0}
+  li{margin:4px 0}
+  code{background:#f1f3f6;border:1px solid var(--line);border-radius:4px;padding:1px 5px;
+    font-size:12.5px;font-family:"Cascadia Mono",Consolas,monospace;color:#111827}
+  pre{background:#1f2937;color:#e5e7eb;border-radius:9px;padding:14px 16px;overflow-x:auto;
+    font-size:12.5px;line-height:1.65;font-family:"Cascadia Mono",Consolas,monospace;margin:10px 0}
+  pre .k{color:#93c5fd} pre .s{color:#86efac} pre .c{color:#9ca3af}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:11px 0}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#f7f8fa;font-weight:640;font-size:12.5px;color:#374151}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  tbody tr:nth-child(even) td{background:#fcfcfd}
+  .box{border-radius:9px;padding:12px 15px;margin:12px 0;font-size:13px;border:1px solid}
+  .box.key{background:var(--accent-bg);border-color:#fed7aa}
+  .box.ok{background:var(--ok-bg);border-color:#bbf7d0}
+  .box.warn{background:var(--warn-bg);border-color:#fde68a}
+  .box.danger{background:var(--danger-bg);border-color:#fecaca}
+  .box.tip{background:var(--teal-bg);border-color:#a5f3fc}
+  .box b{color:#111827}
+  .box h5{margin:0 0 5px;font-size:13px;font-weight:680}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  @media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;font-size:13px;margin:8px 0}
+  .kv dt{color:var(--dim)} .kv dd{margin:0}
+  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;
+    border:1px solid var(--line);background:#f7f8fa;color:#4b5563;margin:0 3px 3px 0}
+  .pill.a{background:var(--accent-bg);border-color:#fed7aa;color:var(--accent)}
+  .pill.t{background:var(--teal-bg);border-color:#a5f3fc;color:var(--teal)}
+  .pill.g{background:var(--ok-bg);border-color:#bbf7d0;color:var(--ok)}
+  .pill.r{background:var(--danger-bg);border-color:#fecaca;color:var(--danger)}
+  figure{margin:14px 0;text-align:center}
+  figure img{max-width:100%;border:1px solid var(--line);border-radius:9px;background:#fff}
+  figcaption{font-size:12px;color:var(--dim);margin-top:7px}
+  .toc{display:flex;flex-wrap:wrap;gap:7px}
+  .toc a{font-size:12.5px;text-decoration:none;color:#374151;border:1px solid var(--line);
+    background:#fbfbfc;border-radius:7px;padding:5px 11px}
+  .toc a:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-bg)}
+  .check{list-style:none;margin-left:0}
+  .check li{padding-left:26px;position:relative}
+  .check li::before{content:"";position:absolute;left:0;top:5px;width:13px;height:13px;
+    border:1.5px solid #9ca3af;border-radius:3px}
+  .step{display:flex;gap:14px;margin:14px 0;padding-bottom:14px;border-bottom:1px dashed var(--line)}
+  .step:last-child{border-bottom:0;padding-bottom:0}
+  .step .tag{flex:0 0 74px;height:26px;line-height:26px;text-align:center;border-radius:7px;
+    font-size:12px;font-weight:660;background:#1f2937;color:#fff}
+  .step .body{flex:1}
+  .step .body h4{margin:3px 0 4px}
+  .step .body h4 span{font-size:12px;color:var(--dim);font-weight:500}
+  .w{font-size:11.5px;color:var(--dim)}
+  footer{text-align:center;color:var(--dim);font-size:12px;padding:8px}
+  .nowrap{white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="doc">
+  <h1>Windows 桌面宠物 · 开发构想与设计方案</h1>
+  <p>以 ChatGPT / Codex Pets 的功能基线为下限，围绕「淘淘 New」现有资产，给出一套可落地的构想、架构与分阶段计划。</p>
+  <div class="meta">
+    <span>资产已实测校验：Codex Pets V1 规格</span>
+    <span>9 行状态 · 57 帧</span>
+    <span>1536×1872 · 单元格 192×208</span>
+    <span>目标平台：Windows 10/11</span>
+  </div>
+</header>
+
+<section>
+  <h2><span class="n">0</span>阅读导航</h2>
+  <div class="toc">
+    <a href="#s1">1 结论摘要</a>
+    <a href="#s2">2 资产盘点与实测</a>
+    <a href="#s3">3 功能基线</a>
+    <a href="#s4">4 核心构想</a>
+    <a href="#s5">5 技术选型</a>
+    <a href="#s6">6 架构设计</a>
+    <a href="#s7">7 关键技术难点</a>
+    <a href="#s8">8 数据契约</a>
+    <a href="#s9">9 状态机设计</a>
+    <a href="#s10">10 行为层设计</a>
+    <a href="#s11">11 里程碑</a>
+    <a href="#s12">12 风险登记</a>
+    <a href="#s13">13 验收清单</a>
+  </div>
+</section>
+
+<section id="s1">
+  <h2><span class="n">1</span>结论摘要</h2>
+  <p class="sub">先给判断，再给依据。</p>
+
+  <div class="box key">
+    <h5>四条核心结论</h5>
+    <ol style="margin-bottom:0">
+      <li><b>资产完全可用，无需重绘。</b>实测确认它是一份合规的 Codex Pets V1 精灵图包：8×9 网格、单格 192×208、9 行状态帧数 <code>[6,8,8,4,5,8,6,6,6]</code> 与官方规格逐行吻合。缺的不是美术，而是元数据。</li>
+      <li><b>真正缺的是三层元数据</b>：帧率/循环策略、锚点基线（各姿态触地点不一致，最大差 61px）、以及状态语义映射。这三样决定了"看起来对不对"。</li>
+      <li><b>产品的本质不是"养宠物"，而是长任务的在场感代理（presence proxy）。</b>ChatGPT Pets 的价值在于把"某个会话正在跑、卡住了、等你拍板"这类抽象状态，变成屏幕角落一个能看见的存在。因此架构重心必须放在 <b>状态源 → 仲裁器 → 动画选择</b> 这条链上，而不是动画播放器本身。</li>
+      <li><b>选型建议：把宠物内核写成与宿主无关的 Web 层（TS），宿主只承担四项原生能力（窗口、托盘、热键、点击穿透）。</b>先用 Electron 打通闭环以最低成本对齐 ChatGPT 行为，M2 起可视情况平移到 Tauri 换取常驻成本。这样避免在任何一步被技术栈锁死。</li>
+    </ol>
+  </div>
+
+  <h3>必须最先验证的三个技术假设</h3>
+  <p>桌面宠物的失败通常不在功能，而在窗口层。建议正式动工前先做三个最小验证，任何一项不通过都要回头改选型：</p>
+  <table>
+    <thead><tr><th>假设</th><th>成功判据</th><th>失败后果</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>A. 逐像素点击穿透</b><br><span class="w">透明区域放行鼠标</span></td>
+        <td>点击宠物身体可拖动；点击周围透明区域，事件落到下层窗口（如浏览器、编辑器）</td>
+        <td>整个矩形窗口吞掉点击，用户无法操作下方的应用 —— 直接不可用</td>
+      </tr>
+      <tr>
+        <td><b>B. 不抢焦点</b><br><span class="w">WS_EX_NOACTIVATE</span></td>
+        <td>点击宠物时，当前前台窗口的输入焦点不丢失（正在打的字不中断）</td>
+        <td>每次点宠物都会打断输入，用户会立刻卸载</td>
+      </tr>
+      <tr>
+        <td><b>C. 全屏自动让位</b></td>
+        <td>进入全屏视频/游戏/演示后宠物自动隐藏，退出后恢复原位置</td>
+        <td>置顶窗口遮挡全屏内容，被判定为"流氓软件"</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="s2">
+  <h2><span class="n">2</span>资产盘点与实测结果</h2>
+  <p class="sub">对资产板块中两个文件的解析结论 —— 这是全部设计的事实基础。</p>
+
+  <div class="grid2">
+    <div>
+      <h3>文件一：<code>pet.json</code>（196 字节）</h3>
+      <pre>{
+  <span class="k">"id"</span>: <span class="s">"taotao-new"</span>,
+  <span class="k">"displayName"</span>: <span class="s">"淘淘 New"</span>,
+  <span class="k">"description"</span>: <span class="s">"黄白长毛、胖乎乎的淘淘新版本，
+                   包含生日与小厨师动画。"</span>,
+  <span class="k">"spritesheetPath"</span>: <span class="s">"spritesheet.webp"</span>
+}</pre>
+      <p>这是 Codex Pets 的标准清单，字段只有识别信息。<b>没有</b> <code>spriteVersionNumber</code>，按规范即 V1（8×9）。</p>
+    </div>
+    <div>
+      <h3>文件二：<code>spritesheet.webp</code></h3>
+      <dl class="kv">
+        <dt>尺寸</dt><dd>1536 × 1872 px</dd>
+        <dt>色彩</dt><dd>RGBA（含 alpha 透明通道）</dd>
+        <dt>体积</dt><dd>1.43 MiB（上限 20 MiB，余量充足）</dd>
+        <dt>网格</dt><dd>8 列 × 9 行，单格 192 × 208</dd>
+        <dt>占用帧</dt><dd>57 / 72 格（末尾空单元格按规范忽略）</dd>
+        <dt>版权状态</dt><dd>本地生成，可自由分发</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="box ok">
+    <h5>实测校验：9 行帧数与官方规格逐行一致</h5>
+    <table style="margin-bottom:0">
+      <thead><tr><th class="num">行</th><th>状态语义</th><th class="num">规格帧数</th><th class="num">实测帧数</th><th>实测内容包围盒（宽×高）</th><th>结论</th></tr></thead>
+      <tbody>
+        <tr><td class="num">0</td><td>idle 待机</td><td class="num">6</td><td class="num">6</td><td>133×194</td><td><span class="pill g">一致</span></td></tr>
+        <tr><td class="num">1</td><td>running-right 右向</td><td class="num">8</td><td class="num">8</td><td>164×153</td><td><span class="pill g">一致</span></td></tr>
+        <tr><td class="num">2</td><td>running-left 左向</td><td class="num">8</td><td class="num">8</td><td>158×149</td><td><span class="pill g">一致</span></td></tr>
+        <tr><td class="num">3</td><td>waving 挥手</td><td class="num">4</td><td class="num">4</td><td>104×193</td><td><span class="pill g">一致</span></td></tr>
+        <tr><td class="num">4</td><td>jumping 跳跃</td><td class="num">5</td><td class="num">5</td><td>94×196</td><td><span class="pill g">一致</span></td></tr>
+        <tr><td class="num">5</td><td>failed 受阻</td><td class="num">8</td><td class="num">8</td><td>165×76</td><td><span class="pill g">一致</span></td></tr>
+        <tr><td class="num">6</td><td>waiting 等待输入</td><td class="num">6</td><td class="num">6</td><td>173×193</td><td><span class="pill g">一致</span></td></tr>
+        <tr><td class="num">7</td><td>running 处理中</td><td class="num">6</td><td class="num">6</td><td>95×198</td><td><span class="pill g">一致</span></td></tr>
+        <tr><td class="num">8</td><td>review 检查产出</td><td class="num">6</td><td class="num">6</td><td>101×198</td><td><span class="pill g">一致</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <figure>
+    <img src="atlas-map.png" alt="图集地图：8 列 × 9 行，标注行号、状态名与帧数">
+    <figcaption>图集地图（由 <code>tools/pet_sheet_probe.py</code> 自动生成）：红竖线为列边界，蓝横线为行边界。<br>行 7、行 8 是作者绘制的生日（派对帽+蛋糕）与小厨师姿态，原生语义分别落在 <code>running</code> 与 <code>review</code>。</figcaption>
+  </figure>
+
+  <div class="box warn">
+    <h5>发现的两个真实缺陷 —— 不修就会"看起来不对"</h5>
+    <p style="margin:6px 0 4px"><b>缺陷一：各状态姿态的横向纵向对齐不一致。</b>内容在单元格内是横向居中（实测中心 cx=95.5~95.0，单元格中心 96）且纵向居中的。<b>但居中不等于对齐</b>：站立姿态的触地点在单元格 y≈200–202，而侧身跑动姿态在 y≈182–183，趴卧姿态只在 y≈141。</p>
+    <p style="margin:4px 0 0">后果：若渲染器简单地按"单元格底边"贴地，切换到跑动时角色会整体下沉 19–20px、切到趴卧时会悬空 61px。观感上就是"每次换动作都上下抖一下"。</p>
+    <p style="margin:10px 0 4px"><b>缺陷二：<code>pet.json</code> 不含任何动画元数据。</b>没有帧率、没有循环/单次标记、没有锚点。规范只约定"播放从第 0 列起连续非空帧"，其余全靠运行时自行决定。这不是资产的问题，而是规范留给开发者的自由度 —— 也意味着<b>这部分设计必须由我们补齐并固化成契约</b>。</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 680 250" width="100%" style="max-width:680px">
+      <rect x="0" y="0" width="680" height="250" fill="#ffffff"/>
+      <text x="20" y="26" font-size="13" font-weight="700" fill="#1b1f24" font-family="Segoe UI">单元格内触地点差异（单元格高 208px）</text>
+
+      <line x1="316" y1="50" x2="660" y2="50" stroke="#c2410c" stroke-dasharray="7 5" stroke-width="1.5"/>
+      <text x="664" y="54" font-size="11" fill="#c2410c" font-family="Segoe UI" text-anchor="end">地平线</text>
+
+      <g font-family="Segoe UI" font-size="11.5" fill="#374151">
+        <text x="20" y="72">idle 待机</text>
+        <rect x="120" y="58" width="70" height="112" fill="#fed7aa" stroke="#c2410c"/>
+        <text x="196" y="118" fill="#15803d">触地 200 ✓</text>
+
+        <text x="20" y="122">failed 趴卧</text>
+        <rect x="120" y="108" width="110" height="46" fill="#bfdbfe" stroke="#1d4ed8"/>
+        <text x="238" y="134" fill="#b91c1c">触地 141 · 悬空 61px ✗</text>
+
+        <text x="20" y="172">running-right 右向</text>
+        <rect x="120" y="158" width="96" height="90" fill="#bbf7d0" stroke="#15803d"/>
+        <text x="224" y="205" fill="#b45309">触地 183 · 下沉 19px ✗</text>
+
+        <text x="20" y="222">review 检查</text>
+        <rect x="120" y="208" width="64" height="112" fill="#e9d5ff" stroke="#7c3aed"/>
+        <text x="192" y="266" fill="#15803d">触地 202 ✓</text>
+      </g>
+      <line x1="112" y1="50" x2="112" y2="330" stroke="#9ca3af" stroke-width="1"/>
+      <text x="108" y="345" font-size="11" fill="#656d78" font-family="Segoe UI" text-anchor="end">各自单元格底边</text>
+    </svg>
+    <figcaption>三种姿态的几何触地点不重合。设计的应对方式是"每状态固定锚点 + 统一地平线"，而不是逐帧贴地。</figcaption>
+  </figure>
+</section>
+
+<section id="s3">
+  <h2><span class="n">3</span>功能基线：ChatGPT Pets 到底提供了什么</h2>
+  <p class="sub">依据官方文档（developers.openai.com/codex/pets）梳理。这是"至少实现"的清单 —— 也是我们的功能验收表。</p>
+
+  <table>
+    <thead><tr><th style="width:24px">#</th><th>功能</th><th>行为细节</th><th style="width:78px">优先级</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><b>悬浮宠物窗口</b></td><td>在 macOS / Windows 桌面端悬浮于其他应用窗口之上</td><td><span class="pill r">必须</span></td></tr>
+      <tr><td>2</td><td><b>宠物下方控制条</b></td><td>指针悬停时出现；铅笔图标开新对话、语音图标、铃铛图标看线程</td><td><span class="pill r">必须</span></td></tr>
+      <tr><td>3</td><td><b>快捷输入 Quick Chat</b></td><td>支持 <code>@</code> 添加上下文、<code>$</code> 选择技能；发起的对话不隶属任何项目</td><td><span class="pill r">必须</span></td></tr>
+      <tr><td>4</td><td><b>全局快捷键</b></td><td>Windows 默认 <code>Win+Alt+P</code>：显示控制条并聚焦 Quick Chat；可自定义</td><td><span class="pill r">必须</span></td></tr>
+      <tr><td>5</td><td><b>四种状态语义</b></td><td>Running / Needs input / Ready / Blocked，各自的含义与动画</td><td><span class="pill r">必须</span></td></tr>
+      <tr><td>6</td><td><b>状态优先级仲裁</b></td><td>需要输入 &gt; 已受阻 &gt; 就绪 &gt; 运行中；多会话时只呈现最优级</td><td><span class="pill r">必须</span></td></tr>
+      <tr><td>7</td><td><b>活动托盘</b></td><td>线程列表；点击线程打开完整对话，可折叠；与系统通知相互独立</td><td><span class="pill r">必须</span></td></tr>
+      <tr><td>8</td><td><b>拖拽与位置记忆</b></td><td>拖动移动，选择与位置在重开应用后保留</td><td><span class="pill r">必须</span></td></tr>
+      <tr><td>9</td><td><b>显示 / 隐藏</b></td><td>右键 Hide、<code>/pet</code>、命令菜单、设置内开关四种入口</td><td><span class="pill r">必须</span></td></tr>
+      <tr><td>10</td><td><b>宠物尺寸</b></td><td>设置内调大小，可 Reset 回默认</td><td><span class="pill t">重要</span></td></tr>
+      <tr><td>11</td><td><b>点击切换宠物</b></td><td>单击直接轮换到下一位伙伴</td><td><span class="pill t">重要</span></td></tr>
+      <tr><td>12</td><td><b>自定义宠物管理</b></td><td>创建后 Refresh 重扫；本地目录 <code>~/.codex/pets/&lt;id&gt;/</code>，每宠一个文件夹</td><td><span class="pill t">重要</span></td></tr>
+      <tr><td>13</td><td><b>Mini 模式</b></td><td>只显示聊天控制条，不显示宠物本体</td><td><span class="pill t">重要</span></td></tr>
+      <tr><td>14</td><td><b>减少动态效果</b></td><td>遵循系统设置；开启时用静态帧替代雪碧图动画</td><td><span class="pill t">重要</span></td></tr>
+      <tr><td>15</td><td><b>自定义宠物上传规格</b></td><td>透明 PNG / WebP，必须精确 1536×1872，≤ 20 MiB</td><td><span class="pill t">重要</span></td></tr>
+      <tr><td>16</td><td><b>Appshots</b></td><td>Windows：双 Alt 键截当前前台窗口并送入主应用提问；macOS 可送入宠物控制条</td><td><span class="pill">可选</span></td></tr>
+      <tr><td>17</td><td><b>Computer Use 画中画附着</b></td><td>仅 macOS：PiP 窗口跟随宠物移动</td><td><span class="pill">平台限制</span></td></tr>
+      <tr><td>18</td><td><b>网页版宠物</b></td><td>仅出现在受支持的 Work 对话内，无悬浮层、无活动托盘、无 <code>/pet</code></td><td><span class="pill">非目标</span></td></tr>
+    </tbody>
+  </table>
+
+  <div class="box tip">
+    <h5>官方没做、但 Windows 桌面宠物应当补齐的能力</h5>
+    <ul style="margin-bottom:0">
+      <li><b>开机自启与托盘常驻</b> —— 宠物是"一直在"的产品，缺了这两项等于每次都要手工唤醒。</li>
+      <li><b>全屏自动让位</b>（见 §7.2）—— 官方置顶窗口同样需要处理，是体验底线。</li>
+      <li><b>自主行为层</b>：无任务时的漫游、微动作、打盹 —— 让宠物在"没事干"时也有生命感，而不是僵在原地。</li>
+      <li><b>空闲节流</b>：长时间无交互后降到极低帧率甚至暂停重绘，这是常驻软件的成本控制项。</li>
+    </ul>
+  </div>
+</section>
+
+<section id="s4">
+  <h2><span class="n">4</span>核心构想</h2>
+  <p class="sub">先把"这是什么产品"想清楚，架构才有判断依据。</p>
+
+  <h3>4.1 定位：宠物是长任务的在场感代理</h3>
+  <p>这不是电子宠物游戏。观察 ChatGPT Pets 的设计动因：当用户同时开着多条长任务会话（一个在写代码、一个在跑研究、一个卡在等批准），传统的"通知"会在合适的时候打断他，而"状态栏"又太远。宠物提供了一个 <b>不打扰、但一直在余光里</b> 的通道。</p>
+  <div class="box key">
+    <h5>由此推出的三个设计公理</h5>
+    <ol style="margin-bottom:0">
+      <li><b>宠物永远不抢焦点、不弹窗、不发系统通知。</b>它的存在感来自"被看见"，而不是"被听见"。任何主动打断的行为都违背产品前提。</li>
+      <li><b>信息密度必须极低。</b>一个动作 + 一句话气泡 + 一个数字角标，就是全部。要做详情就去主窗口。</li>
+      <li><b>状态必须可信。</b>如果宠物显示"运行中"但实际任务已经卡住三分钟，这个产品就失去意义。宁可显示"未知"，也不要显示错误的乐观状态。</li>
+    </ol>
+  </div>
+
+  <h3>4.2 三层解耦：状态层 / 行为层 / 呈现层</h3>
+  <p>把宠物拆成三层，每层只依赖下一层的接口。这是整个设计里最重要的结构决策 —— 它让"动画怎么做"和"状态从哪来"两件完全不同的事互不纠缠。</p>
+
+  <figure>
+    <svg viewBox="0 0 680 372" width="100%" style="max-width:680px;font-family:'Segoe UI',sans-serif">
+      <rect x="0" y="0" width="680" height="372" fill="#ffffff"/>
+      <defs>
+        <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L7,3 L0,6 z" fill="#656d78"/>
+        </marker>
+      </defs>
+
+      <!-- 状态源 -->
+      <rect x="18" y="18" width="644" height="72" rx="8" fill="#f0fdf4" stroke="#15803d"/>
+      <text x="34" y="40" font-size="12.5" font-weight="700" fill="#15803d">① 状态源层 Status Source</text>
+      <text x="34" y="60" font-size="11.5" fill="#374151">agent hooks · 本地 IPC/HTTP · 日志尾随 · 手工模拟器</text>
+      <text x="34" y="78" font-size="11" fill="#656d78">输出：{ sessionId, status: running|needs-input|ready|blocked|idle, title, ts }</text>
+
+      <line x1="340" y1="90" x2="340" y2="112" stroke="#656d78" stroke-width="1.4" marker-end="url(#ar)"/>
+
+      <!-- 仲裁器 -->
+      <rect x="18" y="114" width="644" height="76" rx="8" fill="#fff7ed" stroke="#c2410c"/>
+      <text x="34" y="136" font-size="12.5" font-weight="700" fill="#c2410c">② 仲裁器 Arbiter（状态层核心）</text>
+      <text x="34" y="155" font-size="11.5" fill="#374151">优先级排序 · 粘滞时间 · 最短展示时长 · 变化限流 · 多会话聚合</text>
+      <text x="34" y="173" font-size="11" fill="#656d78">输出：{ primaryStatus, badgeCount, bubbleText } —— 全应用唯一的真值来源</text>
+
+      <line x1="340" y1="190" x2="340" y2="212" stroke="#656d78" stroke-width="1.4" marker-end="url(#ar)"/>
+
+      <!-- 行为层 -->
+      <rect x="18" y="214" width="314" height="76" rx="8" fill="#ecfeff" stroke="#0e7490"/>
+      <text x="34" y="236" font-size="12.5" font-weight="700" fill="#0e7490">③a 行为层 Behavior</text>
+      <text x="34" y="255" font-size="11.5" fill="#374151">自主漫游 · 微动作 · 打盹 · 边缘策略</text>
+      <text x="34" y="273" font-size="11" fill="#656d78">仅在仲裁器给出 idle 时接管</text>
+
+      <!-- 状态机 -->
+      <rect x="348" y="214" width="314" height="76" rx="8" fill="#faf5ff" stroke="#7c3aed"/>
+      <text x="364" y="236" font-size="12.5" font-weight="700" fill="#7c3aed">③b 状态机 State Machine</text>
+      <text x="364" y="255" font-size="11.5" fill="#374151">状态 → 动画行 · 循环/单次 · 优先级跳转</text>
+      <text x="364" y="273" font-size="11" fill="#656d78">高优状态可打断低优状态</text>
+
+      <line x1="175" y1="290" x2="175" y2="312" stroke="#656d78" stroke-width="1.4" marker-end="url(#ar)"/>
+      <line x1="505" y1="290" x2="505" y2="312" stroke="#656d78" stroke-width="1.4" marker-end="url(#ar)"/>
+
+      <!-- 呈现层 -->
+      <rect x="18" y="314" width="644" height="46" rx="8" fill="#f7f8fa" stroke="#9ca3af"/>
+      <text x="34" y="336" font-size="12.5" font-weight="700" fill="#374151">④ 呈现层 Renderer</text>
+      <text x="152" y="336" font-size="11.5" fill="#374151">精灵播放器（8×9 切图 · 锚点校准）→ 透明置顶窗口 → 命中测试与点击穿透</text>
+      <text x="152" y="352" font-size="11" fill="#656d78">纯 Web 实现（Canvas/CSS），可宿主于 Electron 或 Tauri</text>
+    </svg>
+    <figcaption>四段式管线。注意 ③a / ③b 是并列的两个"动画选择器"，仲裁器只向它们下达状态，不关心具体是自主行为还是任务状态 —— 这样就避免了"宠物乱走"和"任务状态"打架。</figcaption>
+  </figure>
+
+  <h3>4.3 关键机制：仲裁器为什么要存在</h3>
+  <p>如果直接把状态源的原始状态绑定到动画，会出现三类问题，仲裁器就是为它们而生：</p>
+  <table>
+    <thead><tr><th>问题</th><th>现象</th><th>仲裁策略</th></tr></thead>
+    <tbody>
+      <tr><td><b>状态闪烁</b></td><td>任务在 running / needs-input 之间高频抖动，宠物动作抽帧</td><td>变化限流：状态切换最小间隔 500ms；连续同向变化合并</td></tr>
+      <tr><td><b>重要状态被淹没</b></td><td>needs-input 只闪了 0.2 秒就被下一条 running 覆盖</td><td>粘滞（sticky）：needs-input 至少驻留至用户确认或超时</td></tr>
+      <tr><td><b>多会话争抢</b></td><td>三条会话同时活动，宠物来回横跳</td><td>取优先级最高的一条作为主状态，其余以数字角标表示；角标变化不改变主动画</td></tr>
+    </tbody>
+  </table>
+  <div class="box tip">
+    <b>一个易被忽略的细节：</b>官方文档明确写"活动托盘与系统通知是分开的"。这句话的工程含义是 —— 宠物气泡<b>不应</b>复用 Windows 的 Toast 通知通道，而应当自绘。自绘的好处是不进通知中心、不触发勿扰模式、不产生"已读"语义混乱。这一条要在架构上早早定死，否则后期改起来会牵动整个通信层。
+  </div>
+</section>
+
+<section id="s5">
+  <h2><span class="n">5</span>技术选型</h2>
+  <p class="sub">桌面宠物的选型瓶颈不是业务逻辑，而是窗口层的三项原生能力能否实现，以及常驻成本能否接受。</p>
+
+  <table>
+    <thead><tr><th>方案</th><th>透明置顶窗口</th><th>逐像素点击穿透</th><th>运行时体积 / 常驻内存</th><th>优势</th><th>主要风险</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>Electron</b><br><span class="w">+ Node 侧原生模块</span></td>
+        <td>成熟：<code>transparent:true</code> + <code>frame:false</code></td>
+        <td>需自研：窗口过程拦截 <code>WM_NCHITTEST</code>，或 <code>setIgnoreMouseEvents</code> + 前端命中回传</td>
+        <td>≈250 MB / 200–400 MB</td>
+        <td><b>与 ChatGPT 桌面端同栈</b>，行为最可复刻；Web 渲染与精灵播放零成本</td>
+        <td>常驻内存偏高；纯 JS 侧做点击穿透存在竞态</td>
+      </tr>
+      <tr>
+        <td><b>Tauri 2</b><br><span class="w">Rust + WebView2</span></td>
+        <td>支持：无边框 + 透明 + 置顶</td>
+        <td>需 Rust 侧自定义窗口过程（<code>windows-rs</code>）</td>
+        <td>≈10 MB / 80–160 MB</td>
+        <td>常驻成本最优的一档；WebView2 在 Win10 21H2+/Win11 预装；Rust 侧调 Win32 干净</td>
+        <td>透明 + 穿透组合仍要写原生代码，调试链路比 Electron 长</td>
+      </tr>
+      <tr>
+        <td><b>WPF / WinUI 3</b><br><span class="w">.NET 8</span></td>
+        <td>成熟：<code>AllowsTransparency</code> + <code>TopMost</code></td>
+        <td>需自定义 <code>HitTest</code> 或改用分层窗口 <code>UpdateLayeredWindow</code></td>
+        <td>自包含 ≈75 MB / 60–120 MB</td>
+        <td>原生手感；托盘、开机自启、热键、DPI 库齐全；无浏览器内核负担</td>
+        <td>精灵播放器要自己写；Web 生态资产（Lottie、CSS 动效）不可复用</td>
+      </tr>
+      <tr>
+        <td><b>Python + PySide6</b><br><span class="w">原型专用</span></td>
+        <td>支持</td>
+        <td>需 <code>ctypes</code> 调 Win32</td>
+        <td>打包后 ≈65 MB / 120 MB+</td>
+        <td>原型速度最快，适合先跑状态机与联调模拟器</td>
+        <td>分发、常驻性能与体积都不理想，不建议作为最终形态</td>
+      </tr>
+      <tr>
+        <td><b>原生 C++ / Rust + Direct2D</b></td>
+        <td>完全可控</td>
+        <td>完全可控，最精确</td>
+        <td>最小 / 最低</td>
+        <td>性能与资源占用天花板；窗口行为可以做到教科书级</td>
+        <td>开发与迭代成本最高；UI 面板、设置页、活动托盘全部要从头做</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="box key">
+    <h5>推荐路径：内核与宿主解耦，分两步走</h5>
+    <p style="margin:6px 0"><b>第一步（M1–M2）：Electron。</b>理由不是它最好，而是它离参照物最近。ChatGPT 桌面端本身就是 Electron 应用，同样的透明窗口策略、同样的渲染管线，意味着"复刻行为"这件事的试错成本最低。这个阶段的目标是<b>把交互、状态机、锚点这些真正难的东西做对</b>，而不是优化体积。</p>
+    <p style="margin:6px 0"><b>第二步（M2 之后，按需）：评估平移 Tauri 2。</b>前提是第一步已经守住了架构纪律 —— 即：</p>
+    <ul style="margin-bottom:4px">
+      <li><b>宠物内核（状态机 + 仲裁器 + 精灵播放器）写成纯 Web 层（TypeScript），不 import 任何 Electron API。</b></li>
+      <li>宿主适配层收窄为四个接口：<code>createOverlayWindow()</code>、<code>setClickThrough(mask)</code>、<code>registerHotkey()</code>、<code>tray()</code>。其余能力（自启、持久化）走标准 Node/Rust 各写一份即可。</li>
+      <li>状态源接入走本地 HTTP 或 stdio IPC，不依赖 Electron 的 IPC 对象。</li>
+    </ul>
+    <p style="margin:6px 0 0">守住这三条，迁移成本就是重写一个几百行的适配层，而不是重写整个应用。<b>反之，如果一开始图省事到处直调 Electron API，就永久失去了这个选项。</b></p>
+  </div>
+
+  <div class="box warn">
+    <b>不建议的路线：</b>用 Unity / Godot 做桌面宠物。这类引擎的窗口层是为游戏全屏设计的，透明无边框窗口 + 逐像素点击穿透 + 不抢焦点这三项都要靠大量引擎外补丁，属于逆着框架走。它们的优势（场景、物理、粒子）在 9 个状态的精灵宠物上完全用不到。
+  </div>
+</section>
+
+<section id="s6">
+  <h2><span class="n">6</span>架构设计</h2>
+
+  <h3>6.1 进程与窗口模型</h3>
+  <p>最小可用形态需要 <b>两个窗口、一个进程</b>，而不是单窗口。原因是需求本身互相冲突：宠物本体要"不抢焦点、可穿透"，而输入框必须"接受键盘焦点、不被穿透"。</p>
+  <dl class="kv">
+    <dt>窗口 A · 宠物层</dt><dd>承载精灵与气泡。样式：置顶 + 分层 + 工具窗口（不进 Alt+Tab、不在任务栏留按钮）+ 不激活。命中测试按 alpha 阈值做逐像素判定。</dd>
+    <dt>窗口 B · 控制条层</dt><dd>承载 Quick Chat 输入框、语音按钮、铃铛与线程列表。仅在需要交互时创建/显示，可接受焦点。与窗口 A 一起移动，避免使用者感到"两个东西"。</dd>
+    <dt>进程 · 常驻</dt><dd>单进程 + 单线程 UI。不需要多进程；活动托盘的数据量在几百条以内，无需为渲染隔离付出成本。</dd>
+    <dt>托盘图标</dt><dd>承载"显示宠物 / 宠物管理 / 设置 / 退出"四个入口，保证用户永远能找到隐藏后的宠物。</dd>
+  </dl>
+
+  <h3>6.2 窗口样式契约（必须一次性定死）</h3>
+  <p>这一组样式决定了宠物是"贴心伙伴"还是"流氓软件"，务必在 M0 阶段全部验证：</p>
+  <table>
+    <thead><tr><th>扩展样式 / 行为</th><th>作用</th><th>不做会怎样</th></tr></thead>
+    <tbody>
+      <tr><td><code>WS_EX_TOPMOST</code></td><td>悬浮于普通窗口之上</td><td>被任何窗口遮挡，功能失效</td></tr>
+      <tr><td><code>WS_EX_LAYERED</code></td><td>支持 alpha 混合与逐像素透明</td><td>宠物带白色矩形底板</td></tr>
+      <tr><td><code>WS_EX_TOOLWINDOW</code></td><td>不进 Alt+Tab、不占任务栏</td><td>切窗口时列表里多出一个无名项，立刻招致反感</td></tr>
+      <tr><td><code>WS_EX_NOACTIVATE</code></td><td>点击不夺取前台焦点</td><td>点宠物就打断正在输入的文字</td></tr>
+      <tr><td><code>WM_NCHITTEST</code> 返回 <code>HTTRANSPARENT</code></td><td>透明像素区域放行鼠标给下层窗口</td><td>窗口矩形吞掉所有点击，下方应用不可操作</td></tr>
+      <tr><td>Per-Monitor V2 DPI 感知</td><td>多屏不同缩放比下不模糊、不错位</td><td>在 150% 缩放的副屏上宠物糊成一团</td></tr>
+      <tr><td>不注册任务栏节流抑制</td><td>允许系统节能；自身也要主动降帧</td><td>笔记本续航下降，用户会关掉它</td></tr>
+    </tbody>
+  </table>
+
+  <h3>6.3 模块划分</h3>
+  <table>
+    <thead><tr><th>模块</th><th>职责</th><th>关键接口</th><th>可测性</th></tr></thead>
+    <tbody>
+      <tr><td><code>pet-core/loader</code></td><td>扫描宠物目录、解析清单、按 V1/V2 规范校验雪碧图</td><td><code>loadPetPack(dir) → PetPack</code></td><td><span class="pill g">纯函数，易单测</span></td></tr>
+      <tr><td><code>pet-core/sprite</code></td><td>按 <code>(row, col)</code> 切片绘制、应用缩放与锚点偏移、减少动态效果时冻结首帧</td><td><code>render(state, frame, scale)</code></td><td><span class="pill g">纯函数</span></td></tr>
+      <tr><td><code>pet-core/machine</code></td><td>状态机：循环/单次、回退状态、高优打断</td><td><code>transition(status) → anim</code></td><td><span class="pill g">纯函数，可穷举</span></td></tr>
+      <tr><td><code>pet-core/arbiter</code></td><td>优先级、粘滞、限流、多会话聚合</td><td><code>ingest(event) → primary</code></td><td><span class="pill g">纯函数 + 虚拟时钟</span></td></tr>
+      <tr><td><code>pet-core/behavior</code></td><td>自主漫游、微动作、打盹调度</td><td><code>tick(dt) → intent?</code></td><td><span class="pill g">注入随机种子后可复现</span></td></tr>
+      <tr><td><code>host/overlay</code></td><td>创建透明置顶窗口、移动、命中测试、穿透</td><td><code>createOverlayWindow()</code></td><td><span class="pill r">必须真机验证</span></td></tr>
+      <tr><td><code>host/hotkey</code></td><td>全局快捷键注册、占用检测、自定义</td><td><code>registerHotkey(seq)</code></td><td><span class="pill r">真机验证</span></td></tr>
+      <tr><td><code>host/tray</code> · <code>host/autostart</code></td><td>托盘菜单、开机自启注册表项</td><td>—</td><td><span class="pill t">集成测</span></td></tr>
+      <tr><td><code>source/*</code></td><td>状态源适配器：本地 HTTP、stdio IPC、日志尾随、手工模拟器</td><td><code>subscribe(cb)</code></td><td><span class="pill t">可用回放夹具测</span></td></tr>
+    </tbody>
+  </table>
+  <p>注意 <code>pet-core</code> 全部是纯函数 —— 这是刻意的。把"状态→动画"的判断做成纯函数后，可以用一个状态事件回放夹具把它穷举测试，不必启动窗口。整个项目最容易被写乱的地方就是这里，先约束住。</p>
+</section>
+
+<section id="s7">
+  <h2><span class="n">7</span>关键技术难点与对策</h2>
+
+  <h3>7.1 逐像素点击穿透（最高风险项）</h3>
+  <p>这是唯一一个"做不出来就不能上"的需求。三种实现路线：</p>
+  <table>
+    <thead><tr><th>路线</th><th>做法</th><th>优点</th><th>代价</th></tr></thead>
+    <tbody>
+      <tr><td><b>窗口过程拦截</b><br><span class="w">首选</span></td><td>子类化窗口过程，收到 <code>WM_NCHITTEST</code> 时把光标坐标换算到帧内坐标，采样该像素 alpha；低于阈值返回 <code>HTTRANSPARENT</code>，否则返回 <code>HTCLIENT</code></td><td>精确、无竞态、零延迟；被广泛验证的做法</td><td>需要宿主提供原生调用能力（Rust/C#/C++ 直接写，Electron 需原生模块）</td></tr>
+      <tr><td><b>分层窗口</b></td><td>用 <code>UpdateLayeredWindow</code> 提交带 alpha 的位图；系统按透明度自行放行鼠标</td><td>系统级行为，最省心</td><td>必须自行合成位图，无法直接复用浏览器渲染；Web 技术栈不适用</td></tr>
+      <tr><td><b>前端回传命中</b></td><td><code>setIgnoreMouseEvents(true, {forward:true})</code> 全局穿透，前端用 <code>elementFromPoint</code> 判断是否在宠物身上，动态切回可点击</td><td>纯 JS，无需原生模块</td><td><b>存在竞态</b>：穿透状态下前端收不到鼠标事件，只能靠 <code>forward</code> 的移动事件近似判断，快速划过时会漏判</td></tr>
+    </tbody>
+  </table>
+  <div class="box danger">
+    <b>建议：</b>不要用第三条路线交付。它可以用来快速做 demo，但在"用户快速划过多屏"这类场景下会出现点击丢失，而这恰恰是桌面宠物最常见的用法。M0 的验证目标就是确认第一条路线在你选的栈里能跑通 —— 如果跑不通，此时换栈的代价远小于三个月后。
+  </div>
+
+  <h3>7.2 置顶窗口与全屏应用冲突</h3>
+  <p>置顶窗口会在全屏视频、游戏、屏幕共享时造成遮挡，是这类软件被判为"垃圾软件"的头号原因。对策是检测前台窗口是否全屏，并主动隐藏：</p>
+  <ul>
+    <li>沿前台窗口链向上回溯，比较窗口矩形与所属显示器矩形；若覆盖整个显示器且无边框，判定为全屏。</li>
+    <li>同时检查系统通知状态（如 <code>SHQueryUserNotificationState</code>）—— 处于"全屏演示"或"勿扰"时一并让位。</li>
+    <li>退出全屏后恢复原位置与状态，且<b>不播放任何"我回来了"的动画</b>（会干扰用户）。</li>
+    <li>提供白名单：允许用户指定某些应用（如直播软件）全屏时宠物仍可见。</li>
+  </ul>
+
+  <h3>7.3 全局快捷键冲突</h3>
+  <p>官方默认 <code>Win+Alt+P</code>。这个组合并不安全：部分显卡驱动套件、录屏工具、输入法都会占用 <code>Win+Alt+字母</code> 段。<code>RegisterHotKey</code> 失败时必须给出明确反馈，并引导用户改键，而不是静默失败。</p>
+  <p>实践建议：启动时注册失败 → 托盘气泡提示 + 自动降级到备选序列 → 设置页提供键位录入与占用检测（录入时直接尝试注册，冲突即提示）。</p>
+
+  <h3>7.4 性能与常驻成本</h3>
+  <table>
+    <thead><tr><th>风险点</th><th>对策</th></tr></thead>
+    <tbody>
+      <tr><td>持续 60fps 重绘浪费 GPU</td><td>精灵动画最高 14fps 即可。用 CSS <code>transform</code> + <code>background-position</code> 交给合成器，避免触发布局与重绘</td></tr>
+      <tr><td>长期无交互仍满速运行</td><td>分级降频：无交互 30s → 降到 4fps；5min → 冻结为静态帧（复用趴卧帧作为打盹）</td></tr>
+      <tr><td>电池模式耗电</td><td>检测电源状态，切换为交流/电池两套帧率策略；电池下默认暂停自主漫游</td></tr>
+      <tr><td>内存缓慢增长</td><td>活动托盘的历史线程数设上限（如 50 条），超出的截断；不缓存原始截图</td></tr>
+      <tr><td>多显示器变更导致错位</td><td>监听显示器增删/分辨率/缩放变化事件，重新校验宠物坐标是否落在有效工作区内，否则回落到主屏右下角</td></tr>
+    </tbody>
+  </table>
+
+  <h3>7.5 加载不可信宠物包的安全边界</h3>
+  <div class="box danger">
+    <b>自定义宠物目录本质上是一个"任意文件投毒点"</b> —— 任何程序或脚本都能往里写文件。加载前必须做硬校验，且校验逻辑要在解码之前：
+    <ul style="margin:8px 0 0">
+      <li><b>路径</b>：拒绝含 <code>..</code> 或绝对路径的清单字段；宠物目录名限定为安全字符集；解析后确认目标文件仍位于允许的根目录内（防目录穿越）。</li>
+      <li><b>格式</b>：只接受 <code>.webp</code> / <code>.png</code>，先读文件头魔数，再交给解码器；不做任何基于扩展名的信任。</li>
+      <li><b>体积</b>：单文件硬上限 20 MiB（与官方一致），并在解压/解码前检查，防止解码炸弹。</li>
+      <li><b>尺寸</b>：解码后必须精确为 V1 的 1536×1872 或 V2 的 1536×2288，允许整数倍缩放但要有上下界；尺寸不匹配直接拒绝并提示原因。</li>
+      <li><b>字段</b>：清单只读取白名单字段（<code>id</code> / <code>displayName</code> / <code>description</code> / <code>spritesheetPath</code> / <code>spriteVersionNumber</code>），其余忽略。<b>绝不执行</b>清单中的任何内容，绝不解引用外部 URL。</li>
+      <li><b>展示</b>：<code>displayName</code> 与 <code>description</code> 是外来文本，渲染时必须转义，且限制长度，防止撑破 UI 或注入标记。</li>
+    </ul>
+  </div>
+
+  <h3>7.6 状态源接入 —— 产品成败的关键</h3>
+  <p>技术难点都在窗口层，但产品成败在<b>状态从哪来</b>。如果没有真实的状态可以订阅，宠物只能靠模拟数据空转，这个软件就没有存在意义。可选路径按可控性排序：</p>
+  <table>
+    <thead><tr><th>状态源</th><th>接入方式</th><th>适用</th><th>可信度</th></tr></thead>
+    <tbody>
+      <tr><td>自研 agent 运行时</td><td>本地 HTTP / WebSocket 推送</td><td>有自主可控的任务引擎</td><td><span class="pill g">最高</span></td></tr>
+      <tr><td>Codex / Claude Code 等 hooks</td><td>在工具的钩子点写状态文件或 POST 到本地端口</td><td>以编程 agent 为主要工作负载</td><td><span class="pill g">高</span></td></tr>
+      <tr><td>进程与日志尾随</td><td>监听目标进程存活 + 解析日志关键词</td><td>无法改动的第三方工具</td><td><span class="pill t">中，需容忍误判</span></td></tr>
+      <tr><td>手工模拟器</td><td>内置一个可点按的状态注入面板</td><td><b>M1 阶段的开发与联调必需</b></td><td><span class="pill">仅测试</span></td></tr>
+    </tbody>
+  </table>
+  <div class="box tip">
+    <b>架构建议：把状态源定义成一个单向的、可回放的事件流。</b>事件形如 <code>{ sessionId, status, title, ts }</code>，只增不改。好处有三：一是状态源适配器可以随意替换；二是开发期可以用录制好的事件回放驱动全部 UI 测试；三是仲裁器的粘滞与限流逻辑可以接虚拟时钟做确定性单测。这一步的抽象成本很低，收益贯穿整个项目生命周期。
+  </div>
+</section>
+
+<section id="s8">
+  <h2><span class="n">8</span>数据契约</h2>
+  <p class="sub">三个文件，职责严格分离 —— 这是不污染厂商格式、又能承载自研参数的关键。</p>
+
+  <table>
+    <thead><tr><th>文件</th><th>归属</th><th>内容</th><th>可否回写</th></tr></thead>
+    <tbody>
+      <tr><td><code>pet.json</code></td><td><b>厂商格式</b>（Codex/Codex Pets）</td><td>身份信息与雪碧图路径。保持与官方完全一致，便于双向流通</td><td><span class="pill r">只读</span></td></tr>
+      <tr><td><code>behavior-map.json</code></td><td>社区约定的 sidecar</td><td>行→状态→帧列的映射、语义别名、意图描述、内容包围盒</td><td><span class="pill t">可自动生成</span></td></tr>
+      <tr><td><code>desktop-pet.json</code></td><td><b>本运行时扩展</b></td><td>帧率、循环策略、锚点基线、缩放、状态优先级、行为层参数、窗口与交互约定</td><td><span class="pill g">本项目定义</span></td></tr>
+    </tbody>
+  </table>
+
+  <div class="box key">
+    <b>为什么不把自研参数直接塞进 <code>pet.json</code>？</b>因为那样这份宠物包就再也不能被 ChatGPT/Codex 直接识别了 —— 而"资产可双向流通"本身就是这个格式最大的价值。反过来，把渲染参数写进 sidecar 的代价几乎为零，只需在加载时合并两份清单。<br><br>
+    <b>另一条纪律：</b><code>desktop-pet.json</code> 里的帧率与锚点都应当由工具<b>自动生成</b>而非手写。我们已经用 <code>tools/pet_sheet_probe.py</code> 与 <code>tools/anchor_calibrate.py</code> 跑通了这条链路 —— 换一只宠物只需重新跑一次分析，不必重新推导。
+  </div>
+
+  <h3>扩展清单的结构（节选）</h3>
+  <pre>{
+  <span class="k">"schema"</span>: <span class="s">"desktop-pet/runtime-manifest/v1"</span>,
+  <span class="k">"anchor"</span>: {
+    <span class="k">"mode"</span>: <span class="s">"per-state-fixed"</span>,     <span class="c">// 每状态固定锚点，禁止逐帧贴地</span>
+    <span class="k">"groundY"</span>: 202,                  <span class="c">// 单元格坐标系内的统一地平线</span>
+    <span class="k">"horizontal"</span>: <span class="s">"cellCenter"</span>       <span class="c">// 横向已居中，无需补偿</span>
+  },
+  <span class="k">"states"</span>: {
+    <span class="k">"idle"</span>:  { <span class="k">"row"</span>:0, <span class="k">"frames"</span>:6, <span class="k">"fps"</span>:8,  <span class="k">"loop"</span>:true,  <span class="k">"baselineY"</span>:200, <span class="k">"offsetY"</span>:2  },
+    <span class="k">"failed"</span>:{ <span class="k">"row"</span>:5, <span class="k">"frames"</span>:8, <span class="k">"fps"</span>:5,  <span class="k">"loop"</span>:true,  <span class="k">"baselineY"</span>:141, <span class="k">"offsetY"</span>:61 },
+    <span class="k">"waving"</span>:{ <span class="k">"row"</span>:3, <span class="k">"frames"</span>:4, <span class="k">"fps"</span>:8,  <span class="k">"loop"</span>:false, <span class="k">"baselineY"</span>:201, <span class="k">"offsetY"</span>:1,
+                 <span class="k">"fallbackState"</span>: <span class="s">"idle"</span> }
+  },
+  <span class="k">"reducedMotion"</span>: { <span class="k">"strategy"</span>: <span class="s">"freeze-frame"</span>, <span class="k">"frameIndex"</span>: 0 }
+}</pre>
+  <p><code>offsetY</code> 是自动算出来的：<code>groundY − baselineY</code>。它保证了站立、跑动、趴卧三种姿态的触地点落在同一条地平线上。</p>
+</section>
+
+<section id="s9">
+  <h2><span class="n">9</span>状态机设计</h2>
+
+  <h3>9.1 官方四状态 → 本资产九行动画</h3>
+  <p>官方只定义了四种状态，资产提供了九行动画。映射关系就是我们要做的设计决策 —— 下表是建议方案：</p>
+  <table>
+    <thead><tr><th>业务状态</th><th>含义</th><th>选用动画行</th><th class="num">fps</th><th>循环</th><th>气泡文案</th><th class="num">优先级</th></tr></thead>
+    <tbody>
+      <tr><td><span class="pill">无任务</span></td><td>没有活动会话</td><td><code>idle</code> 行 0</td><td class="num">8</td><td>循环</td><td>—</td><td class="num">4</td></tr>
+      <tr><td><span class="pill r">需要输入</span></td><td>等待批准 / 回答 / 决策</td><td><code>waiting</code> 行 6</td><td class="num">6</td><td>循环 + 脉冲</td><td>需要输入</td><td class="num">1</td></tr>
+      <tr><td><span class="pill r">已受阻</span></td><td>执行失败或系统错误</td><td><code>failed</code> 行 5</td><td class="num">5</td><td>循环</td><td>已受阻</td><td class="num">2</td></tr>
+      <tr><td><span class="pill t">就绪</span></td><td>已完成但未被查看</td><td><code>waving</code> 行 3 → <code>review</code> 行 8</td><td class="num">8 / 8</td><td>单次 → 循环</td><td>就绪</td><td class="num">3</td></tr>
+      <tr><td><span class="pill">运行中</span></td><td>任务正在推进</td><td><code>running</code> 行 7</td><td class="num">12</td><td>循环</td><td>运行中</td><td class="num">4</td></tr>
+    </tbody>
+  </table>
+  <p>另外四行（<code>running-right</code> / <code>running-left</code> / <code>jumping</code> 及一件性动作）不参与业务状态映射，归行为层调度使用。这样的分工避免了两类需求互相污染。</p>
+
+  <h3>9.2 状态迁移与打断规则</h3>
+  <figure>
+    <svg viewBox="0 0 680 268" width="100%" style="max-width:680px;font-family:'Segoe UI',sans-serif">
+      <rect x="0" y="0" width="680" height="268" fill="#ffffff"/>
+      <defs>
+        <marker id="a2" markerWidth="8" markerHeight="8" refX="6" refY="2.5" orient="auto">
+          <path d="M0,0 L6,2.5 L0,5 z" fill="#656d78"/>
+        </marker>
+        <marker id="a3" markerWidth="8" markerHeight="8" refX="6" refY="2.5" orient="auto">
+          <path d="M0,0 L6,2.5 L0,5 z" fill="#c2410c"/>
+        </marker>
+      </defs>
+
+      <ellipse cx="118" cy="128" rx="66" ry="36" fill="#f7f8fa" stroke="#9ca3af"/>
+      <text x="118" y="124" font-size="12.5" font-weight="700" text-anchor="middle" fill="#374151">idle 待机</text>
+      <text x="118" y="141" font-size="10.5" text-anchor="middle" fill="#656d78">行为层可接管</text>
+
+      <ellipse cx="352" cy="62" rx="66" ry="34" fill="#fff7ed" stroke="#c2410c"/>
+      <text x="352" y="58" font-size="12.5" font-weight="700" text-anchor="middle" fill="#c2410c">waiting</text>
+      <text x="352" y="74" font-size="10.5" text-anchor="middle" fill="#9a3412">P1 · 最高优先</text>
+
+      <ellipse cx="562" cy="128" rx="62" ry="34" fill="#fef2f2" stroke="#b91c1c"/>
+      <text x="562" y="124" font-size="12.5" font-weight="700" text-anchor="middle" fill="#b91c1c">failed</text>
+      <text x="562" y="140" font-size="10.5" text-anchor="middle" fill="#991b1b">P2</text>
+
+      <ellipse cx="352" cy="212" rx="66" ry="32" fill="#f0fdf4" stroke="#15803d"/>
+      <text x="352" y="208" font-size="12.5" font-weight="700" text-anchor="middle" fill="#15803d">running</text>
+      <text x="352" y="224" font-size="10.5" text-anchor="middle" fill="#166534">P4 · 最低优先</text>
+
+      <ellipse cx="352" cy="130" rx="58" ry="30" fill="#ecfeff" stroke="#0e7490"/>
+      <text x="352" y="126" font-size="12" font-weight="700" text-anchor="middle" fill="#0e7490">waving → review</text>
+      <text x="352" y="141" font-size="10.5" text-anchor="middle" fill="#155e75">P3 · 单次转循环</text>
+
+      <path d="M180,112 C250,90 275,72 288,66" fill="none" stroke="#656d78" stroke-width="1.3" marker-end="url(#a2)"/>
+      <path d="M180,146 C250,168 275,190 288,203" fill="none" stroke="#656d78" stroke-width="1.3" marker-end="url(#a2)"/>
+      <path d="M410,82 C480,100 490,112 500,120" fill="none" stroke="#c2410c" stroke-width="1.5" marker-end="url(#a3)"/>
+      <path d="M498,140 C480,158 470,168 418,196" fill="none" stroke="#c2410c" stroke-width="1.5" marker-end="url(#a3)"/>
+      <path d="M286,122 C274,124 262,126 246,127" fill="none" stroke="#656d78" stroke-width="1.2" marker-end="url(#a2)"/>
+      <path d="M410,196 C470,180 490,166 504,144" fill="none" stroke="#656d78" stroke-width="1.2" marker-end="url(#a2)"/>
+
+      <text x="222" y="82" font-size="10.5" fill="#c2410c" font-weight="600">打断一切</text>
+      <text x="214" y="186" font-size="10.5" fill="#656d78">任务启动</text>
+      <text x="330" y="108" font-size="10.5" fill="#656d78">完成且未读</text>
+      <text x="432" y="104" font-size="10.5" fill="#c2410c" font-weight="600">优先级更高可抢占</text>
+      <text x="424" y="176" font-size="10.5" fill="#656d78">重试 / 恢复</text>
+
+      <text x="18" y="252" font-size="11" fill="#656d78">所有状态在任务清空后回落至 idle；行为层只在 idle 期间获得控制权。</text>
+    </svg>
+    <figcaption>优先级驱动的抢占式状态机。橙色箭头表示"高优先级可打断低优先级"，灰色箭头表示顺序流转。</figcaption>
+  </figure>
+
+  <h3>9.3 三条必须写进代码的防抖规则</h3>
+  <ul>
+    <li><b>最短展示时长：</b>任何状态被激活后至少展示 400ms 才能被切换，避免高频事件导致动作抽帧。</li>
+    <li><b>粘滞（sticky）：</b><code>needs-input</code> 激活后驻留至用户明确确认（打开会话）或超时（如 5 分钟），中途不被 <code>running</code> 覆盖。这是产品可信度的核心。</li>
+    <li><b>单次动作不参与仲裁：</b><code>waving</code> / <code>jumping</code> 这类一次性动画播放期间不接受状态切换，播完再按当前最高优先级状态接管。否则会出现"挥手挥到一半被切断"的廉价感。</li>
+  </ul>
+</section>
+
+<section id="s10">
+  <h2><span class="n">10</span>行为层设计</h2>
+  <p class="sub">让宠物在"没事干"的时候依然像活的 —— 这是与官方实现最容易拉开差距的地方。</p>
+
+  <table>
+    <thead><tr><th>行为</th><th>触发条件</th><th>实现</th><th>注意</th></tr></thead>
+    <tbody>
+      <tr><td><b>自主漫游</b></td><td>idle 持续随机 25–90s</td><td>随机方向 + 随机距离（80–320px），用 <code>running-left/right</code> 驱动窗口位移</td><td>速度必须<b>按屏幕像素/秒归一化</b>，否则缩放后观感不一致。默认缩放下建议 ~96 px/s</td></tr>
+      <tr><td><b>边缘策略</b></td><td>碰到工作区边界</td><td>停止、翻转朝向、短暂停顿后再动</td><td>不要贴着任务栏走；用工作区（去除任务栏）而非整个屏幕矩形</td></tr>
+      <tr><td><b>微动作</b></td><td>idle 持续随机 40–150s</td><td>随机播一次 <code>waving</code> 或 <code>jumping</code>，播完回 idle</td><td>频率要有上限，否则从"有生命感"变成"多动症"</td></tr>
+      <tr><td><b>打盹</b></td><td>连续 5min 无任务且无交互</td><td>复用 <code>failed</code> 行的趴卧帧作为睡眠循环，降到 2fps</td><td>零额外美术成本 —— 趴卧姿态天然适合当睡姿</td></tr>
+      <tr><td><b>跟随鼠标</b></td><td>可选，默认关闭</td><td>朝向鼠标方向播放对应方向的跑动</td><td>极易变成干扰源，务必默认关闭并提供开关</td></tr>
+      <tr><td><b>拖动响应</b></td><td>用户按住拖动</td><td>暂停一切自主行为；松手后短暂"落地"停顿再恢复</td><td>拖动期间不播漫游动画，避免视觉冲突</td></tr>
+    </tbody>
+  </table>
+
+  <div class="box tip">
+    <b>为什么行为层必须与状态层隔离？</b>因为二者的时间尺度完全不同：任务状态是事件驱动、随时可能到来；自主行为是定时器驱动、随时应当让位。如果混在一个状态机里，会出现"宠物正走到屏幕边缘，任务完成了，它被迫在半路开始挥手"这种别扭画面。分开之后，规则很清晰：<b>仲裁器一旦输出非 idle 状态，行为层立即挂起并归位。</b>
+  </div>
+
+  <h3>彩蛋：把现有资产的两行"非标准内容"用起来</h3>
+  <p>实测发现，行 7 与行 8 画的是<b>生日派对（派对帽 + 蛋糕）</b>和<b>小厨师（厨师帽 + 围裙 + 平底锅）</b>，而不是规范里语义对应的 <code>running</code>（处理中）与 <code>review</code>（检查产出）。这是作者在规范内做的创意发挥。两种用法：</p>
+  <ul>
+    <li><b>顺从原生语义：</b>把行 7 用于"任务推进中"、行 8 用于"整理汇总产出"。语义上说得通（小厨师 ≈ 在加工稿件），且与 ChatGPT 行为完全兼容。</li>
+    <li><b>挖掘为彩蛋：</b>把行 7 保留给"里程碑达成 / 长任务成功"，行 8 保留给"正在生成交付物"。配合可视化编辑器做别名覆盖，不需要改资产。</li>
+  </ul>
+  <p>建议做法是第一种作为默认，第二种作为可配置的彩蛋模式 —— 这样既能被 Codex 原样识别，又能在自研端释放资产的表达力。</p>
+</section>
+
+<section id="s11">
+  <h2><span class="n">11</span>分阶段计划</h2>
+  <p class="sub">四个阶段，每阶段以"可验证的退出判据"收尾，而不是以时间收尾。</p>
+
+  <div class="step">
+    <div class="tag">M0</div>
+    <div class="body">
+      <h4>技术验证 <span>· 工作量：小 · 不可跳过</span></h4>
+      <p><b>目标：</b>在写任何业务代码之前，用一个最小 demo 证明窗口层可行。这是整个项目唯一可能"推翻选型"的阶段。</p>
+      <p><b>要验证的三件事：</b></p>
+      <ol>
+        <li>透明置顶窗口 + <code>WM_NCHITTEST</code> 逐像素穿透（§7.1 路线一）</li>
+        <li><code>WS_EX_NOACTIVATE</code> 生效：点击宠物不夺焦点</li>
+        <li>全屏应用检测与自动隐藏</li>
+      </ol>
+      <p><b>退出判据：</b>三项全部通过。任一失败 → 换栈重做 M0，而不是带着风险进 M1。</p>
+      <p><b>产出：</b>spike 工程 + 一页结论记录（含失败项与替代方案）。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="tag">M1</div>
+    <div class="body">
+      <h4>MVP：跑通渲染闭环 <span>· 工作量：中</span></h4>
+      <p><b>目标：</b>宠物能正确、稳定地被驱动，且交互与常驻基础能力齐备。</p>
+      <ul>
+        <li>宠物包加载 + V1/V2 规范校验 + 清单合并</li>
+        <li>精灵播放器：8×9 切图、锚点校准、减少动态效果冻结首帧</li>
+        <li>状态机 + 仲裁器（含粘滞、最短展示、限流），接入<b>内置状态模拟器</b></li>
+        <li>拖动移动 + 位置持久化 + 尺寸调节 + 右键菜单 + 托盘 + 开机自启</li>
+      </ul>
+      <p><b>退出判据：</b>用模拟器把 5 个业务状态随机切换 500 次，不出现姿态跳变、不出现锚点悬浮；空闲 CPU 占用 &lt; 1%；常驻内存稳定不增长。</p>
+      <p><b>可直接复用现成产物：</b><code>动画映射验证器.html</code> 已经验证了帧率、锚点与状态映射的正确性，M1 的渲染层可直接移植其逻辑。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="tag">M2</div>
+    <div class="body">
+      <h4>对标：补齐 ChatGPT Pets 的交互面 <span>· 工作量：中</span></h4>
+      <ul>
+        <li>控制条窗口：快捷输入（含 <code>@</code> 上下文、<code>$</code> 技能）、语音入口、铃铛与线程列表</li>
+        <li>全局快捷键 + 占用检测 + 自定义键位；Mini 模式</li>
+        <li>多会话聚合与数字角标</li>
+        <li>自定义宠物管理：扫描目录、校验、切换、重扫</li>
+        <li>全屏让位、多显示器与 DPI 打磨、电池策略</li>
+      </ul>
+      <p><b>退出判据：</b>对照 §3 功能基线表逐条验收，1–15 项全部通过；在一台多屏 + 高 DPI 的机器上做一轮真实使用。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="tag">M3</div>
+    <div class="body">
+      <h4>差异化：做出官方没有的部分 <span>· 工作量：中～大</span></h4>
+      <ul>
+        <li><b>行为层</b>：自主漫游、微动作、打盹、边缘策略</li>
+        <li><b>状态源生态</b>：为常用编程 agent 提供开箱即用的 hook 适配（见 §7.6），带事件录制与回放</li>
+        <li><b>宠物包工具链</b>：把已有的探测器与锚点校准脚本产品化，做成"拖入图片 → 自动分析 → 校验 → 生成清单 → 预览"的一站式工具</li>
+        <li><b>彩蛋内容</b>：生日与厨师行的场景化用法</li>
+      </ul>
+      <p><b>退出判据：</b>拿到一份从未见过的第三方宠物包，工具能在无人干预下完成分析、校验并成功加载。</p>
+    </div>
+  </div>
+</section>
+
+<section id="s12">
+  <h2><span class="n">12</span>风险登记表</h2>
+  <table>
+    <thead><tr><th>风险</th><th class="num">可能性</th><th class="num">影响</th><th>缓解措施</th><th>触发信号</th></tr></thead>
+    <tbody>
+      <tr><td>逐像素穿透在所选栈中实现困难</td><td class="num">中</td><td class="num"><span class="pill r">致命</span></td><td>M0 优先验证；储备三种实现路线（§7.1）</td><td>M0 demo 中透明区域仍吞点击</td></tr>
+      <tr><td>无真实状态源，产品空转</td><td class="num">中</td><td class="num"><span class="pill r">致命</span></td><td>M1 起就把状态源抽象成事件流；尽早接通至少一个真实 hook</td><td>M2 结束时仍未接任何真实数据源</td></tr>
+      <tr><td>被误判为流氓软件（置顶遮挡 / 抢焦点）</td><td class="num">中</td><td class="num"><span class="pill r">高</span></td><td>全屏让位 + 不夺焦点 + 托盘可退出，三项均为硬性验收项</td><td>用户反馈"看不见下面窗口"</td></tr>
+      <tr><td>全局快捷键被占用</td><td class="num">高</td><td class="num"><span class="pill t">中</span></td><td>注册失败即提示 + 自动降级 + 可自定义</td><td><code>RegisterHotKey</code> 返回失败</td></tr>
+      <tr><td>常驻内存被认为过重</td><td class="num">中</td><td class="num"><span class="pill t">中</span></td><td>宿主选型预留 Tauri 迁移路径；分级降频</td><td>空闲内存长期 &gt; 300 MB</td></tr>
+      <tr><td>多显示器 / DPI 场景错位</td><td class="num">高</td><td class="num"><span class="pill t">中</span></td><td>Per-Monitor V2；监听显示配置变化并回退</td><td>拔插显示器后宠物消失或模糊</td></tr>
+      <tr><td>恶意宠物包</td><td class="num">低</td><td class="num"><span class="pill r">高</span></td><td>文件头校验 + 尺寸上限 + 路径穿越防护 + 字段白名单（§7.5）</td><td>加载陌生来源的宠物包时</td></tr>
+      <tr><td>第三方宠物资源版权</td><td class="num">低</td><td class="num"><span class="pill r">高</span></td><td>默认只加载自有资产；若做分发平台需建立举报与下架流程</td><td>宠物形象明显源自既有 IP</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="s13">
+  <h2><span class="n">13</span>验收清单</h2>
+
+  <h3>窗口行为</h3>
+  <ul class="check">
+    <li>宠物悬浮于普通窗口之上，但不覆盖全屏应用（自动让位并在退出全屏后恢复）</li>
+    <li>点击宠物周围的透明区域，事件正确落到下层窗口</li>
+    <li>点击宠物不会夺走前台窗口的输入焦点</li>
+    <li>不出现在 Alt+Tab 列表中，不在任务栏留下按钮</li>
+    <li>拖动流畅、位置在重启后保留；显示器拔插后回退到有效工作区</li>
+    <li>在 100% / 150% / 200% 缩放的多个显示器间移动，画面清晰且不跳位</li>
+  </ul>
+
+  <h3>动画与状态</h3>
+  <ul class="check">
+    <li>9 个状态全部可播放，帧数与规格一致（6/8/8/4/5/8/6/6/6）</li>
+    <li>状态切换时触地点始终落在地平线上，无上下抖动（尤其跑动 ↔ 站立、趴卧 ↔ 站立）</li>
+    <li>开启系统"减少动态效果"后切换为静态帧，状态与气泡仍正常更新</li>
+    <li>单次动作播放期间不被状态切换打断</li>
+    <li>需要输入状态具有粘滞性，不被运行中状态覆盖</li>
+    <li>多会话同时活动时，主状态取优先级最高者，角标正确显示其余数量</li>
+  </ul>
+
+  <h3>常驻与资源</h3>
+  <ul class="check">
+    <li>空闲 CPU 占用低于 1%；长时间无交互自动降频直至冻结</li>
+    <li>内存占用在 24 小时运行后无明显增长</li>
+    <li>电池供电时自动切换节能策略</li>
+    <li>开机自启可用，且能被用户在设置中关闭</li>
+    <li>托盘图标常驻，隐藏后仍可找回宠物</li>
+  </ul>
+
+  <h3>宠物包与安全</h3>
+  <ul class="check">
+    <li>本地宠物目录可被扫描，新宠物无需重启即可识别</li>
+    <li>尺寸/格式/体积不合规的宠物包被拒绝并给出可读原因</li>
+    <li>清单中的路径穿越尝试被拦截</li>
+    <li>清单中的外来文本被转义且长度受限</li>
+    <li>自研渲染参数不写入 <code>pet.json</code>，原包仍可被 Codex 直接识别</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="n">附</span>随附产物</h2>
+  <table>
+    <thead><tr><th>文件</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>动画映射验证器.html</code></td><td>可交互的动画验证工具：状态切换、帧率、缩放、锚点校准开关（对比"未校准"的悬浮效果）、自主漫游演示、四状态模拟驱动</td></tr>
+      <tr><td><code>atlas-map.png</code></td><td>图集地图，标注行号 / 状态名 / 帧数，附行列分界</td></tr>
+      <tr><td><code>pet.json</code></td><td>原始清单，保持与 Codex 格式完全一致，未作任何改动</td></tr>
+      <tr><td><code>behavior-map.json</code></td><td>自动生成的行为映射 sidecar：行→状态→帧列、语义别名、意图、内容包围盒</td></tr>
+      <tr><td><code>desktop-pet.json</code></td><td>本运行时扩展清单：帧率、循环策略、锚点基线、状态优先级、行为层参数、窗口与交互约定</td></tr>
+      <tr><td><code>tools/pet_sheet_probe.py</code></td><td>雪碧图解析与合规校验：识别 V1/V2、逐行测帧数、导出映射与图集地图</td></tr>
+      <tr><td><code>tools/anchor_calibrate.py</code></td><td>锚点校准：计算各状态横向中心与触地点，输出 <code>offsetY</code> 补偿表</td></tr>
+    </tbody>
+  </table>
+
+  <div class="box ok">
+    <h5>下一步建议</h5>
+    <p style="margin:6px 0 0">资产层面已经完成且可复用，剩下的是工程。建议直接进入 <b>M0 技术验证</b>：用一个最小窗口 demo 把"透明置顶 + 逐像素穿透 + 不夺焦点 + 全屏让位"四件事一次性验证掉。这一步做完，这个项目就从"构想"变成"可以排期的工作"。<br><br>
+    需要的话，我可以接着把 M1 的渲染层与状态机按上面的模块划分写出可运行代码 —— 动画验证器里的映射与锚点逻辑可以直接搬过去。</p>
+  </div>
+</section>
+
+<footer>基于对资产板块两个文件的实测分析（规格校验通过）+ ChatGPT / Codex Pets 官方文档功能基线编制。</footer>
+
+</div>
+</body>
+</html>

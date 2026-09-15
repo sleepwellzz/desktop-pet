@@ -1,0 +1,85 @@
+{
+  "schema": "desktop-pet/runtime-manifest/v1",
+  "note": "自研运行时的扩展清单。pet.json 保持与 Codex/ChatGPT 原生格式完全一致，本文件仅承载原生格式不支持的渲染与行为参数，互不污染。",
+  "pack": {
+    "id": "taotao-new",
+    "displayName": "淘淘 New",
+    "sourceManifest": "pet.json",
+    "behaviorMap": "behavior-map.json",
+    "spritesheetPath": "spritesheet.webp",
+    "spriteVersionNumber": 1,
+    "imageSize": { "width": 1536, "height": 1872 },
+    "cellSize": { "width": 192, "height": 208 },
+    "grid": { "columns": 8, "rows": 9 },
+    "totalFrames": 57,
+    "verified": {
+      "by": "pet_sheet_probe.py",
+      "result": "9 行实测帧数 [6,8,8,4,5,8,6,6,6] 与 Codex Pets V1 官方规格逐行一致",
+      "contentAlignment": "各帧内容在 192x208 单元格内横向居中（实测 cx=95.5~95.0，单元格中心 96）、纵向居中，行内无网格线/标签"
+    }
+  },
+  "render": {
+    "defaultScale": 1.0,
+    "scaleRange": [0.5, 3.0],
+    "scaleStep": 0.25,
+    "pixelSnap": true,
+    "imageRendering": "auto",
+    "zOrder": "topmost-overlay",
+    "background": "transparent",
+    "hitTest": "alpha-threshold",
+    "hitTestAlphaThreshold": 16
+  },
+  "anchor": {
+    "mode": "per-state-fixed",
+    "groundY": 202,
+    "note": "groundY = 全部状态中最深的接触点（单元格坐标）。绘制时把各状态帧下移 (groundY - baselineY)，使站立/跑动/趴卧三种姿态的接触点落在同一条地平线上。禁止逐帧做基线锁定，否则奔跑的步态起伏与跳跃的腾空弧线会被抹平。",
+    "horizontal": "cellCenter",
+    "horizontalNote": "横向已居中，无需补偿。"
+  },
+  "states": {
+    "idle":          { "row": 0, "frames": 6, "fps": 8,  "loop": true,  "baselineY": 200, "offsetY": 2,  "role": "ambient" },
+    "running-right": { "row": 1, "frames": 8, "fps": 14, "loop": true,  "baselineY": 183, "offsetY": 19, "role": "locomotion-right", "bottomJitterPx": 5 },
+    "running-left":  { "row": 2, "frames": 8, "fps": 14, "loop": true,  "baselineY": 182, "offsetY": 20, "role": "locomotion-left",  "bottomJitterPx": 12 },
+    "waving":        { "row": 3, "frames": 4, "fps": 8,  "loop": false, "baselineY": 201, "offsetY": 1,  "role": "one-shot-signal", "fallbackState": "idle" },
+    "jumping":       { "row": 4, "frames": 5, "fps": 10, "loop": false, "baselineY": 201, "offsetY": 1,  "role": "one-shot-emphasis", "fallbackState": "idle", "bottomJitterPx": 43, "note": "触地点帧间抖动 43px 即腾空弧线，属预期，不可校准。" },
+    "failed":        { "row": 5, "frames": 8, "fps": 5,  "loop": true,  "baselineY": 141, "offsetY": 61, "role": "blocked", "note": "趴卧姿态，几何基线远高于站立姿态，offsetY 必须补偿 61px，否则角色会悬浮在地面之上。" },
+    "waiting":       { "row": 6, "frames": 6, "fps": 6,  "loop": true,  "baselineY": 200, "offsetY": 2,  "role": "await-approval", "attention": true },
+    "running":       { "row": 7, "frames": 6, "fps": 12, "loop": true,  "baselineY": 202, "offsetY": 0,  "role": "working" },
+    "review":        { "row": 8, "frames": 6, "fps": 8,  "loop": true,  "baselineY": 202, "offsetY": 0,  "role": "result-unread" }
+  },
+  "reducedMotion": {
+    "strategy": "freeze-frame",
+    "frameIndex": 0,
+    "note": "遵循系统「减少动态效果」设置：仅绘制第 0 帧静态图，保留状态切换与提示气泡。"
+  },
+  "statusMap": {
+    "idle":        { "state": "idle",    "bubble": null,       "priority": 4 },
+    "running":     { "state": "running", "bubble": "运行中",    "priority": 4 },
+    "needs-input": { "state": "waiting", "bubble": "需要输入",  "priority": 1, "attentionPulse": true, "stickyUntil": "user-ack" },
+    "blocked":     { "state": "failed",  "bubble": "已受阻",    "priority": 2 },
+    "ready":       { "state": "waving",  "then": "review", "bubble": "就绪（未读）", "priority": 3 }
+  },
+  "behavior": {
+    "layer": "autonomous",
+    "normalization": "运动量按屏幕像素/秒归一化：running 行在默认缩放下位移速度 baseline 为 96 px/s，按当前缩放线性换算，保证不同尺寸下观感一致。",
+    "idleRoam": { "enabled": true, "everySec": [25, 90], "distancePx": [80, 320], "speedPxPerSec": 96 },
+    "idleMicroActions": { "enabled": true, "candidates": ["waving", "jumping"], "everySec": [40, 150] },
+    "edgePolicy": "屏幕边缘停止并翻转朝向；跨显示器时允许穿越，到达目标屏幕后再寻边。",
+    "obstaclePolicy": "默认忽略窗口遮挡，仅与屏幕工作区边界交互（避免昂贵的窗口枚举）。",
+    "sleepAfterIdleSec": 300,
+    "sleepState": "failed",
+    "sleepNote": "长时间无任务时复用趴卧帧作为「打盹」，无需新增美术资源。"
+  },
+  "interaction": {
+    "drag": "按住拖动，松开后记忆位置；拖动期间抑制自主漫游",
+    "click": "单击切换下一个宠物 / 显示快捷输入",
+    "doubleClick": "唤起主窗口",
+    "rightClickMenu": ["隐藏宠物", "切换宠物", "宠物大小", "重置大小", "开机自启", "退出"],
+    "hideShortcut": { "default": "Win+Alt+P", "action": "切换悬浮控制条与快捷输入焦点", "conflictRisk": "Win+Alt+P 在 Windows 上可能与部分显卡/AI 工具快捷键冲突，需支持用户自定义并做占用检测" },
+    "tray": ["显示/隐藏", "宠物管理", "设置", "退出"]
+  },
+  "extraAssets": {
+    "birthdayFrames": { "row": 7, "semantic": "running", "note": "作者在此行绘制了生日（派对帽 + 蛋糕）姿态。原生语义为 working，可作为「任务成功/达成里程碑」的彩蛋素材，通过 alias 覆盖使用。" },
+    "chefFrames": { "row": 8, "semantic": "review", "note": "作者在此行绘制了小厨师姿态。原生语义为 review，可复用为「整理/汇总产出」场景。" }
+  }
+}

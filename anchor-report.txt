@@ -1,0 +1,20 @@
+row0 idle           frames=6  X[29..162] cx=95.5(==96?)  Y[7..200] h=194  触地点帧间抖动=0
+row1 running-right  frames=8  X[8..183] cx=95.5(==96?)  Y[24..183] h=160  触地点帧间抖动=5
+row2 running-left   frames=8  X[8..183] cx=95.5(==96?)  Y[25..182] h=158  触地点帧间抖动=12
+row3 waving         frames=4  X[43..148] cx=95.5(==96?)  Y[6..201] h=196  触地点帧间抖动=0
+row4 jumping        frames=5  X[48..143] cx=95.5(==96?)  Y[6..201] h=196  触地点帧间抖动=43
+row5 failed         frames=8  X[13..178] cx=95.5(==96?)  Y[66..141] h=76  触地点帧间抖动=1
+row6 waiting        frames=6  X[9..181] cx=95.0(==96?)  Y[8..200] h=193  触地点帧间抖动=0
+row7 running        frames=6  X[47..143] cx=95.0(==96?)  Y[5..202] h=198  触地点帧间抖动=0
+row8 review         frames=6  X[45..145] cx=95.0(==96?)  Y[5..202] h=198  触地点帧间抖动=1
+
+基准地面 GROUND = 202 (单元格内)
+  idle           baseline=200 -> 需下移补偿 offsetY=+2 px  ★需校准
+  running-right  baseline=183 -> 需下移补偿 offsetY=+19 px  ★需校准
+  running-left   baseline=182 -> 需下移补偿 offsetY=+20 px  ★需校准
+  waving         baseline=201 -> 需下移补偿 offsetY=+1 px  ★需校准
+  jumping        baseline=201 -> 需下移补偿 offsetY=+1 px  ★需校准
+  failed         baseline=141 -> 需下移补偿 offsetY=+61 px  ★需校准
+  waiting        baseline=200 -> 需下移补偿 offsetY=+2 px  ★需校准
+  running        baseline=202 -> 需下移补偿 offsetY=+0 px  
+  review         baseline=202 -> 需下移补偿 offsetY=+0 px  
