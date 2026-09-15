@@ -16,30 +16,30 @@
   "windowDIP": {
    "x": 1539,
    "y": 847,
-   "width": 148,
-   "height": 160
+   "width": 145,
+   "height": 157
   },
   "contentDIP": {
    "x": 1539,
    "y": 847,
-   "width": 148,
-   "height": 160
+   "width": 144,
+   "height": 156
   },
   "windowPhysical": {
    "left": 2309,
    "top": 1271,
-   "right": 2530,
-   "bottom": 1510
+   "right": 2525,
+   "bottom": 1505
   },
   "estimatedPhysical": {
    "left": 2309,
    "top": 1271,
-   "right": 2531,
-   "bottom": 1511
+   "right": 2525,
+   "bottom": 1505
   },
   "rendererMetrics": {
-   "iw": 148,
-   "ih": 160,
+   "iw": 144,
+   "ih": 156,
    "dpr": 1.5,
    "canvasW": 216,
    "canvasH": 234
@@ -49,20 +49,20 @@
    0
   ],
   "cursor": {
-   "x": 1609,
-   "y": 759
+   "x": 802,
+   "y": 188
   }
  },
  "drag": {
   "from": {
-   "x": 2420,
-   "y": 1391
+   "x": 2417,
+   "y": 1388
   },
   "to": {
-   "x": 1920,
-   "y": 1031
+   "x": 1917,
+   "y": 1028
   },
-  "moves": 26,
+  "moves": 25,
   "dipAfter": {
    "x": 1207,
    "y": 607,
@@ -82,8 +82,8 @@
   "rect": {
    "left": 2309,
    "top": 1271,
-   "right": 2530,
-   "bottom": 1510
+   "right": 2525,
+   "bottom": 1505
   },
   "step": 24,
   "margin": 36,

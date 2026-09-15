@@ -45,6 +45,15 @@ export interface DragDelta { dx: number; dy: number }
 export interface HitState { interactive: boolean }
 
 /** 主进程 → 渲染层：光标位置（窗口客户区 CSS 像素），窗口移动后用它重新采样。 */
-export interface PointerHint { cssX: number; cssY: number }
+export interface PointerHint {
+  cssX: number;
+  cssY: number;
+  /**
+   * 强制重新上报命中状态。用于窗口**重新显示之后**：隐藏/显示会把双方的记账错开
+   * （实测 hide→showInactive 后鼠标按钮事件不再投递到渲染层），必须让渲染层
+   * 无条件重报一次，不能因为"和上次一样"而跳过。见 ADR 009。
+   */
+  force?: boolean;
+}
 
 export interface FullscreenNotice { hidden: boolean; fgTitle: string }

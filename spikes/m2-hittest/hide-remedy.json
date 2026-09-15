@@ -1,0 +1,160 @@
+{
+ "steps": [
+  {
+   "label": "基线",
+   "pointerdown": 1,
+   "ok": true,
+   "exstyle": {
+    "hex": "0x8000008",
+    "T": false,
+    "L": false
+   },
+   "visible": true,
+   "page": "visible/false"
+  },
+  {
+   "label": "hide+showInactive 之后",
+   "pointerdown": 0,
+   "ok": false,
+   "exstyle": {
+    "hex": "0x8000008",
+    "T": false,
+    "L": false
+   },
+   "visible": true,
+   "page": "visible/false"
+  },
+  {
+   "label": "等待 6 秒后",
+   "pointerdown": 0,
+   "ok": false,
+   "exstyle": {
+    "hex": "0x8000008",
+    "T": false,
+    "L": false
+   },
+   "visible": true,
+   "page": "visible/false"
+  },
+  {
+   "label": "补救「再切一次 setIgnoreMouseEvents(true→false)」后",
+   "pointerdown": 0,
+   "ok": false,
+   "exstyle": {
+    "hex": "0x8000008",
+    "T": false,
+    "L": false
+   },
+   "visible": true,
+   "page": "visible/false"
+  },
+  {
+   "label": "补救「webContents.focus()」后",
+   "pointerdown": 0,
+   "ok": false,
+   "exstyle": {
+    "hex": "0x8000008",
+    "T": false,
+    "L": false
+   },
+   "visible": true,
+   "page": "visible/false"
+  },
+  {
+   "label": "补救「setAlwaysOnTop 重设」后",
+   "pointerdown": 0,
+   "ok": false,
+   "exstyle": {
+    "hex": "0x8000008",
+    "T": false,
+    "L": false
+   },
+   "visible": true,
+   "page": "visible/false"
+  },
+  {
+   "label": "补救「setOpacity 抖动」后",
+   "pointerdown": 0,
+   "ok": false,
+   "exstyle": {
+    "hex": "0x8080008",
+    "T": false,
+    "L": true
+   },
+   "visible": true,
+   "page": "visible/false"
+  },
+  {
+   "label": "补救「blur()」后",
+   "pointerdown": 0,
+   "ok": false,
+   "exstyle": {
+    "hex": "0x8080008",
+    "T": false,
+    "L": true
+   },
+   "visible": true,
+   "page": "visible/false"
+  },
+  {
+   "label": "补救「setBounds 重设」后",
+   "pointerdown": 0,
+   "ok": false,
+   "exstyle": {
+    "hex": "0x8080008",
+    "T": false,
+    "L": true
+   },
+   "visible": true,
+   "page": "visible/false"
+  },
+  {
+   "label": "补救「webContents.invalidate()」后",
+   "pointerdown": 0,
+   "ok": false,
+   "exstyle": {
+    "hex": "0x8080008",
+    "T": false,
+    "L": true
+   },
+   "visible": true,
+   "page": "visible/false"
+  },
+  {
+   "label": "补救「再来一次 hide+showInactive」后",
+   "pointerdown": 0,
+   "ok": false,
+   "exstyle": {
+    "hex": "0x8080008",
+    "T": false,
+    "L": true
+   },
+   "visible": true,
+   "page": "visible/false"
+  },
+  {
+   "label": "补救「showInactive 再调一次」后",
+   "pointerdown": 0,
+   "ok": false,
+   "exstyle": {
+    "hex": "0x8080008",
+    "T": false,
+    "L": true
+   },
+   "visible": true,
+   "page": "visible/false"
+  },
+  {
+   "label": "补救「setContentBounds 复位」后",
+   "pointerdown": 1,
+   "ok": true,
+   "exstyle": {
+    "hex": "0x8080008",
+    "T": false,
+    "L": true
+   },
+   "visible": true,
+   "page": "visible/false"
+  }
+ ]
+}

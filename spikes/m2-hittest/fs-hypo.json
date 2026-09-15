@@ -1,0 +1,68 @@
+{
+ "cases": [
+  {
+   "name": "D 穿透态下隐藏",
+   "expect": "FAIL",
+   "flagsAtHide": {
+    "hex": "0x8080028",
+    "T": true,
+    "L": true
+   },
+   "flagsAfterShow": {
+    "hex": "0x8080028",
+    "T": true,
+    "L": true
+   },
+   "click": 0,
+   "verdict": "FAIL"
+  },
+  {
+   "name": "C 可交互态下隐藏",
+   "expect": "OK",
+   "flagsAtHide": {
+    "hex": "0x8000008",
+    "T": false,
+    "L": false
+   },
+   "flagsAfterShow": {
+    "hex": "0x8000008",
+    "T": false,
+    "L": false
+   },
+   "click": 0,
+   "verdict": "FAIL"
+  },
+  {
+   "name": "D 重现（穿透态下隐藏）",
+   "expect": "FAIL",
+   "flagsAtHide": {
+    "hex": "0x8080028",
+    "T": true,
+    "L": true
+   },
+   "flagsAfterShow": {
+    "hex": "0x8080028",
+    "T": true,
+    "L": true
+   },
+   "click": 0,
+   "verdict": "FAIL"
+  },
+  {
+   "name": "C 重现（可交互态下隐藏）",
+   "expect": "OK",
+   "flagsAtHide": {
+    "hex": "0x8000008",
+    "T": false,
+    "L": false
+   },
+   "flagsAfterShow": {
+    "hex": "0x8000008",
+    "T": false,
+    "L": false
+   },
+   "click": 0,
+   "verdict": "FAIL"
+  }
+ ]
+}

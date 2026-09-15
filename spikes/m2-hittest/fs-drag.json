@@ -1,0 +1,348 @@
+{
+ "steps": [
+  {
+   "label": "基线·光标在宠物上",
+   "exstyle": {
+    "hex": "0x8000008",
+    "TRANSPARENT": false,
+    "LAYERED": false
+   },
+   "visible": true,
+   "page": {
+    "visibility": "visible",
+    "hidden": false,
+    "focus": false
+   }
+  },
+  {
+   "label": "基线·拖动结束（光标已离开宠物）",
+   "exstyle": {
+    "hex": "0x8000008",
+    "TRANSPARENT": false,
+    "LAYERED": false
+   },
+   "visible": true,
+   "page": {
+    "visibility": "visible",
+    "hidden": false,
+    "focus": false
+   }
+  },
+  {
+   "label": "基线·hint 采样后",
+   "exstyle": {
+    "hex": "0x8000008",
+    "TRANSPARENT": false,
+    "LAYERED": false
+   },
+   "visible": true,
+   "page": {
+    "visibility": "visible",
+    "hidden": false,
+    "focus": false
+   }
+  },
+  {
+   "label": "全屏中",
+   "exstyle": {
+    "hex": "0x8000008",
+    "TRANSPARENT": false,
+    "LAYERED": false
+   },
+   "visible": false,
+   "page": {
+    "visibility": "visible",
+    "hidden": false,
+    "focus": false
+   }
+  },
+  {
+   "label": "全屏后·刚恢复",
+   "exstyle": {
+    "hex": "0x8000008",
+    "TRANSPARENT": false,
+    "LAYERED": false
+   },
+   "visible": true,
+   "page": {
+    "visibility": "visible",
+    "hidden": false,
+    "focus": false
+   }
+  },
+  {
+   "label": "全屏后·光标已移到宠物上",
+   "exstyle": {
+    "hex": "0x8000008",
+    "TRANSPARENT": false,
+    "LAYERED": false
+   },
+   "visible": true,
+   "note": "hint 计数 14 → 15 → 15",
+   "page": {
+    "visibility": "visible",
+    "hidden": false,
+    "focus": false
+   }
+  },
+  {
+   "label": "全屏后·hint 采样后",
+   "exstyle": {
+    "hex": "0x8000008",
+    "TRANSPARENT": false,
+    "LAYERED": false
+   },
+   "visible": true,
+   "page": {
+    "visibility": "visible",
+    "hidden": false,
+    "focus": false
+   }
+  },
+  {
+   "label": "全屏后·拖动结束",
+   "exstyle": {
+    "hex": "0x8080028",
+    "TRANSPARENT": true,
+    "LAYERED": true
+   },
+   "visible": true,
+   "page": {
+    "visibility": "visible",
+    "hidden": false,
+    "focus": false
+   }
+  },
+  {
+   "label": "强制 setIgnoreMouseEvents(false) 之后",
+   "exstyle": {
+    "hex": "0x8000008",
+    "TRANSPARENT": false,
+    "LAYERED": false
+   },
+   "visible": true,
+   "page": {
+    "visibility": "visible",
+    "hidden": false,
+    "focus": false
+   }
+  },
+  {
+   "label": "强制可交互·拖动结束",
+   "exstyle": {
+    "hex": "0x8080028",
+    "TRANSPARENT": true,
+    "LAYERED": true
+   },
+   "visible": true,
+   "page": {
+    "visibility": "visible",
+    "hidden": false,
+    "focus": false
+   }
+  }
+ ],
+ "baseline": {
+  "click": 1,
+  "drag": {
+   "moved": true,
+   "delta": {
+    "dx": -270,
+    "dy": -200
+   },
+   "events": {
+    "down": 1,
+    "up": 1,
+    "move": 21,
+    "cancel": 0
+   }
+  }
+ },
+ "baselineHints": {
+  "contentBounds": {
+   "x": 1269,
+   "y": 647,
+   "width": 144,
+   "height": 156
+  },
+  "rows": [
+   {
+    "fraction": [
+     0.5,
+     0.5
+    ],
+    "physical": {
+     "x": 2012,
+     "y": 1088
+    },
+    "wantClient": {
+     "x": 72,
+     "y": 78
+    },
+    "hint": {
+     "cssX": 72,
+     "cssY": 78
+    },
+    "offset": {
+     "x": 0,
+     "y": 0
+    }
+   },
+   {
+    "fraction": [
+     0.25,
+     0.3
+    ],
+    "physical": {
+     "x": 1958,
+     "y": 1041
+    },
+    "wantClient": {
+     "x": 36,
+     "y": 46.8
+    },
+    "hint": {
+     "cssX": 36,
+     "cssY": 47
+    },
+    "offset": {
+     "x": 0,
+     "y": 0.2
+    }
+   },
+   {
+    "fraction": [
+     0.75,
+     0.7
+    ],
+    "physical": {
+     "x": 2066,
+     "y": 1134
+    },
+    "wantClient": {
+     "x": 108,
+     "y": 109.2
+    },
+    "hint": {
+     "cssX": 108,
+     "cssY": 109
+    },
+    "offset": {
+     "x": 0,
+     "y": -0.2
+    }
+   }
+  ]
+ },
+ "fullscreen": {
+  "hiddenDuring": true,
+  "visibleAfter": true,
+  "hintCounts": {
+   "before": 14,
+   "atMove": 15,
+   "after700ms": 15
+  }
+ },
+ "afterFullscreenHints": {
+  "contentBounds": {
+   "x": 1269,
+   "y": 647,
+   "width": 144,
+   "height": 156
+  },
+  "rows": [
+   {
+    "fraction": [
+     0.5,
+     0.5
+    ],
+    "physical": {
+     "x": 2012,
+     "y": 1088
+    },
+    "wantClient": {
+     "x": 72,
+     "y": 78
+    },
+    "hint": null,
+    "offset": null
+   },
+   {
+    "fraction": [
+     0.25,
+     0.3
+    ],
+    "physical": {
+     "x": 1958,
+     "y": 1041
+    },
+    "wantClient": {
+     "x": 36,
+     "y": 46.8
+    },
+    "hint": {
+     "cssX": 36,
+     "cssY": 47
+    },
+    "offset": {
+     "x": 0,
+     "y": 0.2
+    }
+   },
+   {
+    "fraction": [
+     0.75,
+     0.7
+    ],
+    "physical": {
+     "x": 2066,
+     "y": 1134
+    },
+    "wantClient": {
+     "x": 108,
+     "y": 109.2
+    },
+    "hint": {
+     "cssX": 108,
+     "cssY": 109
+    },
+    "offset": {
+     "x": 0,
+     "y": -0.2
+    }
+   }
+  ]
+ },
+ "afterFullscreen": {
+  "click": 0,
+  "drag": {
+   "moved": false,
+   "delta": {
+    "dx": 0,
+    "dy": 0
+   },
+   "events": {
+    "down": 0,
+    "up": 0,
+    "move": 2,
+    "cancel": 0
+   }
+  }
+ },
+ "forcedInteractive": {
+  "click": 0,
+  "drag": {
+   "moved": false,
+   "delta": {
+    "dx": 0,
+    "dy": 0
+   },
+   "events": {
+    "down": 0,
+    "up": 0,
+    "move": 2,
+    "cancel": 0
+   }
+  }
+ }
+}

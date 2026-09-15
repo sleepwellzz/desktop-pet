@@ -1,0 +1,61 @@
+{
+ "steps": [
+  {
+   "label": "1 基线",
+   "click": 1,
+   "flagsAtClick": {
+    "T": false,
+    "L": false,
+    "hex": "0x8000008"
+   }
+  },
+  {
+   "label": "2 显示后",
+   "click": 0,
+   "flagsAtClick": {
+    "T": false,
+    "L": false,
+    "hex": "0x8000008"
+   }
+  },
+  {
+   "label": "4 移开再移回后",
+   "click": 0,
+   "flagsAtClick": {
+    "T": false,
+    "L": false,
+    "hex": "0x8000008"
+   }
+  },
+  {
+   "label": "5 nudge 后",
+   "click": 0,
+   "flagsAtClick": {
+    "T": false,
+    "L": false,
+    "hex": "0x8000008"
+   }
+  },
+  {
+   "label": "6 reload 后",
+   "click": 1,
+   "flagsAtClick": {
+    "T": false,
+    "L": false,
+    "hex": "0x8000008"
+   }
+  }
+ ],
+ "toggleAfterShow": {
+  "away": {
+   "T": true,
+   "L": true,
+   "hex": "0x8080028"
+  },
+  "onPet": {
+   "T": false,
+   "L": false,
+   "hex": "0x8000008"
+  }
+ }
+}

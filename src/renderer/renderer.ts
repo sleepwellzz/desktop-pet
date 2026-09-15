@@ -124,8 +124,13 @@ function draw(): void {
 // 主进程常态整窗穿透（setIgnoreMouseEvents(true, { forward: true })），鼠标移动仍会转发到这里；
 // 光标落在实体像素上才切回可交互，离开立刻释放。见 ADR 008。
 let interactive = false;
-function setInteractive(on: boolean): void {
-  if (on === interactive) return;
+/**
+ * @param force 无条件上报。窗口重新显示后必须强制一次：隐藏/显示会让主进程侧的记账
+ *   与渲染层错开，若因为"与上次相同"而被跳过，窗口就可能永远停在穿透状态
+ *   （实测症状：全屏让位回来后宠物点不动、拖不动，见 ADR 009）。
+ */
+function setInteractive(on: boolean, force = false): void {
+  if (!force && on === interactive) return;
   interactive = on;
   window.pet.setInteractive(on);
 }
@@ -155,8 +160,8 @@ function hitAt(cssX: number, cssY: number): boolean {
   return solidAt(f.column * cw + localX, f.row * ch + localY);
 }
 
-function evaluateHit(cssX: number, cssY: number): void {
-  setInteractive(hitAt(cssX, cssY));
+function evaluateHit(cssX: number, cssY: number, force = false): void {
+  setInteractive(hitAt(cssX, cssY), force);
 }
 
 // —— 交互：按住拖动；单击（未拖动）触发一次性挥手 ——
@@ -209,8 +214,25 @@ window.addEventListener('mouseleave', releaseIfIdle);
 window.addEventListener('pointerleave', releaseIfIdle);
 window.addEventListener('blur', releaseIfIdle);
 
-// 主进程按光标位置回报采样点，窗口被拖动后也靠它重新定位。
-window.pet.onPointerHint((hint) => { if (!dragging) evaluateHit(hint.cssX, hint.cssY); });
+// 主进程按光标位置回报采样点，窗口被拖动或重新显示后也靠它重新定位。
+// force 来自"窗口刚重新显示"，必须无条件重报一次（见 setInteractive 注释）。
+window.pet.onPointerHint((hint) => {
+  if (dragging) return;
+  evaluateHit(hint.cssX, hint.cssY, Boolean(hint.force));
+});
+
+/**
+ * 指针被系统取消（例如拖动过程中宠物被全屏让位隐藏）。
+ * 不处理的话 dragging 会永久卡在 true，之后所有 hint 都被 `if (!dragging)` 挡掉，
+ * 窗口再也切不回可交互 —— 这是同一类症状的第二条路径，一并堵掉。
+ */
+function onPointerCancel(): void {
+  if (!dragging) return;
+  dragging = false;
+  setInteractive(false);
+}
+canvas.addEventListener('pointercancel', onPointerCancel);
+window.addEventListener('pointercancel', onPointerCancel);
 
 window.pet.onFullscreen((n) => window.pet.log(n.hidden ? `让位隐藏（前台：${n.fgTitle}）` : '恢复显示'));
 

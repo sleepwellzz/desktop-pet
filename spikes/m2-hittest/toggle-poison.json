@@ -1,0 +1,94 @@
+{
+ "steps": [
+  {
+   "label": "E0 基线",
+   "click": 0,
+   "flags": {
+    "hex": "0x8080028",
+    "T": true,
+    "L": true
+   }
+  },
+  {
+   "label": "E1 基线·开关一次后",
+   "click": 1,
+   "flags": {
+    "hex": "0x8000008",
+    "T": false,
+    "L": false
+   }
+  },
+  {
+   "label": "A1 刚 show（尚未做任何事）",
+   "click": 0,
+   "flags": {
+    "hex": "0x8000008",
+    "T": false,
+    "L": false
+   }
+  },
+  {
+   "label": "A2 show 后立刻 nudge",
+   "click": 0,
+   "flags": {
+    "hex": "0x8000008",
+    "T": false,
+    "L": false
+   }
+  },
+  {
+   "label": "B1 紧接着 setIgnoreMouseEvents(true)",
+   "click": 0,
+   "flags": {
+    "hex": "0x8080028",
+    "T": true,
+    "L": true
+   }
+  },
+  {
+   "label": "C1 再 setIgnoreMouseEvents(false)",
+   "click": 0,
+   "flags": {
+    "hex": "0x8000008",
+    "T": false,
+    "L": false
+   }
+  },
+  {
+   "label": "D1 再 nudge（能否救回）",
+   "click": 0,
+   "flags": {
+    "hex": "0x8000008",
+    "T": false,
+    "L": false
+   }
+  },
+  {
+   "label": "D2 救回后再 setIgnoreMouseEvents(true)",
+   "click": 0,
+   "flags": {
+    "hex": "0x8080028",
+    "T": true,
+    "L": true
+   }
+  },
+  {
+   "label": "D3 收尾",
+   "click": 0,
+   "flags": {
+    "hex": "0x8000008",
+    "T": false,
+    "L": false
+   }
+  },
+  {
+   "label": "F1 移出屏幕再移回",
+   "click": 0,
+   "flags": {
+    "hex": "0x8000008",
+    "T": false,
+    "L": false
+   }
+  }
+ ]
+}

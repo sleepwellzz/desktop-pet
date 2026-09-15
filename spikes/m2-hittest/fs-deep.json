@@ -1,0 +1,84 @@
+{
+ "steps": [
+  {
+   "label": "基线",
+   "enabled": true,
+   "winVisible": true,
+   "styleDisabled": false,
+   "styleVisible": true,
+   "exTransparent": true,
+   "exLayered": true,
+   "enable": true,
+   "windowFromPointIsPet": null,
+   "petHwnd": "2233600",
+   "foreground": "65954",
+   "isForeground": false,
+   "physical": {
+    "left": 2309,
+    "top": 1271,
+    "right": 2525,
+    "bottom": 1505,
+    "w": 216,
+    "h": 234
+   },
+   "content": {
+    "x": 1539,
+    "y": 847,
+    "width": 144,
+    "height": 156
+   }
+  },
+  {
+   "label": "hide+show 之后",
+   "enabled": true,
+   "winVisible": true,
+   "styleDisabled": false,
+   "styleVisible": true,
+   "exTransparent": false,
+   "exLayered": false,
+   "enable": true,
+   "windowFromPointIsPet": null,
+   "petHwnd": "2233600",
+   "foreground": "65954",
+   "isForeground": false,
+   "physical": {
+    "left": 2309,
+    "top": 1271,
+    "right": 2525,
+    "bottom": 1505,
+    "w": 216,
+    "h": 234
+   },
+   "content": {
+    "x": 1539,
+    "y": 847,
+    "width": 144,
+    "height": 156
+   }
+  }
+ ],
+ "realAfter": 0,
+ "sendMessageAfter": 1,
+ "remedyResults": [
+  {
+   "name": "EnableWindow(false→true)",
+   "click": 0
+  },
+  {
+   "name": "尺寸 +1 再还原（真实 resize）",
+   "click": 1
+  },
+  {
+   "name": "尺寸 +8 再还原",
+   "click": 1
+  },
+  {
+   "name": "setContentBounds 原值（矩阵里曾有效）",
+   "click": 1
+  },
+  {
+   "name": "位置 +1 再还原",
+   "click": 1
+  }
+ ]
+}

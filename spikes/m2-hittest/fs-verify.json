@@ -1,0 +1,272 @@
+{
+ "rounds": [
+  {
+   "round": 1,
+   "before": {
+    "label": "全屏前",
+    "visible": true,
+    "transparent": false,
+    "content": {
+     "x": 1539,
+     "y": 847,
+     "width": 144,
+     "height": 156
+    },
+    "physical": {
+     "left": 2309,
+     "top": 1271,
+     "right": 2525,
+     "bottom": 1505,
+     "w": 216,
+     "h": 234
+    },
+    "page": "visible/144x156"
+   },
+   "click": 1,
+   "drag": {
+    "moved": true,
+    "delta": {
+     "dx": -270,
+     "dy": -200
+    },
+    "events": {
+     "down": 1,
+     "up": 1,
+     "move": 21,
+     "cancel": 0
+    }
+   },
+   "before2": {
+    "label": "全屏前·拖动后",
+    "visible": true,
+    "transparent": false,
+    "content": {
+     "x": 1269,
+     "y": 647,
+     "width": 144,
+     "height": 156
+    },
+    "physical": {
+     "left": 1904,
+     "top": 971,
+     "right": 2120,
+     "bottom": 1205,
+     "w": 216,
+     "h": 234
+    },
+    "page": "visible/144x156"
+   },
+   "hidden": {
+    "ok": true,
+    "snapshot": {
+     "label": "全屏中",
+     "visible": false,
+     "transparent": false,
+     "content": {
+      "x": 1269,
+      "y": 647,
+      "width": 144,
+      "height": 156
+     },
+     "physical": {
+      "left": 1904,
+      "top": 971,
+      "right": 2120,
+      "bottom": 1205,
+      "w": 216,
+      "h": 234
+     },
+     "page": "visible/144x156"
+    }
+   },
+   "restored": {
+    "label": "全屏后·已恢复",
+    "visible": true,
+    "transparent": false,
+    "content": {
+     "x": 1269,
+     "y": 647,
+     "width": 144,
+     "height": 156
+    },
+    "physical": {
+     "left": 1904,
+     "top": 971,
+     "right": 2120,
+     "bottom": 1205,
+     "w": 216,
+     "h": 234
+    },
+    "page": "visible/144x156"
+   },
+   "clickAfter": 1,
+   "dragAfter": {
+    "moved": true,
+    "delta": {
+     "dx": -270,
+     "dy": -200
+    },
+    "events": {
+     "down": 1,
+     "up": 1,
+     "move": 21,
+     "cancel": 0
+    }
+   },
+   "after": {
+    "label": "全屏后·拖动之后",
+    "visible": true,
+    "transparent": false,
+    "content": {
+     "x": 999,
+     "y": 447,
+     "width": 144,
+     "height": 156
+    },
+    "physical": {
+     "left": 1499,
+     "top": 671,
+     "right": 1715,
+     "bottom": 905,
+     "w": 216,
+     "h": 234
+    },
+    "page": "visible/144x156"
+   }
+  },
+  {
+   "round": 2,
+   "before": {
+    "label": "全屏前",
+    "visible": true,
+    "transparent": false,
+    "content": {
+     "x": 999,
+     "y": 447,
+     "width": 144,
+     "height": 156
+    },
+    "physical": {
+     "left": 1499,
+     "top": 671,
+     "right": 1715,
+     "bottom": 905,
+     "w": 216,
+     "h": 234
+    },
+    "page": "visible/144x156"
+   },
+   "click": 1,
+   "drag": {
+    "moved": true,
+    "delta": {
+     "dx": -270,
+     "dy": -200
+    },
+    "events": {
+     "down": 1,
+     "up": 1,
+     "move": 21,
+     "cancel": 0
+    }
+   },
+   "before2": {
+    "label": "全屏前·拖动后",
+    "visible": true,
+    "transparent": false,
+    "content": {
+     "x": 729,
+     "y": 247,
+     "width": 144,
+     "height": 156
+    },
+    "physical": {
+     "left": 1094,
+     "top": 371,
+     "right": 1310,
+     "bottom": 605,
+     "w": 216,
+     "h": 234
+    },
+    "page": "visible/144x156"
+   },
+   "hidden": {
+    "ok": true,
+    "snapshot": {
+     "label": "全屏中",
+     "visible": false,
+     "transparent": false,
+     "content": {
+      "x": 729,
+      "y": 247,
+      "width": 144,
+      "height": 156
+     },
+     "physical": {
+      "left": 1094,
+      "top": 371,
+      "right": 1310,
+      "bottom": 605,
+      "w": 216,
+      "h": 234
+     },
+     "page": "visible/144x156"
+    }
+   },
+   "restored": {
+    "label": "全屏后·已恢复",
+    "visible": true,
+    "transparent": false,
+    "content": {
+     "x": 729,
+     "y": 247,
+     "width": 144,
+     "height": 156
+    },
+    "physical": {
+     "left": 1094,
+     "top": 371,
+     "right": 1310,
+     "bottom": 605,
+     "w": 216,
+     "h": 234
+    },
+    "page": "visible/144x156"
+   },
+   "clickAfter": 1,
+   "dragAfter": {
+    "moved": true,
+    "delta": {
+     "dx": -270,
+     "dy": -200
+    },
+    "events": {
+     "down": 1,
+     "up": 1,
+     "move": 21,
+     "cancel": 0
+    }
+   },
+   "after": {
+    "label": "全屏后·拖动之后",
+    "visible": true,
+    "transparent": false,
+    "content": {
+     "x": 459,
+     "y": 47,
+     "width": 144,
+     "height": 156
+    },
+    "physical": {
+     "left": 689,
+     "top": 71,
+     "right": 905,
+     "bottom": 305,
+     "w": 216,
+     "h": 234
+    },
+    "page": "visible/144x156"
+   }
+  }
+ ]
+}

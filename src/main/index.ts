@@ -80,11 +80,18 @@ function boot(): void {
     console.error(`[pet] preload 出错 ${preloadPath}: ${error}`);
   });
 
+  let selfCheckStarted = false;
   ipcMain.on(CH.ready, () => {
+    // 页面重载后渲染层会再次报到：payload 复用缓存，自检只跑一次
     payload ??= buildPayload();
+    // 新页面从"整窗穿透"起步，并立刻**强制**重报一次命中状态（见 ADR 009）
+    overlay.resetToIgnore();
     overlay.browserWindow.webContents.send(CH.init, payload);
-    scheduleSelfCheck();
-    pushPointerHint();
+    pushPointerHint(true);
+    if (!selfCheckStarted) {
+      selfCheckStarted = true;
+      scheduleSelfCheck();
+    }
   });
 
   // —— 命中测试：渲染层判定"光标落在实体像素上"才让窗口可交互，否则整窗穿透 ——
@@ -102,9 +109,9 @@ function boot(): void {
     const cb = win.getContentBounds();          // DIP
     return { cssX: cp.x - cb.x, cssY: cp.y - cb.y };
   }
-  function pushPointerHint(): void {
+  function pushPointerHint(force = false): void {
     const hint = cursorHint();
-    if (hint) overlay.browserWindow.webContents.send(CH.pointerHint, hint);
+    if (hint) overlay.browserWindow.webContents.send(CH.pointerHint, { ...hint, force });
   }
 
   /**
@@ -163,7 +170,11 @@ function boot(): void {
       console.log('[pet] 检测到全屏应用「' + status.fgTitle + '」，已让位隐藏');
     } else {
       overlay.show();
-      console.log('[pet] 全屏应用已退出，恢复显示');
+      // 关键：hide→show 之后 Windows 不再把真实鼠标按钮事件路由到这个窗口
+      // （移动事件正常、坐标正确、样式位正确、SendMessage 能进），实测只有重新加载
+      // 渲染层才能让 Chromium 重建输入通路。详见 host/overlay-window.ts 的 reload 注释。
+      overlay.reload();
+      console.log('[pet] 全屏应用已退出，恢复显示（已重载渲染层以恢复输入通路）');
     }
     overlay.browserWindow.webContents.send(CH.fullscreen, { hidden: status.coversMonitor, fgTitle: status.fgTitle });
   }, 600);
