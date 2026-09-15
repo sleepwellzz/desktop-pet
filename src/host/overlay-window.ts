@@ -93,40 +93,18 @@ export function createOverlayWindow(opts: OverlayOptions): OverlayWindow {
    * （差 4 DIP，150% 缩放下的取整错位），隐藏/显示把这个错位固化到了输入区域上。
    * 每次显示后重新下发一次内容bounds，错位就被抹平。
    */
+  /** 把窗口内容区钉回预期尺寸与当前位置（也顺带抹平 DIP↔物理取整的漂移）。 */
   function pinContentBounds(): void {
     const b = win.getContentBounds();
     win.setContentBounds({ x: b.x, y: b.y, width: contentW, height: contentH });
   }
-  pinContentBounds();   // 创建后先归一化一次（顺带消除 view 与窗口尺寸的 4 DIP 错位）
-
-  /**
-   * 重新下发一次"真的变了"的窗口位置（下移 1 像素再复位）。
-   *
-   * 为什么必须有这一步（2026-09-15 实测，ADR 009）：`hide()` → `showInactive()` 之后，
-   * Windows **不再把真实的鼠标按钮事件路由到这个窗口**。此时页面 visibilityState 正常、
-   * 光标→客户区坐标映射偏差为 0、窗口位置尺寸正确、`WS_EX_TRANSPARENT` 也已按需清除，
-   * 从任何单点看都"没问题"，但真实点击就是进不来 —— 用户看到的现象是
-   * **"只要全屏一次，宠物回来以后就再也点不动、拖不动"**。
-   *
-   * 定位过程：把 `WM_LBUTTONDOWN` 用 `SendMessage` 直接发给顶层 HWND，渲染层**能**收到
-   * pointerdown —— 证明窗口本身能收事件，是 Windows 的路由（命中测试）出了问题。
-   * 逐个试补救动作：`EnableWindow(false→true)`、`webContents.focus()`、重设 alwaysOnTop、
-   * opacity 抖动、`blur()`、`invalidate()`、再 hide/show 一次、再 `showInactive()` 一次、
-   * `setBounds(getBounds())` —— **全部无效**；而只要下发一次真正改变了的 `SetWindowPos`
-   * （位置 ±1 或尺寸 ±1 再还原）就**立刻恢复**。判断是该分层窗口的命中区域被缓存，
-   * 而 `ShowWindow` 不足以触发重算。
-   */
-  function nudgeWindow(): void {
-    const b = win.getContentBounds();
-    win.setContentBounds({ x: b.x, y: b.y + 1, width: contentW, height: contentH });
-    win.setContentBounds({ x: b.x, y: b.y, width: contentW, height: contentH });
-  }
+  pinContentBounds();   // 创建后先归一化一次（顺带消除实测到的 4 DIP view/窗口错位）
 
   return {
     browserWindow: win,
-    showInactive: () => { win.showInactive(); nudgeWindow(); pinContentBounds(); },
+    showInactive: () => { win.showInactive(); pinContentBounds(); },
     hide: () => win.hide(),
-    show: () => { win.showInactive(); nudgeWindow(); pinContentBounds(); },
+    show: () => { win.showInactive(); pinContentBounds(); },
     /**
      * 重新加载渲染层页面。
      *
