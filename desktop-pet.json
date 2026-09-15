@@ -19,7 +19,7 @@
     }
   },
   "render": {
-    "defaultScale": 0.75,
+    "defaultScale": 0.7,
     "scaleRange": [0.5, 3.0],
     "scaleStep": 0.25,
     "pixelSnap": true,
