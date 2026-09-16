@@ -339,6 +339,146 @@ section('⑩ 快捷键人话 → Electron accelerator');
   eq('宠物包里的默认值归一化后可用', normalizeAccelerator(runtimeManifest.interaction.hideShortcut.default), 'Super+Alt+P');
 }
 
+// —— ⑪ 控制条显示策略（纯函数 + 虚拟时钟）——
+// 这个 section 里有两组"肉眼看不出对错"的规则，它们是这个功能最容易坏掉的地方：
+//   1. 快捷键收起后**不能被悬停弹回来**；2. 宠物从全屏让位回来后**不能自动冒出面板**。
+// 两者都靠同一个 `armed` 位实现（光标没离开过就不许悬停唤出），而它唯一无法从
+// "当前光标在哪"推导出来 —— 所以必须钉在断言里，改动时一旦破坏立刻红。
+section('⑪ 控制条显示策略');
+{
+  const { nextBarState, tickBarState, parseBarPolicy, BAR_HIDDEN } =
+    require(join(root, 'dist/kernel/bar-policy.js'));
+  // 用真实运行参数（desktop-pet.json 的 controlBar 段），而不是测试里另写一份策略
+  const policy = parseBarPolicy(runtimeManifest.controlBar);
+  eq('策略来自宠物包：悬停 300ms 出现', policy.hoverDelayMs, 300);
+  eq('策略来自宠物包：离开 500ms 收起', policy.hoverGraceMs, 500);
+  eq('策略来自宠物包：失焦 200ms 收起', policy.blurHideMs, 200);
+  eq('策略来自宠物包：悬停默认开启', policy.showOnHover, true);
+  const fallback = parseBarPolicy(undefined);
+  eq('漏配 controlBar 时仍有兜底策略', fallback.hoverDelayMs > 0 && fallback.showOnHover, true);
+
+  const clock = makeClock();
+  const ev = (s, e) => nextBarState(s, e, policy, clock.now());
+  const hover = (s, over) => ev(s, { kind: 'hover', over });
+  const after = (s, ms) => { clock.advance(ms); return tickBarState(s, policy, clock.now()); };
+
+  // —— 悬停：计时 → 到点出现 ——
+  let st = hover({ ...BAR_HIDDEN }, true);
+  eq('光标进入 → 开始计时', st.hoverSince, clock.now());
+  eq('不足 hoverDelayMs 不显示', tickBarState(st, policy, clock.now() + 299).visible, false);
+  st = tickBarState(st, policy, clock.now() + 300);
+  eq('到点显示', st.visible, true);
+  eq('悬停唤出不给自己记焦点（要 showInactive）', st.hasFocus, false);
+
+  // —— 悬停：离开 → 宽限内回来则取消收起 ——
+  st = hover(st, false);
+  eq('离开后安排宽限收起', st.hideAt, clock.now() + policy.hoverGraceMs);
+  st = hover(st, true);
+  eq('宽限内光标回来 → 取消收起', st.hideAt, null);
+  eq('仍然可见', st.visible, true);
+
+  // —— 到点收起后必须**仍能再次悬停唤出** ——
+  // 这条防的是"tick 收起时顺手撤销 armed"：那样 armed 再也没有事件能解开，
+  // 表现为悬停唤出永久失效，而屏幕上看起来只是"控制条不再自动出现"。
+  st = hover(st, false);
+  st = after(st, policy.hoverGraceMs);
+  eq('宽限到点收起', st.visible, false);
+  st = hover(st, true);
+  eq('收起后光标再进来仍能开始计时（armed 没被到点收起吃掉）', st.hoverSince !== null, true);
+  st = after(st, policy.hoverDelayMs);
+  eq('能够再次显示', st.visible, true);
+
+  // —— 有焦点就不自动收，失焦才收 ——
+  let f = after(hover({ ...BAR_HIDDEN }, true), policy.hoverDelayMs);
+  f = ev(f, { kind: 'focus', hasFocus: true });
+  f = hover(f, false);
+  eq('有焦点时即使光标离开也不安排收起', f.hideAt, null);
+  eq('仍可见', f.visible, true);
+  const blurAt = clock.now();
+  f = ev(f, { kind: 'focus', hasFocus: false });
+  eq('失焦后安排 blurHideMs 收起', f.hideAt, blurAt + policy.blurHideMs);
+  f = after(f, policy.blurHideMs);
+  eq('到点收起', f.visible, false);
+
+  // —— 核心反面用例①：快捷键收起后，光标还停在宠物上 ——
+  let t = after(hover({ ...BAR_HIDDEN }, true), policy.hoverDelayMs);
+  t = ev(t, { kind: 'toggle' });
+  eq('快捷键收起', t.visible, false);
+  eq('同时进入抑制窗口', t.suppressUntil, clock.now() + policy.toggleSuppressMs);
+  t = hover(t, true);                                    // 光标原地没动 → 仍然 over=true
+  t = after(t, policy.toggleSuppressMs + 100);
+  eq('抑制期内不被悬停弹回来', t.visible, false);
+  t = hover(t, true);
+  t = after(t, policy.hoverDelayMs + 50);
+  eq('抑制过期后、光标从未离开 → 仍不补唤出', t.visible, false);
+  t = hover(t, false);
+  t = hover(t, true);
+  t = after(t, policy.hoverDelayMs);
+  eq('光标真的离开再回来 → 恢复可唤出', t.visible, true);
+
+  // —— 核心反面用例②：宠物被隐藏后不自动重现 ——
+  let h = after(hover({ ...BAR_HIDDEN }, true), policy.hoverDelayMs);
+  h = ev(h, { kind: 'pet-hidden' });
+  eq('宠物隐藏 → 控制条立即收起', h.visible, false);
+  h = hover(h, true);
+  h = after(h, policy.hoverDelayMs + 100);
+  eq('宠物回来后光标还停在原处 → 不自动冒出面板', h.visible, false);
+
+  // —— request-close：Esc / 收起按钮 ——
+  let c = after(hover({ ...BAR_HIDDEN }, true), policy.hoverDelayMs);
+  c = ev(c, { kind: 'request-close' });
+  eq('Esc → 立即隐藏', c.visible, false);
+
+  // —— showOnHover=false：悬停彻底不响应，快捷键仍可用 ——
+  const noHover = parseBarPolicy({ ...runtimeManifest.controlBar, showOnHover: false });
+  let n = nextBarState({ ...BAR_HIDDEN }, { kind: 'hover', over: true }, noHover, clock.now());
+  n = tickBarState(n, noHover, clock.now() + 10_000);
+  eq('showOnHover=false 时悬停永不唤出', n.visible, false);
+  n = nextBarState(n, { kind: 'toggle' }, noHover, clock.now());
+  eq('但快捷键仍可唤出', n.visible, true);
+
+  // —— 不变量：不可见的状态不得自称有焦点 / 留着收起计划 ——
+  const inv = ev(ev({ ...BAR_HIDDEN }, { kind: 'focus', hasFocus: true }), { kind: 'pet-hidden' });
+  eq('隐藏后清掉焦点记账', inv.hasFocus, false);
+  eq('隐藏后不留收起计划', inv.hideAt, null);
+}
+
+// —— ⑫ 控制条仪表盘：会话视图（只读，不改仲裁行为）——
+section('⑫ 会话视图 viewSessions');
+{
+  const clock = makeClock();
+  const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now });
+  arb.ingest({ sessionId: 'a', status: 'running', title: '重构 pack.ts' });
+  clock.advance(600);
+  arb.ingest({ sessionId: 'b', status: 'needs-input' });
+  let v = arb.viewSessions();
+  eq('两条会话都列出', v.length, 2);
+  eq('主状态排第一', v[0].sessionId, 'b');
+  eq('主状态被打标', v[0].primary, true);
+  eq('其余会话不是 primary', v[1].primary, false);
+  eq('原始状态如实暴露', v[0].status, 'needs-input');
+  eq('未确认', v[0].acknowledged, false);
+  eq('标题透传', v[1].title, '重构 pack.ts');
+
+  // 确认之后：**原始状态不变**，只多一个 acknowledged。
+  // 界面据此显示"需要输入（已确认）"而不是把它说成"空闲" —— 内核不替 UI 说这个谎。
+  arb.ack('b');
+  v = arb.viewSessions();
+  const b = v.find((x) => x.sessionId === 'b');
+  eq('确认后原始状态仍是 needs-input', b.status, 'needs-input');
+  eq('确认标记为真', b.acknowledged, true);
+  // 主状态**不会立刻**让给下一条：确认也要走 ADR 010 那条变化限流窗格。
+  // 界面因此会先显示"需要输入（已确认）"，半秒后才换成 running —— 这是既有设计的正常表现。
+  eq('确认后限流窗格内主状态仍是 b', v[0].sessionId, 'b');
+  clock.advance(600);
+  arb.tick();
+  eq('限流窗格过后主状态让给下一条', arb.viewSessions()[0].sessionId, 'a');
+
+  clock.advance(901_000);
+  arb.tick();
+  eq('静默过期的会话不出现在视图里', arb.viewSessions().length, 0);
+}
+
 // —— 汇总 ——
 process.stdout.write(`\n${'─'.repeat(56)}\n`);
 if (failures.length === 0) {

@@ -26,3 +26,11 @@
 {"sessionId":"a","status":"running","title":"a","ts":1789590108855,"origin":"file"}
 {"sessionId":"a","status":"running","title":"a","ts":1789590110900,"origin":"file"}
 {"sessionId":"b","status":"needs-input","title":"b","ts":1789590110900,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789593460371,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789593461126,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789593463168,"origin":"file"}
+{"sessionId":"b","status":"needs-input","title":"b","ts":1789593463168,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789593568390,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789593569146,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789593571178,"origin":"file"}
+{"sessionId":"b","status":"needs-input","title":"b","ts":1789593571178,"origin":"file"}

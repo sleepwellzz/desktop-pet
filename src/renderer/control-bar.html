@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <!-- 与宠物层/气泡层一致：本应用没有任何远程内容 -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'">
+  <title>desktop-pet-control-bar</title>
+  <style>
+    /* 高度必须与主进程的算式严格对齐：headerHeight + 行数 × rowHeight + footerHeight
+       （desktop-pet.json → controlBar）。三段都用 border-box + 显式高度，
+       否则一条分隔线就会让面板比窗口矮 1px，出现滚动条或底部被切。 */
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      background: #1b1f27; overflow: hidden;
+      font-family: "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+      color: #e8ecf2; font-size: 12px; user-select: none;
+    }
+    #bar { display: flex; flex-direction: column; width: 100%; height: 100%; }
+
+    #head {
+      flex: 0 0 30px; height: 30px; box-sizing: border-box;
+      display: flex; align-items: center; gap: 6px;
+      padding: 0 6px 0 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    #summary { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* 会话行：每行 28px，与 rowHeight 对应 */
+    #sessions { flex: 0 0 auto; }
+    .row {
+      height: 28px; box-sizing: border-box;
+      display: flex; align-items: center; gap: 6px;
+      padding: 0 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .row .sid { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .row .st { flex: 0 0 auto; color: #aab4c2; }
+    .row .t { flex: 0 0 auto; color: #7d8794; font-size: 11px; }
+    .row.more { color: #7d8794; }
+    .row .ack {
+      flex: 0 0 auto; margin-left: 2px;
+      padding: 1px 7px; border: 1px solid rgba(226, 134, 60, 0.55);
+      border-radius: 4px; background: transparent; color: #e2863c;
+      font: inherit; font-size: 11px; cursor: pointer;
+    }
+    .row .ack:hover { background: rgba(226, 134, 60, 0.16); }
+
+    #actions {
+      flex: 0 0 42px; height: 42px; box-sizing: border-box;
+      display: flex; align-items: center; gap: 4px;
+      padding: 0 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    #actions .sp { flex: 1 1 auto; }
+    #actions button {
+      padding: 3px 8px; border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 4px; background: rgba(255, 255, 255, 0.06);
+      color: #e8ecf2; font: inherit; font-size: 11px; cursor: pointer;
+    }
+    #actions button:hover { background: rgba(255, 255, 255, 0.14); }
+    #actions button:disabled { opacity: 0.4; cursor: default; }
+    #actions #scale { min-width: 34px; text-align: center; color: #aab4c2; font-size: 11px; }
+
+    /* 状态点：与托盘/气泡同一套语义色。非主状态的会话整体压暗，一眼看出谁在决定宠物的样子 */
+    .dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: #6b7684; }
+    .dot.s-needs-input { background: #e2863c; }
+    .dot.s-blocked { background: #e0584f; }
+    .dot.s-running { background: #4c9be8; }
+    .dot.s-ready { background: #4cb782; }
+    .dot.dim { opacity: 0.45; }
+
+    .row.ackable:hover { background: rgba(255, 255, 255, 0.05); }
+
+    #close {
+      flex: 0 0 auto; width: 20px; height: 20px; padding: 0; line-height: 18px;
+      border: none; border-radius: 4px; background: transparent;
+      color: #7d8794; font: inherit; font-size: 14px; cursor: pointer;
+    }
+    #close:hover { background: rgba(255, 255, 255, 0.12); color: #e8ecf2; }
+  </style>
+</head>
+<body>
+  <div id="bar">
+    <div id="head">
+      <span id="dot" class="dot"></span>
+      <span id="summary"></span>
+      <button id="close" title="收起（Esc）">×</button>
+    </div>
+    <div id="sessions"></div>
+    <div id="actions">
+      <button data-cmd="hide-pet">隐藏宠物</button>
+      <span class="sp"></span>
+      <button data-cmd="scale-down" title="缩小">−</button>
+      <span id="scale"></span>
+      <button data-cmd="scale-up" title="放大">+</button>
+      <button data-cmd="reset-scale" title="重置为宠物包默认大小">↺</button>
+      <span class="sp"></span>
+      <button data-cmd="popup-menu" title="全部菜单动作（含退出）">⋯</button>
+    </div>
+  </div>
+  <script src="control-bar.js"></script>
+</body>
+</html>

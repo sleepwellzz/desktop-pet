@@ -1,0 +1,118 @@
+{
+ "steps": [],
+ "placement": {
+  "workArea": {
+   "x": 0,
+   "y": 0,
+   "width": 1707,
+   "height": 1027
+  },
+  "pet": {
+   "x": 790,
+   "y": 437,
+   "width": 134,
+   "height": 146
+  },
+  "bar": {
+   "x": 727,
+   "y": 591,
+   "width": 260,
+   "height": 72
+  },
+  "gapBelow": 8,
+  "centerDelta": 0,
+  "expectGapBelow": 8,
+  "expectHeight": 72
+ },
+ "content": {
+  "rows": [
+   "b · 等你拍板需要输入1 秒前确认",
+   "a · a运行中1 秒前"
+  ],
+  "ackButtons": 1,
+  "summary": "需要输入 · 2 条会话",
+  "scale": "70%",
+  "resetDisabled": true,
+  "barHeight": 128
+ },
+ "expectHeightWithRows": 128,
+ "ack": {
+  "clicked": "clicked",
+  "rowsAfter": [
+   "a · a运行中3 秒前",
+   "b · 等你拍板需要输入（已确认）3 秒前"
+  ],
+  "barStateVisible": true
+ },
+ "commands": {
+  "before": {
+   "w": 134,
+   "h": 146
+  },
+  "afterScaleUp": {
+   "w": 182,
+   "h": 198
+  },
+  "afterReset": {
+   "w": 134,
+   "h": 146
+  },
+  "scaleTextAfterUp": "95%"
+ },
+ "rejects": {
+  "unknownLogged": true,
+  "nonexistentLogged": true,
+  "barStillVisible": true
+ },
+ "follow": {
+  "petDelta": {
+   "dx": -170,
+   "dy": -80
+  },
+  "barBefore": {
+   "x": 727,
+   "y": 591,
+   "width": 260,
+   "height": 128
+  },
+  "barAfter": {
+   "x": 557,
+   "y": 511,
+   "width": 260,
+   "height": 128
+  },
+  "followed": true
+ },
+ "flip": {
+  "workArea": {
+   "x": 0,
+   "y": 0,
+   "width": 1707,
+   "height": 1027
+  },
+  "pet": {
+   "y": 877,
+   "h": 146,
+   "bottom": 1023
+  },
+  "bar": {
+   "x": 557,
+   "y": 739,
+   "width": 260,
+   "height": 128
+  },
+  "flippedAbove": true,
+  "gapAbove": 10
+ },
+ "windowStyle": {
+  "exStyle": "0x188",
+  "toolWindow": true
+ },
+ "teardown": {
+  "afterCloseBar": false,
+  "petHidden": true,
+  "barAfterHidePet": false
+ },
+ "failures": [],
+ "verdict": "PASS"
+}

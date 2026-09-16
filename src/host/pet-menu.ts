@@ -27,6 +27,8 @@ export interface PetMenuView {
 
 export interface PetMenuActions {
   toggleVisibility(): void;
+  /** 唤出 / 收起悬浮控制条（M2 ④）。与全局快捷键同一条路径。 */
+  toggleControlBar(): void;
   setScale(scale: number): void;
   resetScale(): void;
   setAutoStart(on: boolean): void;
@@ -61,10 +63,16 @@ export function buildPetMenuTemplate(
   return [
     // 状态行与快捷键：只读展示。快捷键写在这里是因为它没有别的可见处 ——
     // 注册失败时更要让人看见"不可用"，否则用户按了没反应会以为程序坏了。
+    // 后缀"（唤出控制条）"必须写实：M2 ④ 把这颗快捷键的语义从"切换宠物显示"
+    // 改成了"唤出/收起控制条"（规格 §3.4），菜单不跟着改就是在说谎。
     { label: `状态：${view.statusLine}`, enabled: false },
-    { label: `快捷键：${view.hotkey ?? '不可用（请从托盘或右键操作）'}`, enabled: false },
+    {
+      label: `快捷键：${view.hotkey ? `${view.hotkey}（唤出控制条）` : '不可用（请从托盘或右键操作）'}`,
+      enabled: false,
+    },
     { type: 'separator' },
     { label: view.visible ? '隐藏宠物' : '显示宠物', click: () => actions.toggleVisibility() },
+    { label: '控制条', click: () => actions.toggleControlBar() },
     { label: '宠物大小', submenu: scaleItems(view, actions) },
     {
       label: '重置大小',

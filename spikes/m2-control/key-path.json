@@ -1,0 +1,128 @@
+{
+ "steps": [
+  {
+   "label": "初始（未唤出）",
+   "visible": false,
+   "focused": false,
+   "keys": {
+    "down": 0,
+    "esc": 0,
+    "last": ""
+   }
+  },
+  {
+   "label": "悬停宠物 1.2 秒（期望出现且不抢焦点）",
+   "visible": true,
+   "focused": false,
+   "keys": {
+    "down": 0,
+    "esc": 0,
+    "last": ""
+   }
+  },
+  {
+   "label": "悬停唤出后按 A（无焦点 → 预期收不到）",
+   "visible": true,
+   "focused": false,
+   "keys": {
+    "down": 0,
+    "esc": 0,
+    "last": ""
+   }
+  },
+  {
+   "label": "光标移开 1.4 秒（期望已收起）",
+   "visible": false,
+   "focused": false,
+   "keys": {
+    "down": 0,
+    "esc": 0,
+    "last": ""
+   }
+  },
+  {
+   "label": "快捷键唤出（期望可见且抢到焦点）",
+   "visible": true,
+   "focused": true,
+   "keys": {
+    "down": 0,
+    "esc": 0,
+    "last": ""
+   }
+  },
+  {
+   "label": "快捷键唤出后按 A（预期收得到）",
+   "visible": true,
+   "focused": true,
+   "keys": {
+    "down": 1,
+    "esc": 0,
+    "last": "a"
+   }
+  },
+  {
+   "label": "再按快捷键收起",
+   "visible": false,
+   "focused": false,
+   "keys": {
+    "down": 1,
+    "esc": 0,
+    "last": "a"
+   }
+  },
+  {
+   "label": "再次唤出（hide→show 往返后）",
+   "visible": true,
+   "focused": true,
+   "keys": {
+    "down": 3,
+    "esc": 0,
+    "last": "Alt"
+   }
+  },
+  {
+   "label": "往返后按 A",
+   "visible": true,
+   "focused": true,
+   "keys": {
+    "down": 4,
+    "esc": 0,
+    "last": "a"
+   }
+  },
+  {
+   "label": "按 Esc（期望收起）",
+   "visible": false,
+   "focused": false,
+   "keys": {
+    "down": 5,
+    "esc": 1,
+    "last": "Escape"
+   }
+  }
+ ],
+ "hover": {
+  "visible": true,
+  "focused": false
+ },
+ "hoverKeyboard": 0,
+ "hotkeyShow": {
+  "visible": true,
+  "focused": true,
+  "keyDelta": 1
+ },
+ "roundTrip": {
+  "hiddenVisible": false,
+  "visible": true,
+  "focused": true,
+  "keyDelta": 1,
+  "keysAlive": true
+ },
+ "escape": {
+  "before": true,
+  "after": false,
+  "escCount": 1
+ },
+ "failures": [],
+ "verdict": "PASS"
+}

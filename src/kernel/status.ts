@@ -66,6 +66,27 @@ export interface ArbiterState {
   rev: number;
 }
 
+/**
+ * 单条会话的**只读**视图，供控制条的仪表盘使用（M2 ④）。
+ *
+ * 为什么 `status` 与 `acknowledged` 分开暴露、而不是在内核里就把已确认的 needs-input
+ * 降级成 idle：降级是**仲裁**内部的事（`effectiveStatus`），界面需要如实显示
+ * "这条会话在等，但你已经确认过了"。内核替 UI 决定显示成 idle 会让界面说谎，
+ * 也会让"ack 不改原始状态"这条单测失去着力点。
+ */
+export interface SessionView {
+  sessionId: string;
+  /** **原始**状态（不套 acknowledged 降级）。 */
+  status: PetStatus;
+  /** 已被用户确认（needs-input 的粘滞已解除）。 */
+  acknowledged: boolean;
+  title?: string;
+  /** 最近一次事件时刻（epoch ms）。 */
+  ts: number;
+  /** 是否当前主状态（对应 `state.sessionId`）。 */
+  primary: boolean;
+}
+
 export interface ArbiterOptions {
   statusMap?: StatusMap;
   /** statusMap 里查不到时的兜底动画状态。 */
@@ -232,6 +253,32 @@ export class StatusArbiter {
   /** 诊断快照（日志/未来托盘提示用）。 */
   snapshot(): SessionRecord[] {
     return [...this.sessions.values()].sort((a, b) => b.ts - a.ts);
+  }
+
+  /**
+   * 控制条仪表盘用的会话视图：主状态排第一，其余按最近活动倒序。
+   *
+   * 过期过滤在这里再做一遍（不删记录、无副作用）：`pruneStale` 只在 `recompute` 路径上跑，
+   * 而视图可能在任何时刻被读 —— 让一个已经死掉的会话出现在面板上，比多一次判断更糟。
+   */
+  viewSessions(): SessionView[] {
+    const now = this.opts.now();
+    const primary = this.out.sessionId;
+    return [...this.sessions.values()]
+      .filter((r) => now - r.ts <= this.opts.sessionStaleMs)
+      .sort((a, b) => {
+        if (a.sessionId === primary) return -1;
+        if (b.sessionId === primary) return 1;
+        return b.ts - a.ts;
+      })
+      .map((r) => ({
+        sessionId: r.sessionId,
+        status: r.status,
+        acknowledged: this.acknowledged.has(r.sessionId),
+        title: r.title,
+        ts: r.ts,
+        primary: r.sessionId === primary,
+      }));
   }
 
   // —— 内部 ——

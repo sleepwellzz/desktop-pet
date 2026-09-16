@@ -5,7 +5,7 @@
    "visible": true,
    "text": "运行中",
    "badge": 0,
-   "hideAt": 1789590110227,
+   "hideAt": 1789593570522,
    "rendered": {
     "hidden": false,
     "text": "运行中",
@@ -24,7 +24,7 @@
    "visible": true,
    "text": "运行中",
    "badge": 0,
-   "hideAt": 1789590110227,
+   "hideAt": 1789593570522,
    "rendered": {
     "hidden": false,
     "text": "运行中",
@@ -73,8 +73,9 @@
  "hotkey": {
   "accelerator": "Super+Alt+P",
   "visBefore": true,
-  "visAfterHide": false,
-  "visAfterShow": true
+  "barOn1": true,
+  "barOn2": false,
+  "visAfter": true
  },
  "textGeometry": {
   "text": "需要输入",
@@ -129,8 +130,8 @@
   "followed": true
  },
  "petClickDuringBubble": {
-  "before": 1,
-  "after": 2,
+  "before": 2,
+  "after": 4,
   "works": true
  },
  "failures": [],

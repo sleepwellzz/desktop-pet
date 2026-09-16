@@ -1,6 +1,8 @@
 // 主进程 ↔ 渲染层的 IPC 契约。通道名与载荷类型集中在此，避免两边各写一份。
-import type { ArbiterState } from '../kernel/status';
+import type { ArbiterState, PetStatus, SessionView } from '../kernel/status';
 import type { ResolvedState } from '../kernel/types';
+
+export type { SessionView };
 
 export const CH = {
   init: 'pet:init',
@@ -34,6 +36,26 @@ export const CH = {
    * 不带坐标：Electron 的 `popup()` 不传 x/y 即以当前光标位置弹出。
    */
   contextMenu: 'pet:context-menu',
+  /**
+   * 主进程 → 控制条：整份视图数据（状态、会话列表、缩放、快捷键…）。
+   * 控制条是**只读面板**：它自己不持有状态、不读文件，所有内容都从这里来。
+   */
+  barView: 'pet:bar-view',
+  /**
+   * 主进程 → 控制条：请聚焦首屏（快捷键唤出时用）。
+   *
+   * 为什么焦点要由主进程下令而不是渲染层自作主张：控制条有两条唤出路径
+   * （悬停 = 不抢焦点 / 快捷键 = 抢焦点），渲染层看不到"我是怎么被唤出来的"。
+   */
+  barFocus: 'pet:bar-focus',
+  /**
+   * 控制条 → 主进程：执行一个**白名单动作**。
+   *
+   * 渲染层拿不到动作表，只能发命令 id；主进程查表执行，未知 id 一律忽略并记日志。
+   * 这样安全边界干净（渲染层传不了任意参数），而且 M3 加"agent 输入框"时
+   * 协议形状不变 —— 只是给联合类型加一个成员，输入框长在同一位置、走同一个通道。
+   */
+  barCommand: 'pet:bar-command',
 } as const;
 
 /** 主进程 → 渲染层：宠物包与渲染所需的全部信息。 */
@@ -74,6 +96,57 @@ export interface PointerHint {
 }
 
 export interface FullscreenNotice { hidden: boolean; fgTitle: string }
+
+/**
+ * 控制条能触发的动作 id。**这是渲染层唯一能让主进程做事的手段。**
+ *
+ * 刻意用"命令 id"而不是把 `PetMenuActions` 直接交给渲染层：后者等于把整张动作表
+ * 连同参数一起开放出去（`setScale(0.001)` 只是个开始）。查表执行还有第二个好处 ——
+ * M3 要加"把输入框里的文字发给 agent"时，只在这里加一个 `agent-send` 成员，
+ * 通道形状、窗口层、白名单机制全都不用动。
+ */
+export type BarCommandId =
+  /** 隐藏宠物（控制条随之收起）。 */
+  | 'hide-pet'
+  /** 按 `scaleStep` 放大 / 缩小。 */
+  | 'scale-up'
+  | 'scale-down'
+  /** 回到宠物包声明的默认缩放。 */
+  | 'reset-scale'
+  /** 确认某条会话（解除 needs-input 粘滞），需要 `arg` = sessionId。 */
+  | 'ack-session'
+  /** 弹出与托盘/右键同一份原生菜单（覆盖"退出"等全部动作，不必在面板里再实现一遍）。 */
+  | 'popup-menu'
+  /** 收起控制条（等同 Esc）。 */
+  | 'close-bar';
+
+export interface BarCommand {
+  id: BarCommandId;
+  arg?: string;
+}
+
+/** 主进程 → 控制条：面板要显示的全部内容。控制条不持有任何自己的状态。 */
+export interface BarView {
+  status: PetStatus;
+  /**
+   * 业务状态 → 中文文案。整份下发而不是让渲染层自己写一份映射：
+   * 状态文案只有一处真相（主进程的 `STATUS_TEXT`），否则菜单、气泡、面板三处会各说各话。
+   */
+  statusLabels: Record<PetStatus, string>;
+  /** 会话视图，主状态排第一。 */
+  sessions: SessionView[];
+  /** 面板最多显示几行（超出显示"另有 N 条"）。 */
+  maxRows: number;
+  scale: number;
+  defaultScale: number;
+  scaleRange: [number, number];
+  scaleStep: number;
+  /** 当前生效的全局快捷键；null = 注册失败（如实显示，不静默）。 */
+  hotkey: string | null;
+  petVisible: boolean;
+  /** 与 `StatusPush.rev` 同源：渲染层据此识别"重载后的第一帧"。 */
+  rev: number;
+}
 
 /**
  * 主进程 → 渲染层：仲裁结果。字段直接取自 `StatusArbiter.state`。

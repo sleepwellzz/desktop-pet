@@ -81,12 +81,27 @@
     "gapAbovePet": 10,
     "timerTickMs": 250
   },
+  "controlBar": {
+    "note": "悬浮控制条（M2 ④，ADR 014）。本项目**第一个可聚焦窗口**：可聚焦 ⇒ 能拿焦点，但它只在用户主动唤出时拿（快捷键），悬停出现一律 showInactive（用户可能正在 IDE 里打字）。它是矩形直角不透明面板 —— 窗口矩形 ≈ 可视矩形，所以**不适用** ADR 008 那条逐像素命中纪律；代价是不做圆角（圆角会留 4 个透明三角吃掉下层应用的点击）。高度 = headerHeight + 行数 × rowHeight + footerHeight，行数 = min(会话数, maxRows) + （还有更多时 +1 行）。本轮不渲染自由文本输入框，原因见 docs/design/m2-control-bar.md。",
+    "width": 260,
+    "headerHeight": 30,
+    "rowHeight": 28,
+    "footerHeight": 42,
+    "maxRows": 5,
+    "gapBelowPet": 8,
+    "gapAbovePet": 10,
+    "hoverDelayMs": 300,
+    "hoverGraceMs": 500,
+    "blurHideMs": 200,
+    "toggleSuppressMs": 1500,
+    "showOnHover": true
+  },
   "interaction": {
     "drag": "按住拖动，松开后记忆位置；拖动期间抑制自主漫游",
     "click": "单击切换下一个宠物 / 显示快捷输入",
     "doubleClick": "唤起主窗口",
-    "rightClickMenu": ["隐藏宠物", "切换宠物", "宠物大小", "重置大小", "开机自启", "退出"],
-    "hideShortcut": { "default": "Win+Alt+P", "fallbacks": ["Ctrl+Alt+P", "Win+Alt+Space", "Ctrl+Shift+Alt+P"], "action": "切换宠物显示/隐藏", "conflictRisk": "Win+Alt+P 在 Windows 上可能与部分显卡/AI 工具快捷键冲突。注意：这里是**人话**写法，代码注册前会归一化成 Electron 的 accelerator（Windows 键在 Electron 里叫 Super）—— 直接拿 Win+Alt+P 去注册会返回成功但永不触发，见 spikes/m2-hotkey/。" },
+    "rightClickMenu": ["隐藏宠物", "控制条", "切换宠物", "宠物大小", "重置大小", "开机自启", "退出"],
+    "hideShortcut": { "default": "Win+Alt+P", "fallbacks": ["Ctrl+Alt+P", "Win+Alt+Space", "Ctrl+Shift+Alt+P"], "action": "唤出/收起控制条（M2 ④ 起；此前是切换宠物显示/隐藏，见 ADR 014）", "conflictRisk": "Win+Alt+P 在 Windows 上可能与部分显卡/AI 工具快捷键冲突。注意：这里是**人话**写法，代码注册前会归一化成 Electron 的 accelerator（Windows 键在 Electron 里叫 Super）—— 直接拿 Win+Alt+P 去注册会返回成功但永不触发，见 spikes/m2-hotkey/。" },
     "tray": ["显示/隐藏", "宠物管理", "设置", "退出"]
   },
   "extraAssets": {

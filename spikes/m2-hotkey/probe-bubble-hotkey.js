@@ -104,7 +104,10 @@ app.whenReady().then(async () => {
     const injectPet = async () => { await pet.webContents.executeJavaScript(INJECT).catch(() => {}); };
     await injectPet();
 
-    // —— 用例 1：快捷键切换显示（注入真实击键 Win+Alt+P）——
+    // —— 用例 1：快捷键唤出/收起控制条 ——
+    // **语义在 M2 ④ 改了**（ADR 014）：从"切换宠物显示/隐藏"改为"唤出/收起控制条"，
+    // 按规格 §3.4。所以这里验的不再是宠物隐藏，而是控制条的出现与收起 ——
+    // 并且要确认宠物**没有**被顺手隐藏（那会是语义改动的副作用）。
     const pressHotkey = async () => {
       keybd_event(VK_LWIN, 0, 0, 0);
       keybd_event(VK_MENU, 0, 0, 0);
@@ -117,14 +120,18 @@ app.whenReady().then(async () => {
     };
     const visBefore = pet.isVisible();
     await pressHotkey();
-    const visAfterHide = pet.isVisible();
+    const barOn1 = dbg.barVisible();
     await pressHotkey();
-    await sleep(1500);
-    const visAfterShow = pet.isVisible();
+    await sleep(1200);
+    const barOn2 = dbg.barVisible();
+    const visAfter = pet.isVisible();
     await injectPet();
-    report.hotkey = { accelerator: dbg.hotkey(), visBefore, visAfterHide, visAfterShow };
-    log(`[probe] 快捷键 ${dbg.hotkey()}：${visBefore} → 按下后 ${visAfterHide} → 再按 ${visAfterShow}` +
-      ` → ${!visAfterHide && visAfterShow ? '✅ 切换正常' : '❌ 没切换'}`);
+    // 把光标移开，免得悬停把控制条又叫回来干扰后面的气泡用例
+    moveTo(px(60, 60).x, px(60, 60).y);
+    await sleep(900);
+    report.hotkey = { accelerator: dbg.hotkey(), visBefore, barOn1, barOn2, visAfter };
+    log(`[probe] 快捷键 ${dbg.hotkey()}：宠物可见 ${visBefore} → 按一次控制条=${barOn1} → 再按控制条=${barOn2}`
+      + ` ｜ 宠物仍可见=${visAfter}`);
 
     // —— 用例 2：气泡按策略显示 / 常驻 / 到期收起 ——
     const bubbleCase = async (label, sessions, waitMs) => {
@@ -304,7 +311,8 @@ app.whenReady().then(async () => {
 
     // —— 判定 ——
     const fails = [];
-    if (!(!report.hotkey.visAfterHide && report.hotkey.visAfterShow)) fails.push('快捷键没有切换宠物显示');
+    if (!(report.hotkey.barOn1 && !report.hotkey.barOn2)) fails.push('快捷键没有唤出/收起控制条');
+    if (!report.hotkey.visAfter) fails.push('快捷键把宠物隐藏了（M2 ④ 起语义应为唤出控制条，见 ADR 014）');
     const s1 = report.steps[0];
     if (!s1.visible || s1.rendered?.hidden || s1.rendered?.text !== '运行中') fails.push('running 气泡没显示或页面文本不对');
     if (s1.overlapsPet) fails.push('气泡与宠物重叠');

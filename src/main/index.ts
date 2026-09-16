@@ -19,9 +19,17 @@ import { buildPetMenuTemplate, type PetMenuActions, type PetMenuView } from '../
 import { isAutoStartEnabled, writeAutoStart } from '../host/autostart';
 import { registerHotkey, unregisterHotkeys } from '../host/hotkey';
 import { createBubbleLayer, type BubbleLayer } from '../host/bubble-layer';
+import { createControlBar, type ControlBar, type Rect } from '../host/control-bar';
 import { loadPrefs, savePrefs } from '../host/prefs';
 import { BUBBLE_HIDDEN, bubbleExpired, nextBubbleState, parseBubblePolicy, type BubbleState } from '../kernel/bubble-policy';
-import { CH, type DragDelta, type HitState, type PointerHint, type RendererInit, type StatusPush } from '../shared/ipc';
+import {
+  BAR_HIDDEN, nextBarState, parseBarPolicy, tickBarState,
+  type BarEvent, type BarPolicy, type BarState,
+} from '../kernel/bar-policy';
+import {
+  CH, type BarCommand, type BarCommandId, type BarView, type DragDelta, type HitState,
+  type PointerHint, type RendererInit, type StatusPush,
+} from '../shared/ipc';
 
 /** 菜单里的状态行文案。用业务状态而不是动画状态名（用户看到的应该是"在干什么"）。 */
 const STATUS_TEXT: Record<PetStatus, string> = {
@@ -232,14 +240,15 @@ function boot(): void {
   }
 
   const refreshMenu = (): void => tray?.refresh();
-  // 状态推送后要做的两件事：刷新托盘的提示与状态行；按策略刷新气泡。
-  afterStatusPush = (): void => { refreshMenu(); refreshBubble(); };
+  // 状态推送后要做的三件事：刷新托盘的提示与状态行；按策略刷新气泡；刷新控制条内容。
+  afterStatusPush = (): void => { refreshMenu(); refreshBubble(); refreshBar(); };
 
   const actions: PetMenuActions = {
     toggleVisibility() {
       if (overlay.isVisible()) {
         overlay.hide();
         bubble?.hide();                     // 气泡是宠物的一部分，主人不在就一起收
+        hideBar('宠物已隐藏');               // 控制条锚定宠物，宠物不在就不该留在半空
         console.log('[pet] 已隐藏宠物（进程与托盘仍在，可从托盘恢复）');
       } else {
         resumePet();
@@ -247,6 +256,9 @@ function boot(): void {
         console.log('[pet] 恢复显示宠物');
       }
       refreshMenu();
+    },
+    toggleControlBar() {
+      toggleBar();
     },
     setScale(next) {
       const s = clampScale(next);
@@ -257,6 +269,8 @@ function boot(): void {
       const size = overlay.setScale(s, pack.cell);
       resumePet();                          // canvas 尺寸与命中映射都按新 scale 走，靠重载重建
       refreshBubble(true);
+      bar?.followPet(overlay.browserWindow.getContentBounds());   // 宠物变大了，面板要重新贴
+      refreshBar();                         // 面板上的缩放值也要跟着变
       console.log(`[pet] 缩放 → ${s}（窗口内容区 ${size.width}x${size.height} DIP）`);
       refreshMenu();
     },
@@ -268,6 +282,8 @@ function boot(): void {
       const size = overlay.setScale(currentScale, pack.cell);
       resumePet();
       refreshBubble(true);
+      bar?.followPet(overlay.browserWindow.getContentBounds());
+      refreshBar();
       console.log(`[pet] 重置缩放 → ${currentScale}（宠物包默认值）`);
       refreshMenu();
     },
@@ -281,6 +297,7 @@ function boot(): void {
       void statusSource?.stop();
       tray?.destroy();
       bubble?.destroy();
+      bar?.destroy();
       unregisterHotkeys();
       app.quit();
     },
@@ -288,6 +305,10 @@ function boot(): void {
 
   // —— 全局快捷键（在托盘之前注册：petMenuView 要读 activeHotkey，早于它调用会踩 TDZ）——
   // 默认值与降级链来自宠物包（interaction.hideShortcut）；本机实测默认值可用，见 spikes/m2-hotkey/。
+  //
+  // **语义在 M2 ④ 改了**（ADR 014）：从"切换宠物显示/隐藏"改为"唤出/收起控制条"，
+  // 按规格 §3.4「Windows 默认 Win+Alt+P：显示控制条」。隐藏宠物仍有托盘单击、右键菜单
+  // 与控制条里的"隐藏宠物"三个入口，能力没减，只是换了入口。
   const shortcutMeta = pack.runtime.interaction?.['hideShortcut'] as
     | { default?: string; fallbacks?: string[] }
     | undefined;
@@ -296,8 +317,8 @@ function boot(): void {
     ? shortcutMeta.fallbacks
     : ['Ctrl+Alt+P', 'Super+Alt+Space', 'Ctrl+Shift+Alt+P'];
   const hotkeyResult = registerHotkey(preferredHotkey, fallbackHotkeys, () => {
-    console.log('[pet] 全局快捷键触发：切换宠物显示');
-    actions.toggleVisibility();
+    console.log('[pet] 全局快捷键触发：唤出/收起控制条');
+    toggleBar();
   });
   const activeHotkey: string | null = hotkeyResult.accelerator;
   if (hotkeyResult.ok) {
@@ -367,6 +388,191 @@ function boot(): void {
     bubble.hide();
   }
 
+  // —— 控制条：本项目**第一个可聚焦窗口**（M2 ④，设计见 docs/design/m2-control-bar.md）——
+  //
+  // 本轮范围（D1 已拍板）：控制条 = 状态仪表盘 + 快捷动作，**不渲染自由文本输入框**。
+  // 理由是规格里输入框的每个去处（铅笔=开新对话、`@` 上下文、`$` 技能、线程列表）
+  // 全在 M3 的 agent 通道上；本轮控制条能做实、规格也支持的部分是"它是个窗口"本身。
+  // 输入框的位置与契约在设计里冻结：M3 落地时它长在同一位置，走同一个 barCommand 通道，
+  // 窗口层不用改（高度会从"顶栏+行+动作排"多长出一段输入区）。
+  const barMeta = (pack.runtime as unknown as Record<string, unknown>)['controlBar'] as
+    Record<string, unknown> | undefined;
+  const barPolicy: BarPolicy = parseBarPolicy(barMeta);
+  const barNum = (k: string, def: number): number => {
+    const v = barMeta?.[k];
+    return typeof v === 'number' && Number.isFinite(v) ? v : def;
+  };
+  const barWidth = barNum('width', 260);
+  const barMaxRows = Math.max(1, Math.round(barNum('maxRows', 5)));
+
+  let bar: ControlBar | null = null;
+  let barState: BarState = BAR_HIDDEN;
+  /** 本次显示是否要抢焦点。只有"快捷键唤出"会置真（悬停 / 菜单唤出一律 showInactive）。 */
+  let barWantFocus = false;
+  /** 上一次算出的"光标在 宠物 ∪ 控制条 上"。悬停是**边沿触发**的，所以必须记住上一次。 */
+  let lastBarOver = false;
+
+  try {
+    bar = createControlBar({
+      htmlPath: join(__dirname, '..', 'renderer', 'control-bar.html'),
+      preloadPath: join(__dirname, 'bar-preload.js'),
+      width: barWidth,
+      headerHeight: barNum('headerHeight', 30),
+      rowHeight: barNum('rowHeight', 28),
+      footerHeight: barNum('footerHeight', 42),
+      maxRows: barMaxRows,
+      gapBelowPet: barNum('gapBelowPet', 8),
+      gapAbovePet: barNum('gapAbovePet', 10),
+      // 翻到宠物上方时让开气泡，否则面板会正好盖住它（气泡 32 高 + 6 间距）
+      reservedAbove: () => (bubble?.isVisible() ? 38 : 0),
+      onFocusChange: (hasFocus) => dispatchBar({ kind: 'focus', hasFocus }),
+    });
+    bar.followPet(overlay.browserWindow.getContentBounds());
+    console.log(`[pet] 控制条已创建（宽 ${barWidth}，可聚焦；悬停出现=${barPolicy.showOnHover ? '开' : '关'}` +
+      `，悬停 ${barPolicy.hoverDelayMs}ms 出现 / 离开 ${barPolicy.hoverGraceMs}ms 收起）`);
+  } catch (e) {
+    console.error('[pet] 控制条创建失败（宠物本体不受影响）：' + String(e));
+  }
+
+  /** 控制条视图：状态全部现读，面板自己不持有一份（延续 ADR 010 的唯一真值约定）。 */
+  function barView(): BarView {
+    const s = arbiter.state;
+    return {
+      status: s.status,
+      statusLabels: STATUS_TEXT,
+      sessions: arbiter.viewSessions(),
+      maxRows: barMaxRows,
+      scale: currentScale,
+      defaultScale: pack.scale,
+      scaleRange,
+      scaleStep,
+      hotkey: activeHotkey,
+      petVisible: overlay.isVisible(),
+      rev: s.rev,
+    };
+  }
+
+  /** 把状态机的判定落到实际窗口上。调用方只需保证 `barState` 已更新。 */
+  function syncBar(): void {
+    if (!bar) return;
+    if (barState.visible) {
+      if (!bar.isVisible()) {
+        bar.show(barView(), { focus: barWantFocus });
+        console.log(`[pet] 控制条显示（${barWantFocus ? '抢焦点：快捷键唤出' : '不抢焦点：悬停/菜单唤出'}）`);
+        barWantFocus = false;
+      } else {
+        bar.update(barView());
+      }
+    } else if (bar.isVisible()) {
+      bar.hide();
+      console.log('[pet] 控制条收起');
+    }
+  }
+
+  /** 喂一个事件给显示状态机（策略是纯函数，见 kernel/bar-policy.ts）。 */
+  function dispatchBar(ev: BarEvent): void {
+    if (!bar) return;
+    const prev = barState;
+    barState = nextBarState(prev, ev, barPolicy, Date.now());
+    if (ev.kind === 'toggle' && barState.visible && !prev.visible) barWantFocus = true;
+    syncBar();
+  }
+
+  /**
+   * 宠物消失（托盘隐藏 / 右键隐藏 / 全屏让位）时把控制条一起收掉。
+   * 走的是 `pet-hidden` 事件而不是直接 `bar.hide()`：状态机里那条规则同时负责
+   * **撤销悬停唤出资格**，否则全屏退出瞬间光标还停在原处，300ms 后面板会自己冒出来。
+   */
+  function hideBar(reason: string): void {
+    if (!bar) return;
+    const wasOn = barState.visible || bar.isVisible();
+    barState = nextBarState(barState, { kind: 'pet-hidden' }, barPolicy, Date.now());
+    syncBar();
+    if (wasOn) console.log(`[pet] 控制条跟随隐藏（${reason}）`);
+  }
+
+  /** 快捷键与菜单"控制条"项的共同入口。 */
+  function toggleBar(): void {
+    if (!bar) return;
+    if (!overlay.isVisible()) {
+      // 控制条锚定宠物，宠物不在就不能悬在半空。先叫回宠物 —— 否则用户按了快捷键
+      // 什么都不会发生，只会以为程序坏了（设计 §7 明确定的行为）。
+      resumePet();
+      refreshBubble(true);
+      refreshMenu();
+      console.log('[pet] 控制条：宠物原本是隐藏的，先恢复宠物再唤出');
+    }
+    dispatchBar({ kind: 'toggle' });
+  }
+
+  /** 状态 / 缩放变化后刷新面板内容（未显示时什么都不做）。 */
+  function refreshBar(): void {
+    if (!bar || !barState.visible) return;
+    bar.update(barView());
+  }
+
+  function pointInRect(p: { x: number; y: number }, r: Rect | null): boolean {
+    return !!r && p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height;
+  }
+
+  /**
+   * 悬停判定的驱动源，每 16ms 由光标轮询调用。
+   *
+   * `over = 光标在宠物实体上（渲染层的 alpha 判定，`lastInteractive`）∪ 光标在控制条矩形内`。
+   * **不需要新增任何 IPC** —— 两半都在主进程手边。除了算 over，它还要驱动状态机的
+   * 到点显示 / 到点收起：`hideAt` 到期时用户的光标往往已经静止，只剩轮询还在跑。
+   */
+  function updateBarHover(cursor: { x: number; y: number }): void {
+    if (!bar) return;
+    const over = lastInteractive || pointInRect(cursor, bar.bounds());
+    if (over !== lastBarOver) {
+      lastBarOver = over;
+      dispatchBar({ kind: 'hover', over });
+      return;                                  // dispatchBar 里已经同步过窗口
+    }
+    const before = barState;
+    barState = tickBarState(barState, barPolicy, Date.now());
+    if (barState !== before) syncBar();
+  }
+
+  // —— 控制条命令：白名单查表执行 ——
+  // 渲染层拿不到动作表、也传不了任意参数（`ack-session` 的 arg 还会再校验"会话真的存在"）。
+  // M3 只要在这里加一个 `agent-send`，通道形状与窗口层都不用动。
+  const barCommandHandlers: Record<BarCommandId, (arg?: string) => void> = {
+    'hide-pet'() {
+      if (overlay.isVisible()) actions.toggleVisibility();
+    },
+    'scale-up'() { actions.setScale(currentScale + scaleStep); },
+    'scale-down'() { actions.setScale(currentScale - scaleStep); },
+    'reset-scale'() { actions.resetScale(); },
+    'ack-session'(arg) {
+      if (!arg || !arbiter.viewSessions().some((s) => s.sessionId === arg)) {
+        console.warn(`[pet] 控制条请求确认不存在的会话：${arg ?? '(空)'}（已忽略）`);
+        return;
+      }
+      if (arbiter.ack(arg)) pushStatus();
+      else refreshBar();
+    },
+    'popup-menu'() {
+      if (!bar) return;
+      // 弹的是**同一份**原生菜单（含"退出"），所以面板里不必再实现一遍退出按钮，
+      // 也就不会因为多一个"退出"而增加误点风险（D4 的取舍）。
+      Menu.buildFromTemplate(buildPetMenuTemplate(petMenuView(), actions))
+        .popup({ window: bar.browserWindow });
+    },
+    'close-bar'() { dispatchBar({ kind: 'request-close' }); },
+  };
+
+  ipcMain.on(CH.barCommand, (_e, cmd: BarCommand) => {
+    const handler = cmd ? barCommandHandlers[cmd.id] : undefined;
+    if (!handler) {
+      // 未知 id 一律忽略并记日志：这是安全边界。静默丢弃比抛异常好，但必须留痕。
+      console.warn('[pet] 控制条发来未知命令，已忽略：' + JSON.stringify(cmd));
+      return;
+    }
+    handler(cmd.arg);
+  });
+
   refreshMenu();   // 快捷键已定，菜单里那行"快捷键：…"要跟上
 
   // 探针用接缝：`--expose-actions` 时把动作表与若干只读探针挂到 globalThis，便于自动化验证
@@ -379,6 +585,12 @@ function boot(): void {
       hotkey: () => activeHotkey,
       bubbleVisible: () => bubble?.isVisible() ?? false,
       petBounds: () => overlay.browserWindow.getContentBounds(),
+      // —— M2 ④ 控制条（探针用）——
+      barState: () => barState,
+      barVisible: () => bar?.isVisible() ?? false,
+      barBounds: () => bar?.bounds() ?? null,
+      barToggle: () => toggleBar(),
+      barPolicy: () => barPolicy,
     };
     console.log('[pet] --expose-actions：动作表与只读探针已挂到 globalThis（仅供探针）');
   }
@@ -387,6 +599,7 @@ function boot(): void {
     void statusSource?.stop();
     unregisterHotkeys();
     bubble?.destroy();
+    bar?.destroy();
   });
 
   ipcMain.on(CH.ready, () => {
@@ -445,9 +658,13 @@ function boot(): void {
     const win = overlay.browserWindow;
     if (win.isDestroyed() || !win.isVisible()) return;
     const cp = screen.getCursorScreenPoint();
-    if (lastCursor && cp.x === lastCursor.x && cp.y === lastCursor.y) return;
-    lastCursor = { x: cp.x, y: cp.y };
-    pushPointerHint();
+    // 命中判定只在光标真移动时才有新信息可报；但**控制条的悬停状态机每 tick 都要跑**
+    // （`hideAt` 到期时用户的光标往往已经静止，只剩这个轮询还在转）。
+    if (!lastCursor || cp.x !== lastCursor.x || cp.y !== lastCursor.y) {
+      lastCursor = { x: cp.x, y: cp.y };
+      pushPointerHint();
+    }
+    updateBarHover(cp);
   }
   setInterval(pollPointer, 16);
 
@@ -475,8 +692,11 @@ function boot(): void {
 
   ipcMain.on(CH.drag, (_e, delta: DragDelta) => {
     overlay.moveBy(Math.round(delta.dx), Math.round(delta.dy));
-    // 气泡贴在宠物上方，宠物动了它得跟着（否则拖动时气泡会留在原地）
-    bubble?.followPet(overlay.browserWindow.getContentBounds());
+    // 气泡贴在宠物上方、控制条贴在下方，宠物动了它们都得跟着
+    // （否则拖动时气泡与控制条会留在原地）
+    const petBounds = overlay.browserWindow.getContentBounds();
+    bubble?.followPet(petBounds);
+    bar?.followPet(petBounds);
   });
 
   ipcMain.on(CH.log, (_e, message: string) => console.log('[pet][renderer] ' + message));
@@ -506,6 +726,7 @@ function boot(): void {
     if (status.coversMonitor) {
       overlay.hide();
       bubble?.hide();                     // 气泡是宠物的一部分，全屏让位时一起收
+      hideBar('全屏让位');                 // 控制条同理：不能留在全屏应用上面
       console.log('[pet] 检测到全屏应用「' + status.fgTitle + '」，已让位隐藏');
     } else {
       overlay.show();
@@ -514,6 +735,8 @@ function boot(): void {
       // 渲染层才能让 Chromium 重建输入通路。详见 host/overlay-window.ts 的 reload 注释。
       overlay.reload();
       refreshBubble(true);                // 气泡层不需要 reload（它从不接收按钮事件），贴回去即可
+      // **控制条不自动恢复** —— 它是可聚焦窗口，全屏退出瞬间冒出一个面板很打扰；
+      // 状态机里 pet-hidden 也一并撤销了悬停唤出资格（见 kernel/bar-policy.ts）。
       console.log('[pet] 全屏应用已退出，恢复显示（已重载渲染层以恢复输入通路）');
     }
     overlay.browserWindow.webContents.send(CH.fullscreen, { hidden: status.coversMonitor, fgTitle: status.fgTitle });
