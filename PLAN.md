@@ -16,11 +16,20 @@
 
 **运行与构建**：
 - 给不熟悉命令行的操作者：双击工程根目录 `启动桌宠.bat`（自动构建并启动）。
+  那个窗口**不要关** —— 它既是桌宠本体，也是日志窗口（状态推送与渲染层日志都打在这里）。
 - 命令行：`npm run build && npm start`。
 - **这个环境的 Bash shim 没有 npm**，用 `node tools/npm-run.mjs build`（或 `typecheck` / `start`）代替。
 - 批处理必须保持纯 ASCII（`cmd` 按 GBK 读 `.bat`），且必须 `call npm.cmd`。
-- 喂给宠物状态（没有真实 agent 时的手工方式）：`node tools/pet-hook.mjs <状态> [--title="…"]`。
-  状态文件默认在 `~/.desktop-pet/status.json`。
+- **喂状态给宠物**（没有真实 agent 时，也是人工验收的入口）：
+  - 图形方式：双击工程根目录 `喂状态.bat`，按数字选状态（1 running / 2 ready / 3 blocked /
+    4 needs-input / 5 running again / 6 idle / 7 clear / L 看文件）。
+  - 命令方式：`node tools/pet-hook.mjs <状态> [--title="…"]`。
+  - 状态文件默认在 `C:\Users\<用户名>\.desktop-pet\status.json`（hook 不需要知道工程路径）。
+
+**人工验收怎么做**（每轮里程碑结束时走一遍，步骤与期望写在
+`journal/2026-09-16-状态源接入.md` 的"人工验收"一节）：启动桌宠 → 双击 `喂状态.bat` →
+按 1..7 逐个喂状态 → 对照期望动作与日志。重点看**粘滞**（喂 needs-input 后再喂 running，
+宠物必须保持等待）与一次性动作的**落点**（ready 要挥手后落到 review，不是回待机）。
 
 **下次开工怎么说**（可直接复制到新对话，替换掉方括号里的内容）：
 
@@ -49,7 +58,8 @@
 **M2 ① 已完成（2026-09-16）**：`状态源 → 仲裁器 → 动画` 链路打通。
 仲裁器在主进程（全应用唯一真值），渲染层退化为哑渲染层；第一个 hook 走状态文件 + 监听。
 实测：离线单测 58 项断言全过、端到端六步核对到**实际绘制的帧行号**、回归探针两轮全过。
-详见 ADR 010 与 `journal/2026-09-16-状态源接入.md`。
+**人工观感验收待用户执行**（步骤与期望见 `journal/2026-09-16-状态源接入.md` 的"人工验收"一节，
+入口是工程根目录下的 `喂状态.bat`）。详见 ADR 010。
 
 **已定型的运行参数**：缩放 0.75（宠物桌面尺寸 100×146 DIP）、命中区域 = 精灵轮廓、
 窗口 144×156 DIP 内容区、`hitTestAlphaThreshold = 16`；
@@ -135,6 +145,7 @@ M2 会新增窗口（控制条、托盘），这类改动最容易碰坏 ADR 009
 ```
 desktop-pet/
 ├── PLAN.md / AGENTS.md        入口与约定
+├── 启动桌宠.bat / 喂状态.bat   一键启动 / 人工验收时喂状态
 ├── package.json / tsconfig.json   构建入口（npm run build / npm start）
 ├── Windows桌面宠物开发方案.html  完整设计
 ├── 动画映射验证器.html / pet-spec.html
