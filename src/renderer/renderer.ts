@@ -5,7 +5,7 @@
 //   2. 内核不 import electron，所以播帧循环放在这里，避免每帧走 IPC。
 import { PetPlayer } from '../kernel/player';
 import type { ResolvedState } from '../kernel/types';
-import type { RendererInit } from '../shared/ipc';
+import type { RendererInit, StatusPush } from '../shared/ipc';
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d', { alpha: true })!;
@@ -101,6 +101,7 @@ function tick(ts: number): void {
   lastTs = ts;
   if (player && !reducedMotion) player.update(dt);
   draw();
+  reconcileStatus();
   requestAnimationFrame(tick);
 }
 
@@ -118,6 +119,55 @@ function draw(): void {
     f.column * cw, f.row * ch, cw, ch,
     0, f.offsetY * s, cw * s, ch * s
   );
+}
+
+// —— 状态：主进程是唯一真值来源，渲染层只负责把"该演什么"画出来 ——
+// 施工纪律落成一条规则：**仲裁器说演什么就演什么，渲染层唯一有权拒绝的情况是
+// "当前正在播一次性动作"** —— 挥手挥到一半被切断是最廉价的观感。
+let lastStatus: StatusPush | null = null;
+let lastStatusRev = -1;
+
+/** 静止落点：一次性动作播完之后应该停在哪个状态。 */
+function restingState(p: StatusPush): string {
+  return p.animation.then ?? p.animation.state;
+}
+
+window.pet.onStatus((p) => {
+  const isNew = p.rev !== lastStatusRev;
+  lastStatus = p;
+  lastStatusRev = p.rev;
+  const anim = p.animation.then ? `${p.animation.state} → ${p.animation.then}` : p.animation.state;
+  window.pet.log(
+    `状态 ${p.status} → ${anim} rev=${p.rev}` +
+    (p.bubble ? ` ｜ 气泡「${p.bubble}」` : '') +
+    (p.badgeCount > 0 ? ` ｜ 另有 ${p.badgeCount} 条活动会话` : '') +
+    (p.replay ? '（重载补推）' : ''),
+  );
+
+  if (!player) return;                    // init 还没到；tick 里的 reconcile 会补上
+  if (reducedMotion) {
+    // 「减少动态效果」下帧推进被关闭，一次性状态会卡在首帧不回落，所以直接落到静止落点。
+    player.setState(restingState(p), { then: p.animation.then });
+    return;
+  }
+  if (player.isOneShot && player.stateId !== p.animation.state) return;   // 单次动作不打断
+  // 新迁移播 animation.state（可能是一次性动作）；重载补推只落静止落点，
+  // 否则每次全屏让位恢复（会 reload 渲染层）都要重播一次挥手。
+  player.setState(isNew && !p.replay ? p.animation.state : restingState(p), { then: p.animation.then });
+});
+
+/**
+ * 把播放器收敛回仲裁器的当前状态。覆盖两条路径：
+ *   ① 本地一次性动作（单击挥手）播完后的归位；
+ *   ② 状态在一次性动作播放期间变化 —— 播完立刻接管，而不是等下一次状态事件。
+ */
+function reconcileStatus(): void {
+  const p = lastStatus;
+  if (!p || !player || player.isOneShot) return;
+  const rest = restingState(p);
+  if (player.stateId !== rest && player.stateId !== p.animation.state) {
+    player.setState(rest, { then: p.animation.then });
+  }
 }
 
 // —— 命中测试：把"哪些像素算实体"交给我们自己判定 ——
@@ -194,8 +244,11 @@ canvas.addEventListener('pointerup', (e) => {
   canvas.releasePointerCapture(e.pointerId);
   const wasClick = moved < 4;
   if (wasClick && player) {
-    // 一次性动作：播完由播放器自动回落到 idle
-    if (!player.setState('waving')) player.setState('idle');
+    // 单击 = 用户确认：「needs-input 驻留至用户确认」里的那个"确认"就落在这里。
+    // 不接这条线的话，用户即使已经在别处回答了问题，宠物还会举着手等到粘滞超时（见 ADR 010）。
+    window.pet.ack();
+    // 「减少动态效果」下不播一次性动作：帧推进被关闭，它会卡在首帧回不到静止状态。
+    if (!reducedMotion && !player.setState('waving')) player.setState('idle');
   }
   evaluateHit(e.clientX, e.clientY);   // 拖完可能已不在实体像素上，立刻复评
 });

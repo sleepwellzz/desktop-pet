@@ -2,6 +2,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   CH, type DragDelta, type FullscreenNotice, type HitState, type PointerHint, type RendererInit,
+  type StatusPush,
 } from '../shared/ipc';
 
 contextBridge.exposeInMainWorld('pet', {
@@ -15,7 +16,13 @@ contextBridge.exposeInMainWorld('pet', {
   onPointerHint: (cb: (hint: PointerHint) => void): void => {
     ipcRenderer.on(CH.pointerHint, (_e, hint: PointerHint) => cb(hint));
   },
+  /** 仲裁后的状态（主进程侧算出，含动画意图）。详见 StatusPush 的 replay 说明。 */
+  onStatus: (cb: (push: StatusPush) => void): void => {
+    ipcRenderer.on(CH.status, (_e, push: StatusPush) => cb(push));
+  },
   dragBy: (delta: DragDelta): void => { ipcRenderer.send(CH.drag, delta); },
+  /** 用户确认：解除 needs-input 粘滞（单击宠物即触发）。 */
+  ack: (): void => { ipcRenderer.send(CH.ack); },
   /** 命中状态变化才上报，主进程据此切换整窗穿透。 */
   setInteractive: (interactive: boolean): void => {
     const state: HitState = { interactive };

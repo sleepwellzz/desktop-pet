@@ -13,6 +13,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "electron .",
     "dev": "npm run build && electron .",
+    "test:status": "node tools/status-arbiter.test.mjs",
+    "e2e:status": "node spikes/m2-status/run-status-e2e.mjs",
     "pet:validate": "python tools/validate_pet.py"
   },
   "devDependencies": {

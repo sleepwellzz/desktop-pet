@@ -5,12 +5,16 @@
 //   - 宿主（src/host）负责窗口与系统能力 —— 目前只有覆盖窗口与全屏检测
 //   - 播帧循环跑在渲染层：避免每帧 IPC，内核代码放哪都能跑
 import { app, ipcMain, screen } from 'electron';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { loadPack } from '../kernel/pack';
+import { StatusArbiter, type StatusEvent } from '../kernel/status';
+import { createStatusFileSource } from '../source/status-file';
+import type { StatusSource } from '../source/types';
 import { createOverlayWindow } from '../host/overlay-window';
 import { detectFullscreen, startFullscreenWatch, fullscreenUnavailableReason } from '../host/fullscreen';
-import { CH, type DragDelta, type HitState, type PointerHint, type RendererInit } from '../shared/ipc';
+import { CH, type DragDelta, type HitState, type PointerHint, type RendererInit, type StatusPush } from '../shared/ipc';
 
 /** 宠物包目录：默认工程根目录，可用 --pet=绝对路径 覆盖。 */
 function resolvePackDir(): string {
@@ -18,6 +22,18 @@ function resolvePackDir(): string {
   if (arg) return resolve(arg.slice('--pet='.length));
   // dist/main/index.js → 上两级是工程根
   return resolve(__dirname, '..', '..');
+}
+
+/**
+ * 状态文件路径。默认放用户目录而不是工程目录：hook 不需要知道工程在哪，
+ * 换宠物包 / 换工程目录都不用改 hook 配置。
+ * `--no-status-source` 用于隔离排查（此时宠物只受点击影响，不接任何外部状态）。
+ */
+function resolveStatusFile(): string | null {
+  if (process.argv.includes('--no-status-source')) return null;
+  const arg = process.argv.find((a) => a.startsWith('--status-file='));
+  if (arg) return resolve(arg.slice('--status-file='.length));
+  return join(homedir(), '.desktop-pet', 'status.json');
 }
 
 function toDataUrl(path: string, format: 'webp' | 'png'): string {
@@ -81,6 +97,72 @@ function boot(): void {
   });
 
   let selfCheckStarted = false;
+
+  // —— 状态源 → 仲裁器 → 渲染层 ——
+  // 这是"产品会不会空转"的那条链（PLAN §8 风险表里排第一的一条）。分工：
+  //   源只管把外部世界变成事件；仲裁器只管把事件变成唯一主状态；渲染层只管画。
+  const statusFile = resolveStatusFile();
+  const arbiter = new StatusArbiter({
+    statusMap: pack.runtime.statusMap,
+    log: (m) => console.log('[pet]' + m),
+  });
+
+  // 事件流水落盘：链路通没通不看屏幕也能查，同时把 M3 要做的"事件回放"先埋下。
+  const eventLogPath = resolve(
+    process.argv.find((a) => a.startsWith('--event-log='))?.slice('--event-log='.length)
+      ?? join(homedir(), '.desktop-pet', 'events.jsonl'),
+  );
+  try {
+    mkdirSync(dirname(eventLogPath), { recursive: true });
+  } catch (e) {
+    console.warn('[pet] 事件日志目录创建失败（不影响运行）：' + String(e));
+  }
+  function recordEvent(e: StatusEvent): void {
+    try {
+      appendFileSync(eventLogPath, JSON.stringify(e) + '\n', 'utf8');
+    } catch (e) {
+      console.warn('[pet] 事件日志写入失败（不影响运行）：' + String(e));
+    }
+  }
+
+  /** 把仲裁结果推给渲染层。replay=true 表示这是重载后的补推，见 StatusPush.replay。 */
+  function pushStatus(replay = false): void {
+    if (overlay.browserWindow.isDestroyed()) return;
+    const state = arbiter.state;
+    const payload: StatusPush = replay ? { ...state, replay: true } : state;
+    overlay.browserWindow.webContents.send(CH.status, payload);
+    const anim = state.animation.then
+      ? `${state.animation.state} → ${state.animation.then}`
+      : state.animation.state;
+    console.log(`[pet][status] 推送 ${state.status} → ${anim} rev=${state.rev}` +
+      (state.badgeCount > 0 ? ` 角标=${state.badgeCount}` : '') +
+      (replay ? '（重载补推，不重播一次性动作）' : ''));
+  }
+
+  let statusSource: StatusSource | null = null;
+  if (statusFile) {
+    statusSource = createStatusFileSource({
+      path: statusFile,
+      log: (m) => console.log('[pet][source] ' + m),
+    });
+    console.log('[pet] 状态源：' + statusSource.describe());
+    statusSource.start((e: StatusEvent) => {
+      recordEvent(e);
+      if (arbiter.ingest(e)) pushStatus();
+    });
+  } else {
+    console.warn('[pet] 状态源已禁用（--no-status-source）：宠物只会播 idle');
+  }
+
+  // 仲裁器需要"时间推进"才能处理粘滞超时、会话静默过期，以及被限流挡下的那次切换。
+  setInterval(() => {
+    if (arbiter.tick()) pushStatus();
+  }, 250);
+
+  app.on('will-quit', () => {
+    void statusSource?.stop();
+  });
+
   ipcMain.on(CH.ready, () => {
     // 页面重载后渲染层会再次报到：payload 复用缓存，自检只跑一次
     payload ??= buildPayload();
@@ -88,6 +170,10 @@ function boot(): void {
     overlay.resetToIgnore();
     overlay.browserWindow.webContents.send(CH.init, payload);
     pushPointerHint(true);
+    // 同样地，新页面必须重新拿到当前状态：否则每次全屏让位恢复（会 reload 渲染层）
+    // 之后宠物都静默回到 idle，而仲裁器还以为自己在 running。replay 标记让渲染层
+    // 落到静止落点，不重播一次性动作。
+    pushStatus(true);
     if (!selfCheckStarted) {
       selfCheckStarted = true;
       scheduleSelfCheck();
@@ -159,6 +245,13 @@ function boot(): void {
   });
 
   ipcMain.on(CH.log, (_e, message: string) => console.log('[pet][renderer] ' + message));
+
+  // —— 用户确认：解除 needs-input 粘滞 ——
+  // 单击宠物即"我看到了"。不这样做的话，用户即使已经在终端里回答了问题，
+  // 宠物还会举着手等到粘滞超时（默认 5 分钟），看起来像坏了。
+  ipcMain.on(CH.ack, () => {
+    if (arbiter.ack()) pushStatus();
+  });
 
   // —— 全屏让位：命中即隐藏，退出后恢复 ——
   if (!detectFullscreen().available) {

@@ -15,6 +15,13 @@ export class PetPlayer {
   private current: ResolvedState;
   private frameIndex = 0;
   private elapsedInFrame = 0;
+  /**
+   * 本次一次性动作播完后的落点，优先于状态自身的 fallbackState。
+   * 用途：statusMap 里 `ready → waving（致意）→ then: review（未读）` 这类序列。
+   * 把它放在播放器内部而不是让调用方"播完再 setState"，是为了消除
+   * "一次性动作播完先回落到 fallback，下一帧才被切成 then"的那一帧闪烁。
+   */
+  private pendingThen: string | null = null;
 
   constructor(private readonly pack: PlayablePack, initial = 'idle') {
     const s = pack.states[initial];
@@ -27,13 +34,22 @@ export class PetPlayer {
   /** 当前帧是否是一次性动作（播完要回落）。 */
   get isOneShot(): boolean { return !this.current.loop; }
 
-  setState(id: string): boolean {
+  /** 一次性动作播完的落点（未指定则为 null，播放器走 fallbackState）。 */
+  get thenState(): string | null { return this.pendingThen; }
+
+  setState(id: string, opts?: { then?: string }): boolean {
     const next = this.pack.states[id];
     if (!next) return false;
-    if (next.id === this.current.id) return false;
+    if (next.id === this.current.id) {
+      // 同一状态不打断当前播放，但落点要更新：否则"同一个 ready 又来了"
+      // 会因为沿用旧落点而停在错误的姿态上。
+      this.pendingThen = opts?.then ?? this.pendingThen;
+      return false;
+    }
     this.current = next;
     this.frameIndex = 0;
     this.elapsedInFrame = 0;
+    this.pendingThen = opts?.then ?? null;
     return true;
   }
 
@@ -56,8 +72,9 @@ export class PetPlayer {
       this.frameIndex = 0;
       return;
     }
-    // 一次性动作播完：回落到 fallbackState 或 idle
-    const fallbackId = this.current.fallbackState ?? 'idle';
+    // 一次性动作播完：落到 then（statusMap 指定的序列）或 fallbackState，最后兜到 idle
+    const fallbackId = this.pendingThen ?? this.current.fallbackState ?? 'idle';
+    this.pendingThen = null;
     const fallback = this.pack.states[fallbackId];
     this.current = fallback ?? this.pack.states.idle!;
     this.frameIndex = 0;

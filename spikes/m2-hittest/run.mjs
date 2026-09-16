@@ -9,7 +9,12 @@ const EXE = ROOT + '/node_modules/electron/dist/electron.exe';
 const probeName = process.argv[2] || 'probe.js';
 const PROBE = DIR + '/' + probeName;
 const REPORT = DIR + '/' + (process.argv[3] || 'report.json');
-const LOG = DIR + '/' + probeName.replace(/\.js$/, '') + '.log';
+// 日志名跟随**产出文件名**而不是探针文件名：探针内部按产出名写日志
+// （probe-fs-verify.js → fs-verify.log）。曾经按探针名推导，导致驱动永远只打印出
+// "(no log)"，白跑一轮还看不到结论。唯一例外是默认的 probe.js → run.log。
+const LOG = REPORT.endsWith('report.json') && probeName === 'probe.js'
+  ? DIR + '/run.log'
+  : REPORT.replace(/\.json$/, '.log');
 
 try { fs.unlinkSync(REPORT); } catch {}
 const env = { ...process.env };

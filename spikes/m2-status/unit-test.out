@@ -1,0 +1,77 @@
+
+① statusMap → 动画（用 desktop-pet.json 的真实配置）
+  ok   running → running
+  ok   needs-input → waiting
+  ok   blocked → failed
+  ok   idle → idle
+  ok   ready → waving
+  ok   ready 的序列落点 = review
+  ok   缺映射时回落 defaultState
+  ok   statusMap 整个缺失也不抛异常
+
+② 优先级 / 同分裁决 / 多会话角标
+  ok   初始为 idle
+  ok   首个状态立即生效（不受限流窗格影响）
+  ok   无其他会话时角标为 0
+  ok   ready(3) 压过 running(4)
+  ok   角标统计其余活动会话
+  ok   blocked(2) 压过 ready(3)
+  ok   needs-input(1) 优先级最高
+  ok   此时有 2 条其余活动会话
+  ok   气泡文案取自 statusMap
+  ok   attentionPulse 透传
+
+③ 变化限流 / 最短展示（不丢弃，等窗格过后补上）
+  ok   起点 running
+  ok   切换后 100ms 内的高优状态被挡下
+  ok   tick 未到窗格不切换
+  ok   200ms 时仍是 running
+  ok   窗格到期后由 tick 应用（不是丢弃）
+  ok   被挡下的目标最终生效
+  ok   窗格外的切换立即生效
+
+④ 粘滞：needs-input 驻留至确认或超时
+  ok   进入 needs-input
+  ok   同一会话改口 running 也不能覆盖粘滞
+  ok   其他会话的高优状态同样被粘滞挡住
+  ok   用户确认后解除
+  ok   确认后回落到当前最优状态
+  ok   同一会话再次求助会重新进入粘滞（确认记录被清掉）
+  ok   达到粘滞上限后自动解除（而不是每 5 分钟重置一次）
+  ok   超时确认只降级 needs-input，该会话的 running 仍正常参与仲裁
+  ok   先进入 needs-input
+  ok   会话自己改口 idle → 粘滞解除（不再举着手）
+
+⑤ 静默兜底：会话过期按 idle 处理
+  ok   running 中
+  ok   未到期时不回落
+  ok   超过 15 分钟按 idle 处理
+  ok   状态回到 idle
+  ok   过期会话被移除
+
+⑥ 心跳不引起状态切换
+  ok   同状态心跳不产生输出变化
+  ok   心跳把存活时间刷新了，不会静默过期
+  ok   仍在 running
+
+⑦ 播放器的 then 落点
+  ok   播的是 waving
+  ok   waving 是一次性动作
+  ok   播完落到 then（review）而不是 fallback(idle)
+  ok   未指定 then 时仍走状态自身的 fallbackState
+
+⑧ 状态文件适配器
+  ok   文件尚不存在时不产生事件
+  ok   单会话简写被识别
+  ok   状态被识别
+  ok   标题被带上
+  ok   内容未变时不重复产生事件
+  ok   多会话格式被识别
+  ok   快照里不再出现的会话补 idle 收尾
+  ok   非法状态值被丢弃：不产生事件
+  ok   半截/损坏内容被忽略并保留上一次好值
+  ok   会话从文件消失时补一条 idle
+  ok   补的 idle 属于消失的那个会话（非法条目没把它误判成消失）
+
+────────────────────────────────────────────────────────
+全部通过：58 项断言

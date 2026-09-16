@@ -1,0 +1,263 @@
+// 状态层离线单测：仲裁器（虚拟时钟）+ 状态文件适配器（真实临时目录）。
+//
+// 为什么值得单独写：设计文档要求"仲裁器的粘滞与限流逻辑可以接虚拟时钟做确定性单测"，
+// 而这三条防抖规则恰恰是"状态直连动画"最容易翻车的地方 —— 它们靠肉眼看宠物根本看不出对错
+// （少一次限流只是画面抖一下），只有把它们钉在断言里才能防止后续改动悄悄破坏。
+//
+// 跑法：node tools/status-arbiter.test.mjs   （需先 npm run build，测的是 dist 产物）
+import { createRequire } from 'node:module';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const require = createRequire(import.meta.url);
+const { StatusArbiter, resolveAnimation } = require(join(root, 'dist/kernel/status.js'));
+const { PetPlayer } = require(join(root, 'dist/kernel/player.js'));
+const { createStatusFileSource } = require(join(root, 'dist/source/status-file.js'));
+// 用真实运行参数做断言，而不是测试里另写一份映射表 —— 否则测的是测试自己的假设。
+const runtimeManifest = require(join(root, 'desktop-pet.json'));
+
+let passed = 0;
+const failures = [];
+
+function check(name, cond, detail = '') {
+  if (cond) { passed += 1; process.stdout.write(`  ok   ${name}\n`); }
+  else { failures.push(`${name}${detail ? ' —— ' + detail : ''}`); process.stdout.write(`  FAIL ${name}${detail ? ' —— ' + detail : ''}\n`); }
+}
+function eq(name, actual, expected) {
+  check(name, actual === expected, `期望 ${JSON.stringify(expected)}，实际 ${JSON.stringify(actual)}`);
+}
+function section(title) { process.stdout.write(`\n${title}\n`); }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** 虚拟时钟：一切与时间有关的断言都在它上面做，不依赖机器快慢。 */
+function makeClock(start = 1_000_000) {
+  let t = start;
+  return { now: () => t, advance(ms) { t += ms; return t; } };
+}
+
+// —— ① 真实宠物包的 statusMap 解析契约 ——
+section('① statusMap → 动画（用 desktop-pet.json 的真实配置）');
+{
+  const sm = runtimeManifest.statusMap;
+  eq('running → running', resolveAnimation(sm, 'running').state, 'running');
+  eq('needs-input → waiting', resolveAnimation(sm, 'needs-input').state, 'waiting');
+  eq('blocked → failed', resolveAnimation(sm, 'blocked').state, 'failed');
+  eq('idle → idle', resolveAnimation(sm, 'idle').state, 'idle');
+  const ready = resolveAnimation(sm, 'ready');
+  eq('ready → waving', ready.state, 'waving');
+  eq('ready 的序列落点 = review', ready.then, 'review');
+  eq('缺映射时回落 defaultState', resolveAnimation({}, 'running', 'idle').state, 'idle');
+  eq('statusMap 整个缺失也不抛异常', resolveAnimation(undefined, 'blocked').state, 'idle');
+}
+
+// —— ② 优先级与多会话 ——
+section('② 优先级 / 同分裁决 / 多会话角标');
+{
+  const clock = makeClock();
+  const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now });
+  eq('初始为 idle', arb.state.status, 'idle');
+  arb.ingest({ sessionId: 'a', status: 'running' });
+  eq('首个状态立即生效（不受限流窗格影响）', arb.state.status, 'running');
+  eq('无其他会话时角标为 0', arb.state.badgeCount, 0);
+
+  clock.advance(600);
+  arb.ingest({ sessionId: 'b', status: 'ready' });
+  eq('ready(3) 压过 running(4)', arb.state.status, 'ready');
+  eq('角标统计其余活动会话', arb.state.badgeCount, 1);
+
+  clock.advance(600);
+  arb.ingest({ sessionId: 'b', status: 'blocked' });
+  eq('blocked(2) 压过 ready(3)', arb.state.status, 'blocked');
+
+  clock.advance(600);
+  arb.ingest({ sessionId: 'c', status: 'needs-input' });
+  eq('needs-input(1) 优先级最高', arb.state.status, 'needs-input');
+  eq('此时有 2 条其余活动会话', arb.state.badgeCount, 2);
+  eq('气泡文案取自 statusMap', arb.state.bubble, '需要输入');
+  eq('attentionPulse 透传', arb.state.attentionPulse, true);
+}
+
+// —— ③ 变化限流 + 最短展示 ——
+section('③ 变化限流 / 最短展示（不丢弃，等窗格过后补上）');
+{
+  const clock = makeClock();
+  const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now });
+  // 注意：idle 事件不产生切换（输出本来就是 idle），所以第一个**真实**切换是 running。
+  // 断言必须挂在真实切换上，否则测的是"什么都没发生"。
+  arb.ingest({ sessionId: 'a', status: 'running' });
+  eq('起点 running', arb.state.status, 'running');
+
+  clock.advance(100);
+  arb.ingest({ sessionId: 'a', status: 'blocked' });
+  eq('切换后 100ms 内的高优状态被挡下', arb.state.status, 'running');
+
+  clock.advance(100);          // 距上次切换共 200ms，仍不足 500ms
+  eq('tick 未到窗格不切换', arb.tick(), false);
+  eq('200ms 时仍是 running', arb.state.status, 'running');
+
+  clock.advance(300);          // 累计 500ms
+  eq('窗格到期后由 tick 应用（不是丢弃）', arb.tick(), true);
+  eq('被挡下的目标最终生效', arb.state.status, 'blocked');
+
+  clock.advance(600);
+  arb.ingest({ sessionId: 'a', status: 'running' });
+  eq('窗格外的切换立即生效', arb.state.status, 'running');
+}
+
+// —— ④ 粘滞（needs-input 不被覆盖）——
+section('④ 粘滞：needs-input 驻留至确认或超时');
+{
+  const clock = makeClock();
+  const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now });
+  arb.ingest({ sessionId: 'a', status: 'needs-input' });
+  eq('进入 needs-input', arb.state.status, 'needs-input');
+
+  clock.advance(600);
+  arb.ingest({ sessionId: 'a', status: 'running' });
+  eq('同一会话改口 running 也不能覆盖粘滞', arb.state.status, 'needs-input');
+
+  clock.advance(600);
+  arb.ingest({ sessionId: 'b', status: 'blocked' });
+  eq('其他会话的高优状态同样被粘滞挡住', arb.state.status, 'needs-input');
+
+  clock.advance(600);
+  eq('用户确认后解除', arb.ack(), true);
+  eq('确认后回落到当前最优状态', arb.state.status, 'blocked');
+
+  clock.advance(600);
+  arb.ingest({ sessionId: 'a', status: 'needs-input' });
+  eq('同一会话再次求助会重新进入粘滞（确认记录被清掉）', arb.state.status, 'needs-input');
+}
+{
+  const clock = makeClock();
+  const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now });
+  arb.ingest({ sessionId: 'a', status: 'needs-input' });
+  clock.advance(300_000);       // 恰好到粘滞上限
+  arb.tick();
+  eq('达到粘滞上限后自动解除（而不是每 5 分钟重置一次）', arb.state.status, 'idle');
+  clock.advance(600);
+  arb.ingest({ sessionId: 'a', status: 'running' });
+  eq('超时确认只降级 needs-input，该会话的 running 仍正常参与仲裁', arb.state.status, 'running');
+}
+{
+  const clock = makeClock();
+  const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now });
+  arb.ingest({ sessionId: 'a', status: 'needs-input' });
+  eq('先进入 needs-input', arb.state.status, 'needs-input');
+  clock.advance(600);           // 越过限流窗格，让断言只测粘滞本身
+  arb.ingest({ sessionId: 'a', status: 'idle' });
+  eq('会话自己改口 idle → 粘滞解除（不再举着手）', arb.state.status, 'idle');
+}
+
+// —— ⑤ 静默兜底 ——
+section('⑤ 静默兜底：会话过期按 idle 处理');
+{
+  const clock = makeClock();
+  const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now });
+  arb.ingest({ sessionId: 'a', status: 'running' });
+  eq('running 中', arb.state.status, 'running');
+  clock.advance(899_000);
+  eq('未到期时不回落', arb.tick(), false);
+  clock.advance(2_000);
+  eq('超过 15 分钟按 idle 处理', arb.tick(), true);
+  eq('状态回到 idle', arb.state.status, 'idle');
+  eq('过期会话被移除', arb.snapshot().length, 0);
+}
+
+// —— ⑥ 心跳：仅刷新时间戳不应产生状态迁移 ——
+section('⑥ 心跳不引起状态切换');
+{
+  const clock = makeClock();
+  const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now });
+  arb.ingest({ sessionId: 'a', status: 'running' });
+  clock.advance(600);
+  eq('同状态心跳不产生输出变化', arb.ingest({ sessionId: 'a', status: 'running', ts: clock.now() }), false);
+  clock.advance(899_000);
+  eq('心跳把存活时间刷新了，不会静默过期', arb.tick(), false);
+  eq('仍在 running', arb.state.status, 'running');
+}
+
+// —— ⑦ 播放器的一次性动作序列（ready → waving → review）——
+section('⑦ 播放器的 then 落点');
+{
+  const states = {
+    idle: { id: 'idle', row: 0, frames: 2, fps: 10, loop: true, offsetY: 2, frameColumns: [0, 1] },
+    waving: { id: 'waving', row: 3, frames: 2, fps: 10, loop: false, offsetY: 1, frameColumns: [0, 1], fallbackState: 'idle' },
+    review: { id: 'review', row: 8, frames: 2, fps: 10, loop: true, offsetY: 0, frameColumns: [0, 1] },
+  };
+  const p = new PetPlayer({ states }, 'idle');
+  p.setState('waving', { then: 'review' });
+  eq('播的是 waving', p.stateId, 'waving');
+  eq('waving 是一次性动作', p.isOneShot, true);
+  for (let i = 0; i < 30; i += 1) p.update(10);      // 推进 300ms，足够播完 2 帧
+  eq('播完落到 then（review）而不是 fallback(idle)', p.stateId, 'review');
+
+  const q = new PetPlayer({ states }, 'idle');
+  q.setState('waving');
+  for (let i = 0; i < 30; i += 1) q.update(10);
+  eq('未指定 then 时仍走状态自身的 fallbackState', q.stateId, 'idle');
+}
+
+// —— ⑧ 状态文件适配器：快照 → 增量事件 ——
+section('⑧ 状态文件适配器');
+const dir = mkdtempSync(join(tmpdir(), 'pet-status-'));
+const file = join(dir, 'status.json');
+const events = [];
+const source = createStatusFileSource({ path: file, pollMs: 50, log: () => {} });
+try {
+  source.start((e) => events.push(e));
+  await sleep(150);
+  eq('文件尚不存在时不产生事件', events.length, 0);
+
+  writeFileSync(file, JSON.stringify({ status: 'running', title: '单会话简写' }), 'utf8');
+  await sleep(400);
+  eq('单会话简写被识别', events.at(-1)?.sessionId, 'default');
+  eq('状态被识别', events.at(-1)?.status, 'running');
+  eq('标题被带上', events.at(-1)?.title, '单会话简写');
+
+  const before = events.length;
+  writeFileSync(file, JSON.stringify({ status: 'running', title: '单会话简写' }), 'utf8');
+  await sleep(400);
+  eq('内容未变时不重复产生事件', events.length, before);
+
+  writeFileSync(file, JSON.stringify({
+    schema: 'desktop-pet/status/v1',
+    sessions: { 'sess-a': { status: 'needs-input', title: '等你拍板', ts: Date.now() } },
+  }), 'utf8');
+  await sleep(400);
+  check('多会话格式被识别', events.some((e) => e.sessionId === 'sess-a' && e.status === 'needs-input'));
+  // 换成多会话快照时，前一步的单会话 default 就此从快照里消失，应当被补一条 idle 收尾
+  check('快照里不再出现的会话补 idle 收尾',
+    events.some((e) => e.sessionId === 'default' && e.status === 'idle'));
+
+  const beforeInvalid = events.length;
+  writeFileSync(file, JSON.stringify({ sessions: { 'sess-a': { status: '炸了' } } }), 'utf8');
+  await sleep(400);
+  eq('非法状态值被丢弃：不产生事件', events.length, beforeInvalid);
+
+  writeFileSync(file, '{ 这不是 JSON', 'utf8');
+  await sleep(400);
+  eq('半截/损坏内容被忽略并保留上一次好值', events.length, beforeInvalid);
+
+  writeFileSync(file, JSON.stringify({ schema: 'desktop-pet/status/v1', sessions: {} }), 'utf8');
+  await sleep(400);
+  const last = events.at(-1);
+  eq('会话从文件消失时补一条 idle', last?.status, 'idle');
+  eq('补的 idle 属于消失的那个会话（非法条目没把它误判成消失）', last?.sessionId, 'sess-a');
+} finally {
+  source.stop();
+  rmSync(dir, { recursive: true, force: true });
+}
+
+// —— 汇总 ——
+process.stdout.write(`\n${'─'.repeat(56)}\n`);
+if (failures.length === 0) {
+  process.stdout.write(`全部通过：${passed} 项断言\n`);
+  process.exit(0);
+}
+process.stdout.write(`通过 ${passed} 项，失败 ${failures.length} 项：\n`);
+for (const f of failures) process.stdout.write(`  - ${f}\n`);
+process.exit(1);
