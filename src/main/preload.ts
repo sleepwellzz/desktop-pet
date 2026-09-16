@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld('pet', {
   dragBy: (delta: DragDelta): void => { ipcRenderer.send(CH.drag, delta); },
   /** 用户确认：解除 needs-input 粘滞（单击宠物即触发）。 */
   ack: (): void => { ipcRenderer.send(CH.ack); },
+  /** 在宠物上按了右键：请主进程弹出宠物菜单（托盘那份菜单）。 */
+  requestContextMenu: (): void => { ipcRenderer.send(CH.contextMenu); },
   /** 命中状态变化才上报，主进程据此切换整窗穿透。 */
   setInteractive: (interactive: boolean): void => {
     const state: HitState = { interactive };

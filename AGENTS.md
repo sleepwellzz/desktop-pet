@@ -17,8 +17,13 @@
   `arbiter.state` 取，不允许下游各算一份；渲染层不得自行判断业务状态。
 - 帧率与锚点由脚本自动生成，不要手写。
 - **点击命中由渲染层按当前帧精灵 alpha 判定**，窗口常态整窗穿透；不要回退到"让系统按窗口矩形命中的做法"，也不要再用 `setIgnoreMouseEvents(..., { forward: true })`（ADR 008）。
-- **凡是改了窗口创建/显示/隐藏/移动相关代码，必须跑回归探针**：
-  `node spikes/m2-hittest/run.mjs probe-fs-verify.js`（验证全屏让位与恢复后的点击/拖动没被打断，ADR 009）。
+- **凡是改了窗口创建/显示/隐藏/移动/缩放相关代码，必须跑两个回归探针**：
+  - `node spikes/m2-hittest/run.mjs probe-fs-verify.js`（全屏让位与恢复后的点击/拖动，ADR 009）；
+  - `node spikes/m2-menu/run-tray.mjs`（隐藏→显示往返、缩放尺寸与锚点、自启回读、退出后进程消失，ADR 011）。
+- **`hide()` 之后要重新显示，只能走 `resumePet()`**（show + reload 渲染层）。任何地方单独写
+  `win.show()` 都会留下"看着正常但点不动"的窗口（ADR 009）。
+- **渲染层的指针事件别按 `e.button === 0` 过滤 `pointermove`**：`pointermove` 的 `button` 是 **−1**，
+  这样写会静默吃掉整段拖动（计数正常、窗口不动，ADR 011 负面结论）。
 - **凡是改了状态层（`kernel/status.ts`、`source/*`、仲裁与映射、`pet-hook.mjs`），必须跑**：
   `node tools/status-arbiter.test.mjs`（离线、秒级、虚拟时钟）；
   动了主进程/渲染层接线再补 `node spikes/m2-status/run-status-e2e.mjs`（端到端、约 45 秒、会弹窗）。

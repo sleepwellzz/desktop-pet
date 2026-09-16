@@ -1,0 +1,330 @@
+{
+ "rounds": [
+  {
+   "offset": {
+    "dx": 76,
+    "dy": -103
+   },
+   "fired": "B",
+   "during": {
+    "petVisible": true,
+    "petExStyle": {
+     "raw": "0x8000008",
+     "LAYERED": false,
+     "TRANSPARENT": false,
+     "NOACTIVATE": true,
+     "TOPMOST": true
+    },
+    "fg": {
+     "hwnd": 198808,
+     "class": "Chrome_WidgetWin_1",
+     "title": "WorkBuddy",
+     "rect": "-11,-11,2571,1551",
+     "size": "2582x1562",
+     "visible": true,
+     "iconic": false,
+     "coversScreen": false
+    }
+   },
+   "after": {
+    "fg": {
+     "hwnd": 198808,
+     "class": "Chrome_WidgetWin_1",
+     "title": "WorkBuddy",
+     "rect": "-11,-11,2571,1551",
+     "size": "2582x1562",
+     "visible": true,
+     "iconic": false,
+     "coversScreen": false
+    },
+    "petVisible": true
+   }
+  },
+  {
+   "offset": {
+    "dx": 40,
+    "dy": -103
+   },
+   "fired": "B",
+   "during": {
+    "petVisible": true,
+    "petExStyle": {
+     "raw": "0x8000008",
+     "LAYERED": false,
+     "TRANSPARENT": false,
+     "NOACTIVATE": true,
+     "TOPMOST": true
+    },
+    "fg": {
+     "hwnd": 198808,
+     "class": "Chrome_WidgetWin_1",
+     "title": "WorkBuddy",
+     "rect": "-11,-11,2571,1551",
+     "size": "2582x1562",
+     "visible": true,
+     "iconic": false,
+     "coversScreen": false
+    }
+   },
+   "after": {
+    "fg": {
+     "hwnd": 198808,
+     "class": "Chrome_WidgetWin_1",
+     "title": "WorkBuddy",
+     "rect": "-11,-11,2571,1551",
+     "size": "2582x1562",
+     "visible": true,
+     "iconic": false,
+     "coversScreen": false
+    },
+    "petVisible": true
+   }
+  },
+  {
+   "offset": {
+    "dx": 100,
+    "dy": -103
+   },
+   "fired": "B",
+   "during": {
+    "petVisible": true,
+    "petExStyle": {
+     "raw": "0x8000008",
+     "LAYERED": false,
+     "TRANSPARENT": false,
+     "NOACTIVATE": true,
+     "TOPMOST": true
+    },
+    "fg": {
+     "hwnd": 198808,
+     "class": "Chrome_WidgetWin_1",
+     "title": "WorkBuddy",
+     "rect": "-11,-11,2571,1551",
+     "size": "2582x1562",
+     "visible": true,
+     "iconic": false,
+     "coversScreen": false
+    }
+   },
+   "after": {
+    "fg": {
+     "hwnd": 198808,
+     "class": "Chrome_WidgetWin_1",
+     "title": "WorkBuddy",
+     "rect": "-11,-11,2571,1551",
+     "size": "2582x1562",
+     "visible": true,
+     "iconic": false,
+     "coversScreen": false
+    },
+    "petVisible": true
+   }
+  },
+  {
+   "offset": {
+    "dx": 76,
+    "dy": -39
+   },
+   "fired": "C",
+   "during": {
+    "petVisible": true,
+    "petExStyle": {
+     "raw": "0x8000008",
+     "LAYERED": false,
+     "TRANSPARENT": false,
+     "NOACTIVATE": true,
+     "TOPMOST": true
+    },
+    "fg": {
+     "hwnd": 198808,
+     "class": "Chrome_WidgetWin_1",
+     "title": "WorkBuddy",
+     "rect": "-11,-11,2571,1551",
+     "size": "2582x1562",
+     "visible": true,
+     "iconic": false,
+     "coversScreen": false
+    }
+   },
+   "after": {
+    "fg": {
+     "hwnd": 198808,
+     "class": "Chrome_WidgetWin_1",
+     "title": "WorkBuddy",
+     "rect": "-11,-11,2571,1551",
+     "size": "2582x1562",
+     "visible": true,
+     "iconic": false,
+     "coversScreen": false
+    },
+    "petVisible": true
+   }
+  },
+  {
+   "offset": {
+    "dx": 76,
+    "dy": 22
+   },
+   "fired": null,
+   "during": {
+    "petVisible": true,
+    "petExStyle": {
+     "raw": "0x8000008",
+     "LAYERED": false,
+     "TRANSPARENT": false,
+     "NOACTIVATE": true,
+     "TOPMOST": true
+    },
+    "fg": {
+     "hwnd": 198808,
+     "class": "Chrome_WidgetWin_1",
+     "title": "WorkBuddy",
+     "rect": "-11,-11,2571,1551",
+     "size": "2582x1562",
+     "visible": true,
+     "iconic": false,
+     "coversScreen": false
+    }
+   },
+   "after": {
+    "fg": {
+     "hwnd": 198808,
+     "class": "Chrome_WidgetWin_1",
+     "title": "WorkBuddy",
+     "rect": "-11,-11,2571,1551",
+     "size": "2582x1562",
+     "visible": true,
+     "iconic": false,
+     "coversScreen": false
+    },
+    "petVisible": true
+   }
+  }
+ ],
+ "notes": [],
+ "startupDesktopFirst": {
+  "fgBeforeBoot": {
+   "hwnd": 131736,
+   "class": "WorkerW",
+   "title": "",
+   "rect": "0,0,2560,1600",
+   "size": "2560x1600",
+   "visible": true,
+   "iconic": false,
+   "coversScreen": true
+  },
+  "detectorBeforeBoot": {
+   "available": true,
+   "coversMonitor": false,
+   "fgTitle": "",
+   "fgRect": null,
+   "monitorRect": null,
+   "quns": "BUSY",
+   "fgClass": "WorkerW"
+  },
+  "petVisibleAfterBoot": true,
+  "fgAfterBoot": {
+   "hwnd": 131736,
+   "class": "WorkerW",
+   "title": "",
+   "rect": "0,0,2560,1600",
+   "size": "2560x1600",
+   "visible": true,
+   "iconic": false,
+   "coversScreen": true
+  },
+  "detectorAfterBoot": {
+   "available": true,
+   "coversMonitor": false,
+   "fgTitle": "",
+   "fgRect": null,
+   "monitorRect": null,
+   "quns": "BUSY",
+   "fgClass": "WorkerW"
+  },
+  "verdict": "PASS 桌面在前台，宠物没有自我隐藏"
+ },
+ "pet": {
+  "contentBounds": {
+   "x": 1549,
+   "y": 857,
+   "width": 134,
+   "height": 146
+  },
+  "dpr": 1.5,
+  "clickAt": {
+   "x": 2424,
+   "y": 1395
+  },
+  "exStyle": {
+   "raw": "0x8000008",
+   "LAYERED": false,
+   "TRANSPARENT": false,
+   "NOACTIVATE": true,
+   "TOPMOST": true
+  }
+ },
+ "clickInjectionWorks": true,
+ "screenCaptured": true,
+ "inputAfterMenu": {
+  "before": 1,
+  "after": 2,
+  "works": true,
+  "petVisible": true
+ },
+ "desktopCase": {
+  "at": {
+   "x": 2558,
+   "y": 1598
+  },
+  "afterShowDesktop": {
+   "fg": {
+    "hwnd": 131736,
+    "class": "WorkerW",
+    "title": "",
+    "rect": "0,0,2560,1600",
+    "size": "2560x1600",
+    "visible": true,
+    "iconic": false,
+    "coversScreen": true
+   },
+   "detector": {
+    "available": true,
+    "coversMonitor": false,
+    "fgTitle": "",
+    "fgRect": null,
+    "monitorRect": null,
+    "quns": "BUSY",
+    "fgClass": "WorkerW"
+   },
+   "petVisible": true
+  },
+  "afterRestore": {
+   "fg": {
+    "hwnd": 198808,
+    "class": "Chrome_WidgetWin_1",
+    "title": "WorkBuddy",
+    "rect": "-11,-11,2571,1551",
+    "size": "2582x1562",
+    "visible": true,
+    "iconic": false,
+    "coversScreen": false
+   },
+   "detector": {
+    "available": true,
+    "coversMonitor": false,
+    "fgTitle": "WorkBuddy",
+    "fgRect": "-11,-11,2571,1551",
+    "monitorRect": "0,0,2560,1600",
+    "quns": "ACCEPTS_NOTIFICATIONS",
+    "fgClass": "Chrome_WidgetWin_1"
+   },
+   "petVisible": true
+  },
+  "verdict": "PASS 桌面不算全屏，宠物没消失"
+ },
+ "tray": {
+  "created": true
+ },
+ "conclusion": "原生菜单可用：偏移 (+76,+-103)→B、(+40,+-103)→B、(+100,+-103)→B、(+76,+-39)→C"
+}

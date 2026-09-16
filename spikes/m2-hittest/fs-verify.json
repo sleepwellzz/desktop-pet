@@ -109,7 +109,7 @@
     "events": {
      "down": 1,
      "up": 1,
-     "move": 22,
+     "move": 21,
      "cancel": 0
     }
    },

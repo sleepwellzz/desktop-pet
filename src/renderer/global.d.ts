@@ -12,6 +12,8 @@ interface PetBridge {
   setInteractive(interactive: boolean): void;
   /** 用户确认（单击宠物）：解除 needs-input 粘滞。 */
   ack(): void;
+  /** 在宠物上按了右键：请主进程弹出宠物菜单。 */
+  requestContextMenu(): void;
   log(message: string): void;
   ready(): void;
 }

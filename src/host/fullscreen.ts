@@ -10,6 +10,8 @@ export interface FullscreenStatus {
   available: boolean;
   coversMonitor: boolean;
   fgTitle: string;
+  /** 前台窗口的窗口类名（诊断用：桌面一族靠它排除，见 SHELL_CLASSES）。 */
+  fgClass?: string | null;
   fgRect: string | null;
   monitorRect: string | null;
   quns: string | null;
@@ -28,6 +30,7 @@ interface Win32 {
   GetForegroundWindow: () => unknown;
   GetShellWindow: () => unknown;
   GetDesktopWindow: () => unknown;
+  GetClassNameW: (hwnd: unknown, buf: Buffer, n: number) => number;
   GetWindowTextLengthW: (hwnd: unknown) => number;
   GetWindowTextW: (hwnd: unknown, buf: Buffer, n: number) => number;
   GetWindowRect: (hwnd: unknown, rect: Buffer) => boolean;
@@ -39,6 +42,17 @@ interface Win32 {
   RECT_SIZE: number;
   MONITORINFO_SIZE: number;
 }
+
+/**
+ * 桌面/任务栏一族窗口的类名。它们天然"铺满整块屏幕"，但不是全屏应用。
+ *
+ * 2026-09-16 实测（`spikes/m2-menu` 探针，用本函数原样复算，证据在该目录的 report）：
+ * 点任务栏右下角的"显示桌面"条之后，前台窗口变成 **WorkerW**（2560×1600、标题为空、
+ * 可见、未最小化），`GetShellWindow()` 与 `GetDesktopWindow()` 两个排除项**都拦不住它**
+ * —— WorkerW 是 Progman 的子窗口，是第三个 HWND。于是 `coversMonitor` 判为 true，
+ * 宠物把自己隐藏了。用户视角就是"**点一下桌面/那条竖线，宠物不见了**"。
+ */
+const SHELL_CLASSES = new Set(['WorkerW', 'Progman', 'Shell_TrayWnd', 'Shell_SecondaryTrayWnd']);
 
 /** MONITOR_DEFAULTTONEAREST：要"窗口所在"的那块屏，不是主屏。 */
 const MONITOR_DEFAULTTONEAREST = 2;
@@ -60,6 +74,7 @@ function ensureLoaded(): Win32 | null {
       GetForegroundWindow: user32.func('void *GetForegroundWindow()'),
       GetShellWindow: user32.func('void *GetShellWindow()'),
       GetDesktopWindow: user32.func('void *GetDesktopWindow()'),
+      GetClassNameW: user32.func('int GetClassNameW(void *hwnd, char16_t *buf, int n)'),
       GetWindowTextLengthW: user32.func('int GetWindowTextLengthW(void *hwnd)'),
       GetWindowTextW: user32.func('int GetWindowTextW(void *hwnd, char16_t *buf, int n)'),
       GetWindowRect: user32.func('bool GetWindowRect(void *hwnd, DP_RECT *rect)'),
@@ -121,6 +136,19 @@ export function detectFullscreen(): FullscreenStatus {
   const desktop = w.GetDesktopWindow();
   if (String(fg) === String(shell) || String(fg) === String(desktop)) return status;
   if (!w.IsWindowVisible(fg) || w.IsIconic(fg)) return status;
+
+  // 桌面/任务栏一族（WorkerW 等）同样铺满屏幕，但那是"桌面"不是"全屏应用"。
+  // 注意 GetClassNameW 的返回值**不含**结尾空字符（与 GetWindowTextW 同约定），
+  // 所以截断长度是 clsLen*2；写成 (clsLen-1)*2 会把 "WorkerW" 读成 "Worker"，
+  // 白名单恒不匹配 —— 这个差一错误实测让本修复静默失效过一轮。
+  const classBuf = Buffer.alloc(512);
+  const clsLen = w.GetClassNameW(fg, classBuf, 256);
+  const cls = clsLen > 0 ? classBuf.toString('utf16le', 0, clsLen * 2) : '';
+  if (cls && SHELL_CLASSES.has(cls)) {
+    status.fgClass = cls;
+    return status;
+  }
+  status.fgClass = cls || null;
 
   const rectBuf = Buffer.alloc(w.RECT_SIZE);
   if (!w.GetWindowRect(fg, rectBuf)) return status;

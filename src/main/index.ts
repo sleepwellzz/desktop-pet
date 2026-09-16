@@ -4,17 +4,30 @@
 //   - 内核（src/kernel）负责解析宠物包、状态机、播帧 —— 纯 TS，不 import electron
 //   - 宿主（src/host）负责窗口与系统能力 —— 目前只有覆盖窗口与全屏检测
 //   - 播帧循环跑在渲染层：避免每帧 IPC，内核代码放哪都能跑
-import { app, ipcMain, screen } from 'electron';
+import { app, ipcMain, Menu, screen } from 'electron';
 import { appendFileSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { loadPack } from '../kernel/pack';
-import { StatusArbiter, type StatusEvent } from '../kernel/status';
+import { StatusArbiter, type PetStatus, type StatusEvent } from '../kernel/status';
 import { createStatusFileSource } from '../source/status-file';
 import type { StatusSource } from '../source/types';
 import { createOverlayWindow } from '../host/overlay-window';
 import { detectFullscreen, startFullscreenWatch, fullscreenUnavailableReason } from '../host/fullscreen';
+import { createTray } from '../host/tray';
+import { buildPetMenuTemplate, type PetMenuActions, type PetMenuView } from '../host/pet-menu';
+import { isAutoStartEnabled, writeAutoStart } from '../host/autostart';
+import { loadPrefs, savePrefs } from '../host/prefs';
 import { CH, type DragDelta, type HitState, type PointerHint, type RendererInit, type StatusPush } from '../shared/ipc';
+
+/** 菜单里的状态行文案。用业务状态而不是动画状态名（用户看到的应该是"在干什么"）。 */
+const STATUS_TEXT: Record<PetStatus, string> = {
+  idle: '空闲',
+  running: '运行中',
+  'needs-input': '需要输入',
+  blocked: '已受阻',
+  ready: '就绪（未读）',
+};
 
 /** 宠物包目录：默认工程根目录，可用 --pet=绝对路径 覆盖。 */
 function resolvePackDir(): string {
@@ -49,8 +62,20 @@ function boot(): void {
   console.log(`[pet] ${pack.manifest.displayName ?? pack.manifest.id} · ${pack.sheet.width}x${pack.sheet.height} ` +
     `· ${pack.grid.columns}x${pack.grid.rows} @ ${pack.cell.width}x${pack.cell.height} · ${Object.keys(pack.states).length} 个状态`);
 
-  const width = Math.round(pack.cell.width * pack.scale);
-  const height = Math.round(pack.cell.height * pack.scale);
+  // —— 缩放：宠物包默认值 + 用户偏好（prefs），并夹进宠物包声明的可用区间 ——
+  const render = pack.runtime.render;
+  const scaleRange: [number, number] = render.scaleRange ?? [0.5, 1.5];
+  const scaleStep = render.scaleStep && render.scaleStep > 0 ? render.scaleStep : 0.25;
+  const clampScale = (s: number): number =>
+    Math.min(scaleRange[1], Math.max(scaleRange[0], Math.round(s * 100) / 100));
+  const prefs = loadPrefs();
+  let currentScale = clampScale(prefs.scale ?? pack.scale);
+  if (prefs.scale !== undefined && prefs.scale !== currentScale) {
+    console.warn(`[pet] 偏好里的缩放 ${prefs.scale} 超出宠物包允许区间 [${scaleRange.join(',')}]，已夹到 ${currentScale}`);
+  }
+
+  const width = Math.round(pack.cell.width * currentScale);
+  const height = Math.round(pack.cell.height * currentScale);
 
   const overlay = createOverlayWindow({
     width, height,
@@ -65,8 +90,8 @@ function boot(): void {
     sheetDataUrl: toDataUrl(pack.sheetPath, pack.sheet.format),
     cell: pack.cell,
     grid: pack.grid,
-    scale: pack.scale,
-    hitTestAlphaThreshold: pack.runtime.render.hitTestAlphaThreshold ?? 1,
+    scale: currentScale,
+    hitTestAlphaThreshold: render.hitTestAlphaThreshold ?? 1,
     states: pack.states,
     initialState: 'idle',
     warnings: pack.warnings,
@@ -125,6 +150,13 @@ function boot(): void {
     }
   }
 
+  /**
+   * 状态推送后要顺带做的事（目前是刷新托盘菜单里的状态行）。
+   * 用可变钩子而不是直接调 refreshMenu：状态源在 boot 早期就会**同步**产出第一条事件，
+   * 那时托盘与 refreshMenu 还没初始化（const 的 TDZ 会让启动直接抛异常）。
+   */
+  let afterStatusPush: (() => void) | null = null;
+
   /** 把仲裁结果推给渲染层。replay=true 表示这是重载后的补推，见 StatusPush.replay。 */
   function pushStatus(replay = false): void {
     if (overlay.browserWindow.isDestroyed()) return;
@@ -137,6 +169,7 @@ function boot(): void {
     console.log(`[pet][status] 推送 ${state.status} → ${anim} rev=${state.rev}` +
       (state.badgeCount > 0 ? ` 角标=${state.badgeCount}` : '') +
       (replay ? '（重载补推，不重播一次性动作）' : ''));
+    afterStatusPush?.();
   }
 
   let statusSource: StatusSource | null = null;
@@ -158,6 +191,103 @@ function boot(): void {
   setInterval(() => {
     if (arbiter.tick()) pushStatus();
   }, 250);
+
+  // —— 托盘 / 右键菜单：一张动作表，两个入口共用（M2 ②）——
+  // 设计见 docs/design/m2-tray-menu.md，可行性探针见 spikes/m2-menu。
+  let tray: ReturnType<typeof createTray> | null = null;
+
+  /**
+   * 让宠物恢复显示。**这是"重新显示"的唯一入口**。
+   *
+   * 为什么必须共用一处（ADR 009）：`hide()` → `showInactive()` 之后，Windows 不再把
+   * **真实鼠标按钮事件**路由到这个窗口（移动事件正常），唯一可靠的恢复手段是重载渲染层。
+   * 重载会触发渲染层重新报到，CH.ready 那段再统一补发 init / 强制重报命中 / 补推状态。
+   * 任何地方单独写 `win.show()` 都会留下"看着正常但点不动"的窗口。
+   */
+  function resumePet(): void {
+    overlay.show();
+    overlay.reload();
+  }
+
+  /** 菜单视图：状态全部现读，菜单自己不持有状态（ADR 010 的唯一真值约定）。 */
+  function petMenuView(): PetMenuView {
+    const s = arbiter.state;
+    const statusLine = STATUS_TEXT[s.status] +
+      (s.badgeCount > 0 ? ` · 另有 ${s.badgeCount} 条会话` : '');
+    return {
+      visible: overlay.isVisible(),
+      scale: currentScale,
+      autoStart: isAutoStartEnabled(),
+      statusLine,
+      defaultScale: pack.scale,
+      scaleRange,
+      scaleStep,
+    };
+  }
+
+  const refreshMenu = (): void => tray?.refresh();
+  afterStatusPush = refreshMenu;   // 状态变化后刷新托盘的提示与状态行
+
+  const actions: PetMenuActions = {
+    toggleVisibility() {
+      if (overlay.isVisible()) {
+        overlay.hide();
+        console.log('[pet] 已隐藏宠物（进程与托盘仍在，可从托盘恢复）');
+      } else {
+        resumePet();
+        console.log('[pet] 恢复显示宠物');
+      }
+      refreshMenu();
+    },
+    setScale(next) {
+      const s = clampScale(next);
+      if (s === currentScale) return;
+      currentScale = s;
+      savePrefs({ scale: s });
+      payload = null;                       // init 载荷里带着 scale，必须重建
+      const size = overlay.setScale(s, pack.cell);
+      resumePet();                          // canvas 尺寸与命中映射都按新 scale 走，靠重载重建
+      console.log(`[pet] 缩放 → ${s}（窗口内容区 ${size.width}x${size.height} DIP）`);
+      refreshMenu();
+    },
+    resetScale() {
+      savePrefs({ scale: undefined });      // 删掉偏好，回到宠物包默认值
+      if (Math.abs(currentScale - pack.scale) < 0.001) return;
+      currentScale = pack.scale;
+      payload = null;
+      const size = overlay.setScale(currentScale, pack.cell);
+      resumePet();
+      console.log(`[pet] 重置缩放 → ${currentScale}（宠物包默认值）`);
+      refreshMenu();
+    },
+    setAutoStart(on) {
+      writeAutoStart(on);
+      console.log(`[pet] 开机自启 → ${on ? '开' : '关'}（回读=${isAutoStartEnabled()}）`);
+      refreshMenu();
+    },
+    quit() {
+      console.log('[pet] 用户从菜单退出');
+      void statusSource?.stop();
+      tray?.destroy();
+      app.quit();
+    },
+  };
+
+  // 托盘图标：脚本从图集生成（tools/make-tray-icon.py）。生成失败/缺失只降级不致命。
+  const trayIcon = join(__dirname, '..', '..', 'assets', 'tray.ico');
+  try {
+    tray = createTray({ iconPath: trayIcon, getView: petMenuView, actions });
+    console.log('[pet] 托盘已创建：' + trayIcon);
+  } catch (e) {
+    console.error('[pet] 托盘创建失败（宠物本体不受影响，但隐藏后将无入口可恢复）：' + String(e));
+  }
+
+  // 探针用接缝：`--expose-actions` 时把动作表挂到 globalThis，便于自动化验证
+  // "隐藏→显示→仍可点击/拖动""改缩放后尺寸正确""自启回读正确""退出真的退出"。
+  if (process.argv.includes('--expose-actions')) {
+    (globalThis as unknown as { __petActions?: unknown }).__petActions = actions;
+    console.log('[pet] --expose-actions：动作表已挂到 globalThis.__petActions（仅供探针）');
+  }
 
   app.on('will-quit', () => {
     void statusSource?.stop();
@@ -183,8 +313,15 @@ function boot(): void {
   // —— 命中测试：渲染层判定"光标落在实体像素上"才让窗口可交互，否则整窗穿透 ——
   // 2026-09-15 实测：Windows 对分层窗口的逐像素命中测试在此组合下不生效，生效区域
   // 是整个窗口矩形（窗口内 90/90 采样点全部吃掉点击）。故改由渲染层显式接管，见 ADR 008。
+  let lastInteractive = false;
   ipcMain.on(CH.interactive, (_e, state: HitState) => {
-    overlay.setInteractive(Boolean(state?.interactive));
+    const on = Boolean(state?.interactive);
+    // 只在真正变化时打日志：这是"点击到底归谁"的第一手证据，排查穿透类问题全靠它
+    if (on !== lastInteractive) {
+      lastInteractive = on;
+      console.log(`[pet] 命中状态 → ${on ? '可交互（光标在宠物实体上）' : '整窗穿透'}`);
+    }
+    overlay.setInteractive(on);
   });
 
   /** 光标在窗口内容区里的位置（DIP，与渲染层 CSS 像素一致）。 */
@@ -245,6 +382,16 @@ function boot(): void {
   });
 
   ipcMain.on(CH.log, (_e, message: string) => console.log('[pet][renderer] ' + message));
+
+  /**
+   * 宠物上右键 → 弹出宠物菜单。命中判定在渲染层（ADR 008），主进程只管弹。
+   * 原生菜单在 `WS_EX_NOACTIVATE | TOPMOST` 的透明窗口上可弹出、可点击，
+   * 已由 `spikes/m2-menu` 用真实点击实测确认（不是推断）。
+   */
+  ipcMain.on(CH.contextMenu, () => {
+    Menu.buildFromTemplate(buildPetMenuTemplate(petMenuView(), actions))
+      .popup({ window: overlay.browserWindow });
+  });
 
   // —— 用户确认：解除 needs-input 粘滞 ——
   // 单击宠物即"我看到了"。不这样做的话，用户即使已经在终端里回答了问题，

@@ -102,6 +102,14 @@ function tick(ts: number): void {
   if (player && !reducedMotion) player.update(dt);
   draw();
   reconcileStatus();
+  // 每帧用"最近一次已知的光标位置"复评命中。
+  //
+  // 命中判据是**当前帧的精灵 alpha**（ADR 008），而光标停着不动时动画仍在换帧 ——
+  // 只靠"光标移动"驱动评估会出现这个盲区：用户点了一下宠物（切到挥手姿态）后不移动鼠标
+  // 直接拖动，此时光标下的像素已换成空白 → 窗口被切成整窗穿透 → 按下直接穿透过去，
+  // 表现为"点得动、紧接着拖不动"。2026-09-16 由 spikes/m2-menu/probe-tray.js 实测抓到。
+  // 代价只有每帧一次 alpha 查表，且 setInteractive 只在真正变化时发 IPC。
+  if (!dragging && lastCss) evaluateHit(lastCss.x, lastCss.y);
   requestAnimationFrame(tick);
 }
 
@@ -174,6 +182,8 @@ function reconcileStatus(): void {
 // 主进程常态整窗穿透（setIgnoreMouseEvents(true, { forward: true })），鼠标移动仍会转发到这里；
 // 光标落在实体像素上才切回可交互，离开立刻释放。见 ADR 008。
 let interactive = false;
+/** 最近一次已知的光标位置（窗口客户区 CSS 像素）。tick() 每帧用它复评命中，见那里的注释。 */
+let lastCss: { x: number; y: number } | null = null;
 /**
  * @param force 无条件上报。窗口重新显示后必须强制一次：隐藏/显示会让主进程侧的记账
  *   与渲染层错开，若因为"与上次相同"而被跳过，窗口就可能永远停在穿透状态
@@ -211,16 +221,32 @@ function hitAt(cssX: number, cssY: number): boolean {
 }
 
 function evaluateHit(cssX: number, cssY: number, force = false): void {
-  setInteractive(hitAt(cssX, cssY), force);
+  const hit = hitAt(cssX, cssY);
+  // 只在判定变化（或强制重报）时留一行取证：这是"点击到底归谁"的唯一一手数据，
+  // 排查"点得动/点不动"全靠它。带上帧与换算结果，避免事后靠猜坐标。
+  if (force || hit !== interactive) {
+    const f = player?.frame();
+    const s = init?.scale ?? 1;
+    const localX = Math.floor(cssX / s);
+    const localY = f ? Math.floor(cssY / s - f.offsetY) : null;
+    window.pet.log(
+      `命中评估 css=(${Math.round(cssX)},${Math.round(cssY)}) → ${hit ? '实体' : '空白'}` +
+      ` ｜ 帧 row=${f?.row ?? '?'} col=${f?.column ?? '?'} ｜ 换算 local=(${localX},${localY ?? '?'}) scale=${s}`,
+    );
+  }
+  setInteractive(hit, force);
 }
 
-// —— 交互：按住拖动；单击（未拖动）触发一次性挥手 ——
+// —— 交互：按住拖动；单击（未拖动）触发一次性挥手；右键弹宠物菜单 ——
 let dragging = false;
 let moved = 0;
 let lastX = 0;
 let lastY = 0;
 
+// 只处理左键。不加这个判断的话，右键的 pointerdown 也会把 dragging 置真，
+// 于是"右键菜单还没弹出来，宠物已经被拖着走了"。
 canvas.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
   dragging = true;
   moved = 0;
   lastX = e.screenX;
@@ -229,6 +255,10 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 canvas.addEventListener('pointermove', (e) => {
+  // **不要在这里判断 e.button**：pointermove 的 button 是 -1（本次移动没有按钮状态变化），
+  // 按"只处理左键"写会把整段拖动静默吃掉 —— 实测症状是"按下有反应、拖动完全不动"，
+  // 而 down/up/move 计数全都正常（`spikes/m2-menu/probe-tray.js` 抓到）。
+  // dragging 只有左键按下才会置真，这里不必重复判断。
   if (!dragging) return;
   const dx = e.screenX - lastX;
   const dy = e.screenY - lastY;
@@ -239,7 +269,7 @@ canvas.addEventListener('pointermove', (e) => {
 });
 
 canvas.addEventListener('pointerup', (e) => {
-  if (!dragging) return;
+  if (!dragging) return;                 // 同上：pointerup 的 button 对左键是 0，但不必依赖它
   dragging = false;
   canvas.releasePointerCapture(e.pointerId);
   const wasClick = moved < 4;
@@ -253,11 +283,27 @@ canvas.addEventListener('pointerup', (e) => {
   evaluateHit(e.clientX, e.clientY);   // 拖完可能已不在实体像素上，立刻复评
 });
 
+/**
+ * 右键 → 弹出宠物菜单。
+ *
+ * 为什么由渲染层触发（而不是主进程监听鼠标）：窗口常态整窗穿透，只有渲染层知道
+ * 光标是否落在精灵实体上（ADR 008）。Windows 不会替我们判断"这一下算不算点在宠物身上"。
+ * 菜单本身是原生菜单，已实测在 `WS_EX_NOACTIVATE | TOPMOST` 的窗口上可弹出、可点击
+ * （`spikes/m2-menu`）。
+ */
+canvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  window.pet.requestContextMenu();
+});
+// 窗口内空白处（透明区）的右键交还给下层应用，不弹我们的菜单
+window.addEventListener('contextmenu', (e) => e.preventDefault());
+
 // 光标在窗口内移动时复评。注意：常态整窗穿透时 Windows **不会**把鼠标移动转发
 // 到渲染层（实测 0 次），所以真正的驱动源是主进程 ~60Hz 的光标轮询（onPointerHint）。
 // 这个监听器只在窗口已经可交互（光标就在宠物身上）时生效，属于锦上添花。
 window.addEventListener('pointermove', (e) => {
   if (dragging) return;
+  lastCss = { x: e.clientX, y: e.clientY };
   evaluateHit(e.clientX, e.clientY);
 }, true);
 
@@ -270,6 +316,7 @@ window.addEventListener('blur', releaseIfIdle);
 // 主进程按光标位置回报采样点，窗口被拖动或重新显示后也靠它重新定位。
 // force 来自"窗口刚重新显示"，必须无条件重报一次（见 setInteractive 注释）。
 window.pet.onPointerHint((hint) => {
+  lastCss = { x: hint.cssX, y: hint.cssY };
   if (dragging) return;
   evaluateHit(hint.cssX, hint.cssY, Boolean(hint.force));
 });

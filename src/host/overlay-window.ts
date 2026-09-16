@@ -31,6 +31,14 @@ export interface OverlayWindow {
   show(): void;
   moveBy(dx: number, dy: number): void;
   position(): { x: number; y: number };
+  /** 窗口当前是否可见。托盘菜单的"隐藏/显示"文案依赖它。 */
+  isVisible(): boolean;
+  /**
+   * 改缩放并把窗口尺寸重算为 `round(cell × scale)`。
+   * 锚点策略：**保持窗口底边中点不动**，视觉上宠物像站在原地长大/缩小；
+   * 结果会被夹进宠物当前所在显示器的**工作区**，不允许把宠物推到屏幕外。
+   */
+  setScale(scale: number, cell: { width: number; height: number }): { width: number; height: number };
   /** 切换"可交互 / 整窗穿透"。重复设置同一状态会被忽略。 */
   setInteractive(on: boolean): void;
   /** 重新加载渲染层页面（窗口重新显示后必须调用，见实现处注释）。 */
@@ -74,6 +82,13 @@ export function createOverlayWindow(opts: OverlayOptions): OverlayWindow {
 
   const contentW = opts.width;
   const contentH = opts.height;
+  /**
+   * 当前内容区尺寸。用 let 而不是常量：M2 的"宠物大小"会改它（见 setScale）。
+   * 所有移动路径都必须带着这对值走 —— ADR 008 的教训就是"只改位置、不钉尺寸"，
+   * 在 150% 缩放下会让窗口逐次长大。
+   */
+  let cw = contentW;
+  let ch = contentH;
 
   /**
    * 把窗口内容区重新钉回预期尺寸与当前位置。
@@ -96,7 +111,7 @@ export function createOverlayWindow(opts: OverlayOptions): OverlayWindow {
   /** 把窗口内容区钉回预期尺寸与当前位置（也顺带抹平 DIP↔物理取整的漂移）。 */
   function pinContentBounds(): void {
     const b = win.getContentBounds();
-    win.setContentBounds({ x: b.x, y: b.y, width: contentW, height: contentH });
+    win.setContentBounds({ x: b.x, y: b.y, width: cw, height: ch });
   }
   pinContentBounds();   // 创建后先归一化一次（顺带消除实测到的 4 DIP view/窗口错位）
 
@@ -141,13 +156,35 @@ export function createOverlayWindow(opts: OverlayOptions): OverlayWindow {
       win.setContentBounds({
         x: Math.round(b.x + dx),
         y: Math.round(b.y + dy),
-        width: contentW,
-        height: contentH,
+        width: cw,
+        height: ch,
       });
     },
     position: () => {
       const [px = 0, py = 0] = win.getPosition();
       return { x: px, y: py };
+    },
+    isVisible: () => win.isVisible(),
+    /**
+     * 改缩放。锚点选"窗口底边中点"：宠物的触地点在地平线上，缩放时站在原地长大/缩小
+     * 最自然；若锚左上角，放大后宠物会跑到屏幕外。
+     * 最后一步一定要夹进工作区：3 倍放大在右下角会把宠物推出屏幕。
+     */
+    setScale: (scale, cell) => {
+      const w = Math.round(cell.width * scale);
+      const h = Math.round(cell.height * scale);
+      const b = win.getContentBounds();
+      const centerX = b.x + b.width / 2;
+      const bottom = b.y + b.height;
+      const area = screen.getDisplayNearestPoint({
+        x: Math.round(centerX), y: Math.round(bottom),
+      }).workArea;
+      const x = Math.min(Math.max(Math.round(centerX - w / 2), area.x), area.x + area.width - w);
+      const y = Math.min(Math.max(Math.round(bottom - h), area.y), area.y + area.height - h);
+      cw = w;
+      ch = h;
+      win.setContentBounds({ x, y, width: w, height: h });
+      return { width: w, height: h };
     },
     setInteractive: (on) => {
       if (on === interactive) return;

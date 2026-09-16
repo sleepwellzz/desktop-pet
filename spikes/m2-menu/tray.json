@@ -1,0 +1,87 @@
+{
+ "steps": [
+  {
+   "name": "隐藏→显示",
+   "hidden": true,
+   "visibleAfterShow": true,
+   "clickAfterShow": 1,
+   "dragged": true,
+   "delta": {
+    "dx": -270,
+    "dy": -200
+   },
+   "dragEvents": {
+    "down": 1,
+    "up": 1,
+    "move": 21,
+    "cancel": 0
+   },
+   "transparentAtStart": false,
+   "transparentBeforeDown": false
+  },
+  {
+   "name": "setScale(1.0)",
+   "bounds": {
+    "x": 1250,
+    "y": 595,
+    "width": 192,
+    "height": 208
+   },
+   "sizeOk": true,
+   "expected": {
+    "w": 192,
+    "h": 208
+   },
+   "bottomCenterDrift": {
+    "dx": 0,
+    "dBottom": 0
+   },
+   "centerHit": 1,
+   "cornerHit": 0,
+   "clamped": {
+    "x": false,
+    "y": false,
+    "area": {
+     "x": 0,
+     "y": 0,
+     "width": 1707,
+     "height": 1027
+    }
+   }
+  },
+  {
+   "name": "resetScale",
+   "bounds": {
+    "x": 1279,
+    "y": 657,
+    "width": 134,
+    "height": 146
+   }
+  },
+  {
+   "name": "autostart",
+   "authBefore": false,
+   "authOn": true,
+   "regOn": {
+    "out": "",
+    "err": "",
+    "status": 0
+   },
+   "authOff": false,
+   "regOff": {
+    "out": "",
+    "err": "",
+    "status": 0
+   }
+  }
+ ],
+ "pid": 151700,
+ "actionsAvailable": true,
+ "trayCreated": true,
+ "cursorBeforeQuit": {
+  "x": 1881,
+  "y": 899
+ },
+ "failures": [],
+ "verdict": "PASS"
+}
