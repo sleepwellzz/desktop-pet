@@ -1,0 +1,41 @@
+{
+ "platform": "win32",
+ "results": [
+  {
+   "accelerator": "Super+Alt+P",
+   "registered": true,
+   "error": null,
+   "isRegistered": true
+  },
+  {
+   "accelerator": "Ctrl+Alt+P",
+   "registered": true,
+   "error": null,
+   "isRegistered": true
+  },
+  {
+   "accelerator": "Super+Shift+P",
+   "registered": false,
+   "error": null,
+   "isRegistered": false
+  },
+  {
+   "accelerator": "CommandOrControl+Shift+Alt+P",
+   "registered": true,
+   "error": null,
+   "isRegistered": true
+  },
+  {
+   "accelerator": "Super+Alt+Space",
+   "registered": true,
+   "error": null,
+   "isRegistered": true
+  },
+  {
+   "accelerator": "CommandOrControl+Alt+B",
+   "registered": true,
+   "error": null,
+   "isRegistered": true
+  }
+ ]
+}
