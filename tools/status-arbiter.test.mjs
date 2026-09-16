@@ -79,6 +79,26 @@ section('② 优先级 / 同分裁决 / 多会话角标');
   eq('气泡文案取自 statusMap', arb.state.bubble, '需要输入');
   eq('attentionPulse 透传', arb.state.attentionPulse, true);
 }
+{
+  // 人工验收里的实际场景（喂状态.bat 按 4 再按 8）：needs-input 先进入粘滞，
+  // 之后**另一个会话**转 running —— 角标必须变 +1，且主状态仍是 needs-input
+  // （粘滞不该被 running 顶掉）。单会话永远得不出 +1，这是用户实际困惑过的点。
+  const clock = makeClock();
+  const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now });
+  arb.ingest({ sessionId: 'default', status: 'needs-input' });
+  eq('粘滞起点：needs-input', arb.state.status, 'needs-input');
+  eq('只有一个会话时角标为 0（这就是"开两个终端也看不到 +1"的原因）', arb.state.badgeCount, 0);
+
+  clock.advance(600);
+  arb.ingest({ sessionId: 'b', status: 'running' });
+  eq('第二个会话出现后角标变 1', arb.state.badgeCount, 1);
+  eq('粘滞期间主状态仍是 needs-input', arb.state.status, 'needs-input');
+  eq('气泡文案仍是 needs-input 那条', arb.state.bubble, '需要输入');
+
+  clock.advance(600);
+  arb.ingest({ sessionId: 'b', status: 'idle' });
+  eq('第二个会话转 idle 后角标归零', arb.state.badgeCount, 0);
+}
 
 // —— ③ 变化限流 + 最短展示 ——
 section('③ 变化限流 / 最短展示（不丢弃，等窗格过后补上）');

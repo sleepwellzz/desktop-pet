@@ -5,7 +5,7 @@
    "visible": true,
    "text": "运行中",
    "badge": 0,
-   "hideAt": 1789588540886,
+   "hideAt": 1789590110227,
    "rendered": {
     "hidden": false,
     "text": "运行中",
@@ -24,7 +24,7 @@
    "visible": true,
    "text": "运行中",
    "badge": 0,
-   "hideAt": 1789588540886,
+   "hideAt": 1789590110227,
    "rendered": {
     "hidden": false,
     "text": "运行中",
@@ -75,6 +75,39 @@
   "visBefore": true,
   "visAfterHide": false,
   "visAfterShow": true
+ },
+ "textGeometry": {
+  "text": "需要输入",
+  "fontSize": "13px",
+  "lineHeight": "20px",
+  "canvasFontBox": 17,
+  "lineBoxH": 20,
+  "clientH": 20,
+  "canvasInkHeight": 12,
+  "slackLeft": 1.6875,
+  "slackRight": 1.697916030883789,
+  "pillHeight": 38
+ },
+ "textClip": {
+  "inkClipped": {
+   "width": 165,
+   "height": 57,
+   "x0": 20,
+   "x1": 99,
+   "top": 20,
+   "bottom": 39
+  },
+  "inkOpen": {
+   "width": 165,
+   "height": 57,
+   "x0": 20,
+   "x1": 99,
+   "top": 20,
+   "bottom": 39
+  },
+  "clipTopPx": 0,
+  "clipBottomPx": 0,
+  "dpr": 1.5
  },
  "bubbleFollow": {
   "beforeFollow": {

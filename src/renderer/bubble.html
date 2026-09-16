@@ -11,16 +11,24 @@
     body { pointer-events: none; user-select: none;
            font-family: "Microsoft YaHei", "Segoe UI", system-ui, sans-serif; }
     #bubble {
-      display: flex; align-items: center; gap: 6px;
+      /* justify-content: center —— flex 默认 flex-start，而气泡宽度是主进程**估算**出来的
+         （estimateBubbleWidth），估算偏大时多出来的余量全落在右侧，文字看起来就没居中
+         （实测左余量 0.00px / 右余量 3.39px）。 */
+      display: flex; align-items: center; justify-content: center; gap: 6px;
       box-sizing: border-box; width: 100%; height: 100%;
       padding: 0 12px;
       border-radius: 16px;
       background: rgba(28, 32, 40, 0.86);
-      color: #f5f7fa; font-size: 13px; line-height: 1;
+      color: #f5f7fa; font-size: 13px;
+      /* line-height 必须**不小于字体自身行高**（雅黑 13px 约 17px），否则字形会溢出 line box，
+         再被下面那句 overflow:hidden（省略号必需）把字的下缘切掉 —— 实测裁掉 1 个物理像素，
+         症状是"每个字最下方显示不全"。改 20px 后裁切归零，见 spikes/m2-hotkey/README.md。 */
+      line-height: 20px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     body.hidden #bubble { display: none; }
-    #text { overflow: hidden; text-overflow: ellipsis; }
+    /* min-width:0 是让 flex 子项**真的能收缩**（否则文本撑开盒子，省略号不生效） */
+    #text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     #badge {
       flex: 0 0 auto;
       min-width: 17px; height: 17px; padding: 0 5px; box-sizing: border-box;

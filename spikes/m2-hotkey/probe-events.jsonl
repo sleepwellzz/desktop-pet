@@ -14,3 +14,15 @@
 {"sessionId":"a","status":"running","title":"a","ts":1789588539519,"origin":"file"}
 {"sessionId":"a","status":"running","title":"a","ts":1789588541567,"origin":"file"}
 {"sessionId":"b","status":"needs-input","title":"b","ts":1789588541567,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789589848254,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789589849009,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789589851072,"origin":"file"}
+{"sessionId":"b","status":"needs-input","title":"b","ts":1789589851072,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789589973103,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789589973858,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789589975890,"origin":"file"}
+{"sessionId":"b","status":"needs-input","title":"b","ts":1789589975890,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789590108094,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789590108855,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789590110900,"origin":"file"}
+{"sessionId":"b","status":"needs-input","title":"b","ts":1789590110900,"origin":"file"}

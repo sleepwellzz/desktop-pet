@@ -170,6 +170,108 @@ app.whenReady().then(async () => {
       log('[probe] 气泡截图失败：' + String(e));
     }
 
+    // —— 用例 2b：气泡里文字**有没有被裁、有没有居中** ——
+    // 起因（2026-09-16 用户实测）：`line-height: 1` 让行盒只有 13px，而雅黑 13px 自身的
+    // ascent+descent ≈ 17.2px —— 字形上下各溢出约 2px，被 #text / #bubble 的 overflow:hidden
+    // 裁掉，症状是"每个字的最下方显示不全"。
+    // 判据不靠肉眼看截图：用 canvas 的字体度量算出**墨迹盒**，再与行盒比，得到像素级的裁切量；
+    // 水平方向同理，量左右余量判断是否真居中（flex 默认 flex-start，估算宽度多出来的余量全落右侧）。
+    const f2 = (v) => (typeof v === 'number' ? v.toFixed(2) : '?');
+    const textGeometry = async () => {
+      const w = bubbleWindow();
+      if (!w) return null;
+      return w.webContents.executeJavaScript(`(() => {
+        const bubble = document.getElementById('bubble');
+        const textEl = document.getElementById('text');
+        const badgeEl = document.getElementById('badge');
+        const cs = getComputedStyle(textEl);
+        const cv = document.createElement('canvas').getContext('2d');
+        cv.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+        const m = cv.measureText(textEl.textContent || '');
+        const boxH = textEl.getBoundingClientRect().height;
+        const br = bubble.getBoundingClientRect();
+        const tr = textEl.getBoundingClientRect();
+        const badgeVisible = !!badgeEl.textContent && getComputedStyle(badgeEl).display !== 'none';
+        const contentRight = badgeVisible ? badgeEl.getBoundingClientRect().right : tr.right;
+        const bcs = getComputedStyle(bubble);
+        return JSON.stringify({
+          text: textEl.textContent, fontSize: cs.fontSize, lineHeight: cs.lineHeight,
+          // 仅供参考：canvas 的字体度量与 Chromium 排版用的度量**不是同一套**，
+          // 实测按它反推的裁切量与真实渲染对不上（算出 0，而像素证据显示被裁）。
+          // 所以"有没有被裁"一律以 inkRows() 的差分取值为准，这里只留作背景信息。
+          canvasFontBox: m.fontBoundingBoxAscent + m.fontBoundingBoxDescent,
+          lineBoxH: boxH, clientH: textEl.clientHeight,
+          canvasInkHeight: m.actualBoundingBoxAscent + m.actualBoundingBoxDescent,
+          slackLeft: tr.left - br.left - parseFloat(bcs.paddingLeft),
+          slackRight: br.right - contentRight - parseFloat(bcs.paddingRight),
+          pillHeight: br.height,
+        });
+      })()`).then((s) => JSON.parse(s)).catch((e) => ({ error: String(e) }));
+    };
+    const geo = await textGeometry();
+    report.textGeometry = geo;
+    if (geo && !geo.error) {
+      log(`[probe] 文字几何：字号=${geo.fontSize} line-height=${geo.lineHeight} `
+        + `行盒=${f2(geo.lineBoxH)}px（canvas 估字体盒 ${f2(geo.canvasFontBox)}px / 墨迹 ${f2(geo.canvasInkHeight)}px）｜ `
+        + `左右余量=${f2(geo.slackLeft)}/${f2(geo.slackRight)}px ｜ 胶囊高 ${f2(geo.pillHeight)}`);
+    } else {
+      log('[probe] 拿不到文字几何度量：' + (geo && geo.error));
+    }
+
+    // —— 用例 2c：文字**有没有被裁** ——
+    // 差分法：同一帧截两次 —— 保留 overflow:hidden（真实渲染），再注入一段 CSS 把裁切关掉。
+    // 两次的"文字墨迹行范围"之差就是被裁掉的像素数。**不依赖任何字体度量公式**，
+    // 因为它比的是真实渲染结果本身（2026-09-16：正是这一点纠正了 canvas 度量给出的假阴性）。
+    // 只扫 #text 的列带（避开右侧角标），所以量到的就是正文文字。
+    const textBand = async () => {
+      const w = bubbleWindow();
+      return w.webContents.executeJavaScript(
+        `(() => { const r = document.getElementById('text').getBoundingClientRect();
+          return JSON.stringify({ left: r.left, right: r.right }); })()`,
+      ).then(JSON.parse);
+    };
+    /** 在 #text 的列带里找"亮像素"（近白 = 正文文字）的首次/末次出现的行号（物理像素）。 */
+    const inkRows = async () => {
+      const w = bubbleWindow();
+      const img = await w.webContents.capturePage();
+      const { width, height } = img.getSize();
+      const buf = img.toBitmap();                       // BGRA，索引 3 是 alpha
+      const band = await textBand();
+      const x0 = Math.max(0, Math.floor(band.left * dpr));
+      const x1 = Math.min(width, Math.ceil(band.right * dpr));
+      let top = -1;
+      let bottom = -1;
+      for (let y = 0; y < height; y += 1) {
+        let bright = 0;
+        for (let x = x0; x < x1; x += 1) {
+          const o = (y * width + x) * 4;
+          if (buf[o] > 180 && buf[o + 1] > 180 && buf[o + 2] > 180) bright += 1;
+        }
+        if (bright >= 2) { if (top < 0) top = y; bottom = y; }
+      }
+      return { width, height, x0, x1, top, bottom };
+    };
+    const UNCLIP = "(() => { const s = document.createElement('style'); s.id = 'probe-unclip';"
+      + " s.textContent = '#bubble{overflow:visible !important} #text{overflow:visible !important}';"
+      + " document.head.appendChild(s); return 'ok'; })()";
+    const inkClipped = await inkRows();
+    await bubbleWindow().webContents.executeJavaScript(UNCLIP).catch(() => {});
+    await sleep(350);
+    const inkOpen = await inkRows();
+    await bubbleWindow().webContents.executeJavaScript(
+      "(() => { const s = document.getElementById('probe-unclip'); if (s) s.remove(); return 'ok'; })()",
+    ).catch(() => {});
+    await sleep(200);
+    // 差分得到的是**整数物理像素**级的事实，所以下面按物理像素判、容差为 0：
+    // overflow:hidden 不该吃掉任何一列字形墨迹。正数 = 该侧被裁掉的像素数。
+    const clipTopPx = Math.max(0, inkClipped.top - inkOpen.top);
+    const clipBottomPx = Math.max(0, inkOpen.bottom - inkClipped.bottom);
+    report.textClip = { inkClipped, inkOpen, clipTopPx, clipBottomPx, dpr };
+    log(`[probe] 文字裁切（差分）：裁切时墨迹行 ${inkClipped.top}..${inkClipped.bottom}，`
+      + `关掉 overflow 后 ${inkOpen.top}..${inkOpen.bottom}（窗口高 ${inkClipped.height}px @${dpr}x）`
+      + ` → 被裁 上 ${clipTopPx} / 下 ${clipBottomPx} 物理像素`
+      + `（${f2(clipTopPx / dpr)} / ${f2(clipBottomPx / dpr)} DIP）`);
+
     // —— 用例 3：拖动宠物时气泡跟随 ——
     const bwFollow = bubbleWindow();
     const beforeFollow = bwFollow ? bwFollow.getContentBounds() : null;
@@ -213,6 +315,23 @@ app.whenReady().then(async () => {
     const s4 = report.steps.find((x) => x.label.startsWith('needs-input'));
     if (!s4.visible || s4.badge !== 1 || s4.rendered?.badge !== '+1') fails.push('needs-input 气泡/角标不对');
     if (s4.hideAt !== null) fails.push('needs-input 不是常驻');
+    const g = report.textGeometry;
+    if (!g || g.error) fails.push('没量到气泡文字几何（无法判断是否居中）');
+    else if (Math.abs(g.slackLeft - g.slackRight) > 2) {
+      fails.push(`气泡文字没有水平居中：左余量 ${f2(g.slackLeft)}px vs 右余量 ${f2(g.slackRight)}px`);
+    }
+    const tc = report.textClip;
+    if (!tc || tc.inkClipped.top < 0) fails.push('没量到气泡文字墨迹（无法判断是否被裁）');
+    else {
+      if (tc.clipTopPx > 0) fails.push(`气泡文字上缘被裁掉 ${tc.clipTopPx} 物理像素`);
+      if (tc.clipBottomPx > 0) fails.push(`气泡文字下缘被裁掉 ${tc.clipBottomPx} 物理像素`);
+      // 兜底：墨迹高度远小于字号，说明有大面积裁切（防差分判据本身失效时静默通过）
+      const inkHeightDip = (tc.inkClipped.bottom - tc.inkClipped.top + 1) / tc.dpr;
+      const fontSize = parseFloat((g && g.fontSize) || '13');
+      if (inkHeightDip < fontSize * 0.7) {
+        fails.push(`气泡文字墨迹只有 ${f2(inkHeightDip)} DIP 高（字号 ${f2(fontSize)}px），疑似被裁`);
+      }
+    }
     if (!report.bubbleFollow.followed) fails.push('拖动宠物时气泡没跟随');
     if (!report.petClickDuringBubble.works) fails.push('气泡工作期间宠物点不动了');
     report.failures = fails;
