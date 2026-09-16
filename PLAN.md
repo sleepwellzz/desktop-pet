@@ -21,10 +21,15 @@
 - **这个环境的 Bash shim 没有 npm**，用 `node tools/npm-run.mjs build`（或 `typecheck` / `start`）代替。
 - 批处理必须保持纯 ASCII（`cmd` 按 GBK 读 `.bat`），且必须 `call npm.cmd`。
 - **喂状态给宠物**（没有真实 agent 时，也是人工验收的入口）：
-  - 图形方式：双击工程根目录 `喂状态.bat`，按数字选状态（1 running / 2 ready / 3 blocked /
-    4 needs-input / 5 running again / 6 idle / 7 clear / L 看文件）。
+  - 图形方式：双击工程根目录 `喂状态.bat`。它是**循环菜单**：按数字喂一次 → 退回菜单 → 继续按，
+    按 Q 才退出（不要反复重开窗口）。1 running / 2 ready / 3 blocked / 4 needs-input /
+    5 running 再喂一次 / 6 idle / 7 clear / L 看文件。
   - 命令方式：`node tools/pet-hook.mjs <状态> [--title="…"]`。
   - 状态文件默认在 `C:\Users\<用户名>\.desktop-pet\status.json`（hook 不需要知道工程路径）。
+- **动作外观查 `docs/status-reference.png`**（`python tools/make-status-reference.py` 生成）：
+  业务状态 → 动画状态 → 精灵图行 → 屏幕上实际长什么样。**不要凭状态名猜外观** ——
+  这只包的 `running`（运行中）落在第 7 行，而作者在那里画的是**生日姿态**，真正的跑动在第 1、2 行
+  （当前无业务状态映射过去）。换宠物包后要重新生成这张图。
 
 **人工验收怎么做**（每轮里程碑结束时走一遍，步骤与期望写在
 `journal/2026-09-16-状态源接入.md` 的"人工验收"一节）：启动桌宠 → 双击 `喂状态.bat` →
@@ -105,6 +110,7 @@ M2 会新增窗口（控制条、托盘），这类改动最容易碰坏 ADR 009
 | 工作区为什么"不在列表里"/为什么落到时间戳目录 | `docs/decisions/006-工作区识别与登记机制.md` |
 | 全屏让位/点击命中/拖动的手感怎么测的、怎么复现 | `spikes/m2-hittest/README.md` |
 | 缩放前后对比图（1.0 vs 0.75） | `docs/scale-compare.png` |
+| **每个业务状态在屏幕上长什么样**（含行号与真实绘制方式） | `docs/status-reference.png`（`python tools/make-status-reference.py` 重新生成） |
 | 历史会话做过什么 | `journal/`（按日期追加，最新在最后） |
 | 技术验证工程 | `spikes/`：m0-window 窗口层 / m1-shot 自检截图 / **m2-hittest 命中区域·尺寸漂移·全屏输入通路** / **m2-status 状态链路端到端** |
 | 窗口层实测结论与踩坑清单 | `spikes/m0-window/README.md`（开工前必读，能省掉一批已知坑） |
