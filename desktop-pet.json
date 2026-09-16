@@ -70,12 +70,23 @@
     "sleepState": "failed",
     "sleepNote": "长时间无任务时复用趴卧帧作为「打盹」，无需新增美术资源。"
   },
+  "bubble": {
+    "note": "气泡与多会话角标由**独立的透明层窗口**绘制，不扩大宠物窗口 —— 扩大会改窗口矩形，命中判定的坐标系与边界都得重新验证（ADR 008/009 的地盘，见 docs/design/m2-hotkey-bubble.md）。该层常态整窗穿透、永不切换，因此与 ADR 009 那个 hide→show 后按钮事件不路由的坑无关。",
+    "stickyStatuses": ["needs-input"],
+    "holdMsByStatus": { "idle": 0, "running": 2000, "blocked": 4000, "ready": 6000 },
+    "defaultHoldMs": 3000,
+    "minWidth": 88,
+    "maxWidth": 320,
+    "height": 32,
+    "gapAbovePet": 10,
+    "timerTickMs": 250
+  },
   "interaction": {
     "drag": "按住拖动，松开后记忆位置；拖动期间抑制自主漫游",
     "click": "单击切换下一个宠物 / 显示快捷输入",
     "doubleClick": "唤起主窗口",
     "rightClickMenu": ["隐藏宠物", "切换宠物", "宠物大小", "重置大小", "开机自启", "退出"],
-    "hideShortcut": { "default": "Win+Alt+P", "action": "切换悬浮控制条与快捷输入焦点", "conflictRisk": "Win+Alt+P 在 Windows 上可能与部分显卡/AI 工具快捷键冲突，需支持用户自定义并做占用检测" },
+    "hideShortcut": { "default": "Win+Alt+P", "fallbacks": ["Ctrl+Alt+P", "Win+Alt+Space", "Ctrl+Shift+Alt+P"], "action": "切换宠物显示/隐藏", "conflictRisk": "Win+Alt+P 在 Windows 上可能与部分显卡/AI 工具快捷键冲突。注意：这里是**人话**写法，代码注册前会归一化成 Electron 的 accelerator（Windows 键在 Electron 里叫 Super）—— 直接拿 Win+Alt+P 去注册会返回成功但永不触发，见 spikes/m2-hotkey/。" },
     "tray": ["显示/隐藏", "宠物管理", "设置", "退出"]
   },
   "extraAssets": {

@@ -1,0 +1,20 @@
+{
+ "results": [
+  {
+   "variant": "registered",
+   "ok": true
+  },
+  {
+   "variant": "A 裸注入",
+   "fired": 1
+  },
+  {
+   "variant": "B LWIN 带扩展位",
+   "fired": 1
+  },
+  {
+   "variant": "C 先按键再注入",
+   "fired": 1
+  }
+ ]
+}

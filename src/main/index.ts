@@ -17,7 +17,10 @@ import { detectFullscreen, startFullscreenWatch, fullscreenUnavailableReason } f
 import { createTray } from '../host/tray';
 import { buildPetMenuTemplate, type PetMenuActions, type PetMenuView } from '../host/pet-menu';
 import { isAutoStartEnabled, writeAutoStart } from '../host/autostart';
+import { registerHotkey, unregisterHotkeys } from '../host/hotkey';
+import { createBubbleLayer, type BubbleLayer } from '../host/bubble-layer';
 import { loadPrefs, savePrefs } from '../host/prefs';
+import { BUBBLE_HIDDEN, bubbleExpired, nextBubbleState, parseBubblePolicy, type BubbleState } from '../kernel/bubble-policy';
 import { CH, type DragDelta, type HitState, type PointerHint, type RendererInit, type StatusPush } from '../shared/ipc';
 
 /** 菜单里的状态行文案。用业务状态而不是动画状态名（用户看到的应该是"在干什么"）。 */
@@ -188,8 +191,10 @@ function boot(): void {
   }
 
   // 仲裁器需要"时间推进"才能处理粘滞超时、会话静默过期，以及被限流挡下的那次切换。
+  // 气泡的到期检查顺带挂在这里（它也是"到点就该收"的语义，没必要另开一个定时器）。
   setInterval(() => {
     if (arbiter.tick()) pushStatus();
+    expireBubble();
   }, 250);
 
   // —— 托盘 / 右键菜单：一张动作表，两个入口共用（M2 ②）——
@@ -219,6 +224,7 @@ function boot(): void {
       scale: currentScale,
       autoStart: isAutoStartEnabled(),
       statusLine,
+      hotkey: activeHotkey,
       defaultScale: pack.scale,
       scaleRange,
       scaleStep,
@@ -226,15 +232,18 @@ function boot(): void {
   }
 
   const refreshMenu = (): void => tray?.refresh();
-  afterStatusPush = refreshMenu;   // 状态变化后刷新托盘的提示与状态行
+  // 状态推送后要做的两件事：刷新托盘的提示与状态行；按策略刷新气泡。
+  afterStatusPush = (): void => { refreshMenu(); refreshBubble(); };
 
   const actions: PetMenuActions = {
     toggleVisibility() {
       if (overlay.isVisible()) {
         overlay.hide();
+        bubble?.hide();                     // 气泡是宠物的一部分，主人不在就一起收
         console.log('[pet] 已隐藏宠物（进程与托盘仍在，可从托盘恢复）');
       } else {
         resumePet();
+        refreshBubble(true);                // 宠物回来时把气泡重新贴上去（策略不变）
         console.log('[pet] 恢复显示宠物');
       }
       refreshMenu();
@@ -247,6 +256,7 @@ function boot(): void {
       payload = null;                       // init 载荷里带着 scale，必须重建
       const size = overlay.setScale(s, pack.cell);
       resumePet();                          // canvas 尺寸与命中映射都按新 scale 走，靠重载重建
+      refreshBubble(true);
       console.log(`[pet] 缩放 → ${s}（窗口内容区 ${size.width}x${size.height} DIP）`);
       refreshMenu();
     },
@@ -257,6 +267,7 @@ function boot(): void {
       payload = null;
       const size = overlay.setScale(currentScale, pack.cell);
       resumePet();
+      refreshBubble(true);
       console.log(`[pet] 重置缩放 → ${currentScale}（宠物包默认值）`);
       refreshMenu();
     },
@@ -269,9 +280,39 @@ function boot(): void {
       console.log('[pet] 用户从菜单退出');
       void statusSource?.stop();
       tray?.destroy();
+      bubble?.destroy();
+      unregisterHotkeys();
       app.quit();
     },
   };
+
+  // —— 全局快捷键（在托盘之前注册：petMenuView 要读 activeHotkey，早于它调用会踩 TDZ）——
+  // 默认值与降级链来自宠物包（interaction.hideShortcut）；本机实测默认值可用，见 spikes/m2-hotkey/。
+  const shortcutMeta = pack.runtime.interaction?.['hideShortcut'] as
+    | { default?: string; fallbacks?: string[] }
+    | undefined;
+  const preferredHotkey = prefs.hotkey ?? shortcutMeta?.default ?? 'Super+Alt+P';
+  const fallbackHotkeys = Array.isArray(shortcutMeta?.fallbacks)
+    ? shortcutMeta.fallbacks
+    : ['Ctrl+Alt+P', 'Super+Alt+Space', 'Ctrl+Shift+Alt+P'];
+  const hotkeyResult = registerHotkey(preferredHotkey, fallbackHotkeys, () => {
+    console.log('[pet] 全局快捷键触发：切换宠物显示');
+    actions.toggleVisibility();
+  });
+  const activeHotkey: string | null = hotkeyResult.accelerator;
+  if (hotkeyResult.ok) {
+    const how = hotkeyResult.usedFallback
+      ? `（首选 ${preferredHotkey} 不可用，已降级）`
+      : hotkeyResult.normalizedFrom
+        ? `（由 ${hotkeyResult.normalizedFrom} 归一化而来）`
+        : '';
+    console.log(`[pet] 快捷键已注册：${activeHotkey}${how}`);
+  } else {
+    console.warn('[pet] 快捷键注册失败（全部候选都被占用）：' +
+      hotkeyResult.attempts.map((a) => a.accelerator).join(' / ') +
+      '；宠物仍可从托盘或右键菜单操作');
+  }
+
 
   // 托盘图标：脚本从图集生成（tools/make-tray-icon.py）。生成失败/缺失只降级不致命。
   const trayIcon = join(__dirname, '..', '..', 'assets', 'tray.ico');
@@ -282,15 +323,70 @@ function boot(): void {
     console.error('[pet] 托盘创建失败（宠物本体不受影响，但隐藏后将无入口可恢复）：' + String(e));
   }
 
-  // 探针用接缝：`--expose-actions` 时把动作表挂到 globalThis，便于自动化验证
-  // "隐藏→显示→仍可点击/拖动""改缩放后尺寸正确""自启回读正确""退出真的退出"。
+  // —— 气泡层：状态文案与多会话角标（独立窗口，见 host/bubble-layer.ts 顶部注释）——
+  const bubblePolicy = parseBubblePolicy((pack.runtime as unknown as Record<string, unknown>)['bubble']);
+  let bubble: BubbleLayer | null = null;
+  let bubbleState: BubbleState = BUBBLE_HIDDEN;
+  try {
+    bubble = createBubbleLayer({
+      htmlPath: join(__dirname, '..', 'renderer', 'bubble.html'),
+      preloadPath: join(__dirname, 'bubble-preload.js'),
+      gapAbovePet: 10,
+      minWidth: 88,
+      maxWidth: 320,
+      height: 32,
+    });
+    console.log('[pet] 气泡层已创建（常态整窗穿透，不参与命中判定）');
+  } catch (e) {
+    console.error('[pet] 气泡层创建失败（状态仍可从托盘菜单查看）：' + String(e));
+  }
+
+  /**
+   * 按仲裁器状态刷新气泡。策略是纯函数（kernel/bubble-policy.ts），这里只做"应用结果"。
+   * @param force 绕过"状态未变就不动"的短路（宠物重新显示后要重新贴上去）。
+   */
+  function refreshBubble(force = false): void {
+    if (!bubble) return;
+    const s = arbiter.state;
+    const next = nextBubbleState(bubbleState, { status: s.status, text: s.bubble, badgeCount: s.badgeCount }, bubblePolicy, Date.now());
+    if (!force && next === bubbleState) return;
+    const wasVisible = bubbleState.visible;
+    bubbleState = next;
+    if (!next.visible || !next.text) {
+      if (wasVisible || force) bubble.hide();
+      return;
+    }
+    bubble.show(next.text, next.badge);
+  }
+
+  /** 气泡到期检查（由 250ms 的仲裁 tick 顺带驱动，不另开定时器）。 */
+  function expireBubble(): void {
+    if (!bubble) return;
+    if (!bubbleExpired(bubbleState, Date.now())) return;
+    bubbleState = { ...bubbleState, visible: false, hideAt: null };
+    bubble.hide();
+  }
+
+  refreshMenu();   // 快捷键已定，菜单里那行"快捷键：…"要跟上
+
+  // 探针用接缝：`--expose-actions` 时把动作表与若干只读探针挂到 globalThis，便于自动化验证
+  // "隐藏→显示→仍可点击/拖动""改缩放后尺寸正确""自启回读正确""退出真的退出""气泡按策略显示"。
   if (process.argv.includes('--expose-actions')) {
-    (globalThis as unknown as { __petActions?: unknown }).__petActions = actions;
-    console.log('[pet] --expose-actions：动作表已挂到 globalThis.__petActions（仅供探针）');
+    const g = globalThis as unknown as { __petActions?: unknown; __petDebug?: unknown };
+    g.__petActions = actions;
+    g.__petDebug = {
+      bubbleState: () => bubbleState,
+      hotkey: () => activeHotkey,
+      bubbleVisible: () => bubble?.isVisible() ?? false,
+      petBounds: () => overlay.browserWindow.getContentBounds(),
+    };
+    console.log('[pet] --expose-actions：动作表与只读探针已挂到 globalThis（仅供探针）');
   }
 
   app.on('will-quit', () => {
     void statusSource?.stop();
+    unregisterHotkeys();
+    bubble?.destroy();
   });
 
   ipcMain.on(CH.ready, () => {
@@ -379,6 +475,8 @@ function boot(): void {
 
   ipcMain.on(CH.drag, (_e, delta: DragDelta) => {
     overlay.moveBy(Math.round(delta.dx), Math.round(delta.dy));
+    // 气泡贴在宠物上方，宠物动了它得跟着（否则拖动时气泡会留在原地）
+    bubble?.followPet(overlay.browserWindow.getContentBounds());
   });
 
   ipcMain.on(CH.log, (_e, message: string) => console.log('[pet][renderer] ' + message));
@@ -407,6 +505,7 @@ function boot(): void {
   startFullscreenWatch((status) => {
     if (status.coversMonitor) {
       overlay.hide();
+      bubble?.hide();                     // 气泡是宠物的一部分，全屏让位时一起收
       console.log('[pet] 检测到全屏应用「' + status.fgTitle + '」，已让位隐藏');
     } else {
       overlay.show();
@@ -414,6 +513,7 @@ function boot(): void {
       // （移动事件正常、坐标正确、样式位正确、SendMessage 能进），实测只有重新加载
       // 渲染层才能让 Chromium 重建输入通路。详见 host/overlay-window.ts 的 reload 注释。
       overlay.reload();
+      refreshBubble(true);                // 气泡层不需要 reload（它从不接收按钮事件），贴回去即可
       console.log('[pet] 全屏应用已退出，恢复显示（已重载渲染层以恢复输入通路）');
     }
     overlay.browserWindow.webContents.send(CH.fullscreen, { hidden: status.coversMonitor, fgTitle: status.fgTitle });

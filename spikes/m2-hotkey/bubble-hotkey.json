@@ -1,0 +1,105 @@
+{
+ "steps": [
+  {
+   "label": "running（2 秒后应自动收起）",
+   "visible": true,
+   "text": "运行中",
+   "badge": 0,
+   "hideAt": 1789588540886,
+   "rendered": {
+    "hidden": false,
+    "text": "运行中",
+    "badge": ""
+   },
+   "rect": {
+    "x": 809,
+    "y": 446,
+    "width": 88,
+    "height": 38
+   },
+   "overlapsPet": false
+  },
+  {
+   "label": "running 心跳（不重置计时）",
+   "visible": true,
+   "text": "运行中",
+   "badge": 0,
+   "hideAt": 1789588540886,
+   "rendered": {
+    "hidden": false,
+    "text": "运行中",
+    "badge": ""
+   },
+   "rect": {
+    "x": 809,
+    "y": 446,
+    "width": 88,
+    "height": 38
+   },
+   "overlapsPet": false
+  },
+  {
+   "label": "running 到期收起",
+   "visible": false,
+   "state": {
+    "visible": false,
+    "text": "运行中",
+    "badge": 0,
+    "hideAt": null,
+    "status": "running"
+   }
+  },
+  {
+   "label": "needs-input（常驻）+ 多会话角标",
+   "visible": true,
+   "text": "需要输入",
+   "badge": 1,
+   "hideAt": null,
+   "rendered": {
+    "hidden": false,
+    "text": "需要输入",
+    "badge": "+1"
+   },
+   "rect": {
+    "x": 798,
+    "y": 446,
+    "width": 110,
+    "height": 38
+   },
+   "overlapsPet": false
+  }
+ ],
+ "debugAvailable": true,
+ "hotkey": {
+  "accelerator": "Super+Alt+P",
+  "visBefore": true,
+  "visAfterHide": false,
+  "visAfterShow": true
+ },
+ "bubbleFollow": {
+  "beforeFollow": {
+   "x": 798,
+   "y": 446,
+   "width": 110,
+   "height": 38
+  },
+  "afterFollow": {
+   "x": 1361,
+   "y": 709,
+   "width": 110,
+   "height": 38
+  },
+  "petDelta": {
+   "dx": -200,
+   "dy": -100
+  },
+  "followed": true
+ },
+ "petClickDuringBubble": {
+  "before": 1,
+  "after": 2,
+  "works": true
+ },
+ "failures": [],
+ "verdict": "PASS"
+}

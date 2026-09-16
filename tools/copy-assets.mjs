@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const jobs = [
   ['src/renderer/index.html', 'dist/renderer/index.html'],
+  ['src/renderer/bubble.html', 'dist/renderer/bubble.html'],
 ];
 
 for (const [from, to] of jobs) {

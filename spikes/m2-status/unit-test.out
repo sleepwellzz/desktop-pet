@@ -73,5 +73,32 @@
   ok   会话从文件消失时补一条 idle
   ok   补的 idle 属于消失的那个会话（非法条目没把它误判成消失）
 
+⑨ 气泡显示策略
+  ok   策略来自宠物包：needs-input 常驻
+  ok   策略来自宠物包：running 2 秒
+  ok   idle（无文案）→ 不显示
+  ok   running → 显示
+  ok   running 的到期时刻 = now+2000
+  ok   未到期
+  ok   到期后需要收起
+  ok   同状态重复推送不重置计时（心跳不该把气泡刷出来）
+  ok   角标变化会更新
+  ok   角标变化不重置计时
+  ok   已收起后同状态心跳不重新冒出
+  ok   needs-input → 显示
+  ok   needs-input 常驻（hideAt=null）
+  ok   常驻状态永不到期
+  ok   状态变化后换成新文案
+  ok   状态变化后重新计时（4 秒）
+
+⑩ 快捷键人话 → Electron accelerator
+  ok   Win+Alt+P → Super+Alt+P（Windows 键在 Electron 里叫 Super）
+  ok   小写 ctrl 归一化
+  ok   裸单字符键名大写
+  ok   已是 Electron 写法则不变
+  ok   windows 别名
+  ok   多字符键名保留
+  ok   宠物包里的默认值归一化后可用
+
 ────────────────────────────────────────────────────────
-全部通过：58 项断言
+全部通过：81 项断言

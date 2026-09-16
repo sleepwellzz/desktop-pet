@@ -17,6 +17,8 @@ export interface PetMenuView {
   autoStart: boolean;
   /** 人可读的状态行，来自 StatusArbiter.state。 */
   statusLine: string;
+  /** 当前生效的全局快捷键；null 表示注册失败（此时如实展示"不可用"）。 */
+  hotkey: string | null;
   /** 宠物包声明的默认缩放（"重置大小"的落点）。 */
   defaultScale: number;
   scaleRange: [number, number];
@@ -57,8 +59,10 @@ export function buildPetMenuTemplate(
   actions: PetMenuActions,
 ): MenuItemConstructorOptions[] {
   return [
-    // 状态行：只读展示。将来把气泡文案也搬到这里（气泡要占窗口外区域，属 ③）
+    // 状态行与快捷键：只读展示。快捷键写在这里是因为它没有别的可见处 ——
+    // 注册失败时更要让人看见"不可用"，否则用户按了没反应会以为程序坏了。
     { label: `状态：${view.statusLine}`, enabled: false },
+    { label: `快捷键：${view.hotkey ?? '不可用（请从托盘或右键操作）'}`, enabled: false },
     { type: 'separator' },
     { label: view.visible ? '隐藏宠物' : '显示宠物', click: () => actions.toggleVisibility() },
     { label: '宠物大小', submenu: scaleItems(view, actions) },

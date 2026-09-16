@@ -252,6 +252,73 @@ try {
   rmSync(dir, { recursive: true, force: true });
 }
 
+// —— ⑨ 气泡策略（纯函数 + 虚拟时钟）——
+section('⑨ 气泡显示策略');
+{
+  const { nextBubbleState, bubbleExpired, parseBubblePolicy, BUBBLE_HIDDEN } =
+    require(join(root, 'dist/kernel/bubble-policy.js'));
+  // 用真实运行参数做断言（desktop-pet.json 的 bubble 段），而不是测试里另写一份策略
+  const policy = parseBubblePolicy(runtimeManifest.bubble);
+  eq('策略来自宠物包：needs-input 常驻', policy.stickyStatuses.includes('needs-input'), true);
+  eq('策略来自宠物包：running 2 秒', policy.holdMsByStatus['running'], 2000);
+
+  const clock = makeClock();
+  let st = { ...BUBBLE_HIDDEN };
+
+  // idle 没有文案 → 隐藏
+  st = nextBubbleState(st, { status: 'idle', text: null, badgeCount: 0 }, policy, clock.now());
+  eq('idle（无文案）→ 不显示', st.visible, false);
+
+  // running：显示并在 2 秒后到期
+  st = nextBubbleState(st, { status: 'running', text: '运行中', badgeCount: 0 }, policy, clock.now());
+  eq('running → 显示', st.visible, true);
+  eq('running 的到期时刻 = now+2000', st.hideAt, clock.now() + 2000);
+  eq('未到期', bubbleExpired(st, clock.now() + 1999), false);
+  eq('到期后需要收起', bubbleExpired(st, clock.now() + 2000), true);
+
+  // **心跳不重置计时**：同状态再推一次，hideAt 必须原样不动
+  const before = st.hideAt;
+  clock.advance(800);
+  const same = nextBubbleState(st, { status: 'running', text: '运行中', badgeCount: 0 }, policy, clock.now());
+  eq('同状态重复推送不重置计时（心跳不该把气泡刷出来）', same.hideAt, before);
+
+  // 同状态 + 角标变化 → 只更新角标
+  const withBadge = nextBubbleState(st, { status: 'running', text: '运行中', badgeCount: 2 }, policy, clock.now());
+  eq('角标变化会更新', withBadge.badge, 2);
+  eq('角标变化不重置计时', withBadge.hideAt, before);
+
+  // 已经收起之后，同状态的心跳**不能**把它重新刷出来
+  let hidden = { ...st, visible: false, hideAt: null };
+  hidden = nextBubbleState(hidden, { status: 'running', text: '运行中', badgeCount: 0 }, policy, clock.now());
+  eq('已收起后同状态心跳不重新冒出', hidden.visible, false);
+
+  // needs-input 常驻
+  let sticky = nextBubbleState(hidden, { status: 'needs-input', text: '需要输入', badgeCount: 0 }, policy, clock.now());
+  eq('needs-input → 显示', sticky.visible, true);
+  eq('needs-input 常驻（hideAt=null）', sticky.hideAt, null);
+  eq('常驻状态永不到期', bubbleExpired(sticky, clock.now() + 999_999), false);
+
+  // 状态变化 → 重新计时
+  const afterSticky = nextBubbleState(sticky, { status: 'blocked', text: '已受阻', badgeCount: 0 }, policy, clock.now());
+  eq('状态变化后换成新文案', afterSticky.text, '已受阻');
+  eq('状态变化后重新计时（4 秒）', afterSticky.hideAt, clock.now() + 4000);
+}
+
+// —— ⑩ 快捷键写法的归一化 ——
+section('⑩ 快捷键人话 → Electron accelerator');
+{
+  const { normalizeAccelerator } = require(join(root, 'dist/host/hotkey.js'));
+  eq('Win+Alt+P → Super+Alt+P（Windows 键在 Electron 里叫 Super）',
+    normalizeAccelerator('Win+Alt+P'), 'Super+Alt+P');
+  eq('小写 ctrl 归一化', normalizeAccelerator('ctrl+alt+p'), 'Control+Alt+P');
+  eq('裸单字符键名大写', normalizeAccelerator('Super+Alt+space'), 'Super+Alt+space');
+  eq('已是 Electron 写法则不变', normalizeAccelerator('CommandOrControl+Shift+Alt+P'), 'CommandOrControl+Shift+Alt+P');
+  eq('windows 别名', normalizeAccelerator('windows+shift+p'), 'Super+Shift+P');
+  eq('多字符键名保留', normalizeAccelerator('Ctrl+Alt+F5'), 'Control+Alt+F5');
+  // 关键：宠物包里写的就是人话（Win+...），不归一化会注册成功但永不触发
+  eq('宠物包里的默认值归一化后可用', normalizeAccelerator(runtimeManifest.interaction.hideShortcut.default), 'Super+Alt+P');
+}
+
 // —— 汇总 ——
 process.stdout.write(`\n${'─'.repeat(56)}\n`);
 if (failures.length === 0) {
