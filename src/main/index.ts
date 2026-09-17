@@ -723,6 +723,7 @@ function boot(): void {
     + `${behaviorPolicy.roamDistancePx.min}–${behaviorPolicy.roamDistancePx.max}px，`
     + `${behaviorPolicy.speedPxPerSec}px/s @缩放1.0）`
     + `，微动作 ${behaviorPolicy.microEnabled ? behaviorPolicy.microCandidates.join('/') : '关'}`
+    + `，任务中踱步 ${behaviorPolicy.paceEnabled ? `开（每 ${behaviorPolicy.paceEveryMs.min / 1000}–${behaviorPolicy.paceEveryMs.max / 1000}s 走 ${behaviorPolicy.paceDistancePx.min}–${behaviorPolicy.paceDistancePx.max}px，锚在进入任务状态时的位置附近）` : '关'}`
     + `，打盹 ${behaviorPolicy.sleepAfterMs / 1000}s → ${behaviorPolicy.sleepState}`
     + `｜位移姿态 ${behaviorPolicy.locomotion ? `${behaviorPolicy.locomotion.left}/${behaviorPolicy.locomotion.right}` : '缺失（不漫游）'}`);
 

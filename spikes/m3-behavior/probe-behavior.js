@@ -9,7 +9,8 @@
  *   3. 走的时候画的是**位移那一行**，而且**行号与移动方向一致**（right→第 1 行 / left→第 2 行）；
  *   4. **用户抓住它时一步都不动**（松手后接着走）—— 这条是"抢方向盘"的唯一防线；
  *   5. **控制条开着时不动**（面板锚在宠物身上，动了会一起飘）；
- *   6. **有任务在跑时不漫游**（写一条 running 会话 → 立刻停）；
+ *   6. **有任务在跑时不漫游、只在小范围里踱步**（写一条 running 会话 → 交回业务动画、
+ *      然后在锚点 ± `busyPace.distancePx` 的范围内小步走动；见 ADR 019）；
  *   7. **空闲够久会打盹**（画 sleepState 那一行），**被单击就醒**。
  *
  * 为什么用**临时宠物包**：真实参数是"每 25–90 秒走一次、5 分钟后打盹"，照原样验一轮要十分钟，
@@ -67,6 +68,8 @@ function makeFastPack() {
     enabled: true,
     idleRoam: { enabled: true, everySec: [2, 3], distancePx: [90, 200], speedPxPerSec: 220 },
     idleMicroActions: { enabled: true, candidates: ['waving', 'jumping'], everySec: [4, 7] },
+    // 任务中踱步也压到秒级：真参数是"每 60–180 秒走 60–300px"，照原样验一轮要几分钟
+    busyPace: { enabled: true, everySec: [3, 5], distancePx: [60, 160], speedPxPerSec: 220 },
     sleepAfterIdleSec: 20,
   };
   fs.writeFileSync(path.join(dir, 'desktop-pet.json'), JSON.stringify(sidecar, null, 2), 'utf8');
@@ -125,6 +128,7 @@ app.whenReady().then(async () => {
     await pet.webContents.executeJavaScript(INJECT);
     log(`[probe] 行为层参数：${JSON.stringify({
       roam: dbg.behaviorPolicy().roamEveryMs, speed: dbg.behaviorPolicy().speedPxPerSec,
+      pace: dbg.behaviorPolicy().paceEveryMs, paceDist: dbg.behaviorPolicy().paceDistancePx,
       sleep: dbg.behaviorPolicy().sleepAfterMs, loco: dbg.behaviorPolicy().locomotion,
     })}`);
 
@@ -141,6 +145,7 @@ app.whenReady().then(async () => {
         out.push({
           t: Date.now() - t0, x: b.x, y: b.y, w: b.width, h: b.height,
           row: await row(), phase: dbg.behaviorState().phase, moves: dbg.behaviorMoves(),
+          anchor: dbg.behaviorState().anchorX,
         });
         await sleep(150);
       }
@@ -254,24 +259,42 @@ app.whenReady().then(async () => {
     log(`[probe] ③ 控制条：可见=${barVisible}｜开着时位置变化=${report.steps.bar.xChangedWithBar}（期望 false）`
       + `｜关掉后位置变化=${report.steps.bar.movedAfterBarClose}（期望 true）`);
 
-    // —— ④ 有任务在跑时不漫游（业务状态优先于自主行为）——
+    // —— ④ 有任务在跑时改走"踱步"：在动，但只在小范围里动（ADR 019）——
+    // 旧判据是"running 期间一步都不动"。2026-09-18 用户改了要求：**可以离开原位，但不能超过
+    // 几百像素**，频率要低、只作为点缀。所以这里量三件事：**在动**、**没走远**、**不越界**；
+    // "频率低"与"不会越踱越远"由单测（虚拟时钟）精确量，这里只验真实窗口上的位移范围。
+    const paceCfg = dbg.behaviorPolicy().paceDistancePx;
     writeStatus({ default: { status: 'running', title: 'probe', ts: Date.now() } });
     await sleep(1500);
-    const busy = await sample(4000);
-    const statusWhileBusy = dbg.behaviorState();
+    const busy = await sample(16000);
+    const busyState = dbg.behaviorState();
+    const areaBusy = screen.getDisplayNearestPoint({ x: busy[0].x, y: busy[0].y }).workArea;
+    const anchors = [...new Set(busy.map((p) => p.anchor).filter((v) => typeof v === 'number'))];
+    const anchor = busyState.anchorX ?? (anchors[0] ?? null);
+    const maxDrift = anchor === null ? null : Math.max(...busy.map((p) => Math.abs(p.x - anchor)));
+    report.steps.busy = {
+      paced: xChanged(busy),
+      anchorX: anchor,
+      anchorsSeen: anchors,
+      anchorChanged: anchors.length > 1,
+      maxDriftPx: maxDrift,
+      limitPx: paceCfg.max,
+      phase: busyState.phase,
+      poseRows: [...new Set(busy.map((p) => p.row))],
+      outOfArea: busy.filter((p) => p.x < areaBusy.x || p.x + p.w > areaBusy.x + areaBusy.width).length,
+      movedAfterClear: null,
+    };
+    log(`[probe] ④ running 期间踱步：在动=${report.steps.busy.paced}`
+      + `｜锚点=${anchor}（观测期内出现过 ${anchors.length} 个不同锚点，期望 1）`
+      + `｜离锚点最远 ${maxDrift}px（上限 ${paceCfg.max}px）`
+      + `｜相=${report.steps.busy.phase}（期望 idle 或 pacing，不该是 roaming/sleeping）`
+      + `｜画面行号=${JSON.stringify(report.steps.busy.poseRows)}（1=右 2=左 7=running）`
+      + `｜越界采样=${report.steps.busy.outOfArea}`);
     globalThis.__petActions.clearSessions();
     await sleep(1500);
     const afterClear = await sample(6000);
-    report.steps.busy = {
-      xChangedWhileBusy: xChanged(busy),
-      rowsWhileBusy: [...new Set(busy.map((p) => p.row))],
-      phaseWhileBusy: statusWhileBusy.phase,
-      movedAfterClear: xChanged(afterClear),
-    };
-    log(`[probe] ④ running 期间：位置变化=${report.steps.busy.xChangedWhileBusy}（期望 false）`
-      + `｜相=${report.steps.busy.phaseWhileBusy}（期望 idle）`
-      + `｜画面行号=${JSON.stringify(report.steps.busy.rowsWhileBusy)}（期望含 7=running）`
-      + `｜清空会话后恢复移动=${report.steps.busy.movedAfterClear}（期望 true）`);
+    report.steps.busy.movedAfterClear = xChanged(afterClear);
+    log(`[probe] ④b 清空会话后恢复自由漫游=${report.steps.busy.movedAfterClear}（期望 true）`);
 
     // —— ⑤ 空闲够久会打盹（画 sleepState 那一行），单击就醒 ——
     // 先单击一次把打盹计时归零，然后**有界地**等（临时包 sleepAfterIdleSec = 20）。
@@ -329,8 +352,16 @@ app.whenReady().then(async () => {
     if (!s.bar.barVisible) fails.push('控制条没有打开（用例前置不成立）');
     if (s.bar.xChangedWithBar) fails.push('控制条开着时宠物仍在漫游（面板会跟着飘）');
     if (!s.bar.movedAfterBarClose) fails.push('关掉控制条后没有恢复漫游');
-    if (s.busy.xChangedWhileBusy) fails.push('有会话在 running 时宠物仍在漫游');
-    if (s.busy.phaseWhileBusy !== 'idle') fails.push(`running 期间行为层相是 ${s.busy.phaseWhileBusy}，期望 idle`);
+    if (!s.busy.paced) fails.push('有会话在 running 时宠物一步都没动（踱步没生效）');
+    if (s.busy.anchorChanged) fails.push(`running 期间锚点被改掉了（见到 ${s.busy.anchorsSeen.length} 个锚点）`);
+    if (s.busy.maxDriftPx === null) fails.push('拿不到锚点，`踱步没走远`这条判据无法成立');
+    else if (s.busy.maxDriftPx > s.busy.limitPx + 30) {
+      fails.push(`running 期间离锚点最远 ${s.busy.maxDriftPx}px，超过上限 ${s.busy.limitPx}px（+30 容差）`);
+    }
+    if (s.busy.outOfArea > 0) fails.push(`running 期间走到工作区外 ${s.busy.outOfArea} 次采样`);
+    if (!['idle', 'pacing'].includes(s.busy.phase)) {
+      fails.push(`running 期间行为层相是 ${s.busy.phase}，期望 idle 或 pacing`);
+    }
     if (!s.busy.movedAfterClear) fails.push('清空会话后没有恢复漫游');
     if (s.nap.sleepingPhase !== 'sleeping') fails.push('空闲够久没有进入打盹相');
     if (!s.nap.sleptRow) fails.push('打盹时没有画 sleepState（第 5 行）');

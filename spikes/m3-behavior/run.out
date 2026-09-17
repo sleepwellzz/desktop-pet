@@ -1,34 +1,62 @@
-spawned electron pid=192172 probe=probe-behavior.js
-[pet] 加载宠物包：C:\Users\<用户名>\AppData\Local\Temp\pet-behavior-O5BdTa
+spawned electron pid=201028 probe=probe-behavior.js
+[pet] 加载宠物包：C:\Users\<用户名>\AppData\Local\Temp\pet-behavior-72VxEn
 [pet] 淘淘 · 1536x1872 · 8x9 @ 192x208 · 9 个状态
 [pet] 状态源：状态文件 <工程目录>\spikes\m3-behavior\probe-status.json（监听目录 + 1000ms 轮询兜底）
 [pet] 快捷键已注册：Super+Alt+P（由 Win+Alt+P 归一化而来）
 [pet] 托盘已创建：<工程目录>\assets\tray.ico
 [pet] 气泡层已创建（常态整窗穿透，不参与命中判定）
 [pet] 控制条已创建（宽 260，可聚焦）—— 唤出：右键宠物 / Super+Alt+P / 托盘菜单；失焦 200ms 后收起
-[pet] 行为层：启用，漫游 开（每 2–3s 走 90–200px，220px/s @缩放1.0），微动作 waving/jumping，打盹 20s → failed｜位移姿态 running-left/running-right
+[pet] 行为层：启用，漫游 开（每 2–3s 走 90–200px，220px/s @缩放1.0），微动作 waving/jumping，任务中踱步 开（每 3–5s 走 60–160px，锚在进入任务状态时的位置附近），打盹 20s → failed｜位移姿态 running-left/running-right
 [pet] --expose-actions：动作表与只读探针已挂到 globalThis（仅供探针）
+[pet] 窗口已显示，位置 {"x":1549,"y":857}
 [pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
-[pet] 窗口已显示，位置 {"x":1539,"y":847}
 [pet][renderer] 精灵图就绪 1536x1872，DPR=1.5；按 alpha<16 清空 2000388 个空白像素
-[pet][renderer] 命中评估 css=(-83,78) → 空白 ｜ 帧 row=0 col=0 ｜ 换算 local=(-111,102) scale=0.75
+[pet][renderer] 命中评估 css=(-777,-329) → 空白 ｜ 帧 row=0 col=0 ｜ 换算 local=(-1110,-473) scale=0.7
 [pet][renderer] 状态 idle → idle rev=0（重载补推）
 [pet][behavior] 动画覆盖 → running-right（循环）
 [pet][renderer] 行为层：running-right（循环）
+[probe] 行为层参数：{"roam":{"min":2000,"max":3000},"speed":220,"pace":{"min":3000,"max":5000},"paceDist":{"min":60,"max":160},"sleep":20000,"loco":{"left":"running-left","right":"running-right"}}
 [pet][behavior] 动画覆盖 → 交回仲裁器
-[probe] 行为层参数：{"roam":{"min":2000,"max":3000},"speed":220,"sleep":20000,"loco":{"left":"running-left","right":"running-right"}}
+[pet][behavior] 动画覆盖 → running-left（循环）
+[pet][renderer] 行为层：running-left（循环）
+[pet][behavior] 动画覆盖 → 交回仲裁器
+[pet][behavior] 动画覆盖 → jumping（一次性）
+[pet][renderer] 行为层：jumping（一次性）
+[pet][behavior] 动画覆盖 → 交回仲裁器
+[pet][behavior] 动画覆盖 → running-right（循环）
+[pet][renderer] 行为层：running-right（循环）
+[pet][behavior] 动画覆盖 → 交回仲裁器
+[pet][behavior] 动画覆盖 → running-right（循环）
+[pet][renderer] 行为层：running-right（循环）
+[pet][behavior] 动画覆盖 → 交回仲裁器
 [pet][behavior] 动画覆盖 → waving（一次性）
 [pet][renderer] 行为层：waving（一次性）
 [pet][behavior] 动画覆盖 → 交回仲裁器
 [pet][behavior] 动画覆盖 → running-left（循环）
 [pet][renderer] 行为层：running-left（循环）
-[pet][renderer] 命中评估 css=(22,78) → 实体 ｜ 帧 row=2 col=7 ｜ 换算 local=(29,84) scale=0.75
+[pet][behavior] 动画覆盖 → 交回仲裁器
+[probe] ① 观察 12 秒：位置变化=true｜位移次数=53｜出现过的 y=[857]（应只有一个）｜出现过的行号=[null,0,2,4,1,3]（1=右 2=左 0=待机 3=挥手 4=跳跃 5=趴卧）｜越界采样=0
+[probe] ①b 行号与方向一致：向右 3 次 / 向左 7 次 / 不一致 0 次
+[pet][renderer] 命中评估 css=(67,109) → 实体 ｜ 帧 row=0 col=1 ｜ 换算 local=(95,153) scale=0.7
 [pet] 命中状态 → 可交互（光标在宠物实体上）
+[pet][behavior] 用户抓住宠物 → 自主行为暂停
+[pet][behavior] 用户松开宠物 → 自主行为恢复
+[pet][behavior] 动画覆盖 → running-left（循环）
+[pet][renderer] 行为层：running-left（循环）
+[pet][renderer] 命中评估 css=(123,109) → 空白 ｜ 帧 row=2 col=3 ｜ 换算 local=(175,135) scale=0.7
+[pet] 命中状态 → 整窗穿透
+[pet][behavior] 动画覆盖 → 交回仲裁器
+[pet][behavior] 动画覆盖 → waving（一次性）
+[pet][renderer] 行为层：waving（一次性）
 [pet][behavior] 动画覆盖 → 交回仲裁器
 [pet][behavior] 动画覆盖 → running-right（循环）
 [pet][renderer] 行为层：running-right（循环）
-[pet][renderer] 命中评估 css=(15,78) → 空白 ｜ 帧 row=1 col=0 ｜ 换算 local=(20,85) scale=0.75
-[pet] 命中状态 → 整窗穿透
+[probe] ② 抓住不放 3 秒（抓在 0.5,0.75 上）：dragging=true suppressed=true｜期间位置变化=false（期望 false）｜松手后 5 秒位置变化=true（期望 true）｜位移次数 53 → 74
+[pet] 控制条显示（唤出即抢焦点；Esc 或点到别处可收）
+[pet][behavior] 动画覆盖 → 交回仲裁器
+[pet] 控制条收起
+[pet][behavior] 动画覆盖 → running-right（循环）
+[pet][renderer] 行为层：running-right（循环）
 [pet][behavior] 动画覆盖 → 交回仲裁器
 [pet][behavior] 动画覆盖 → jumping（一次性）
 [pet][renderer] 行为层：jumping（一次性）
@@ -36,102 +64,94 @@ spawned electron pid=192172 probe=probe-behavior.js
 [pet][behavior] 动画覆盖 → running-left（循环）
 [pet][renderer] 行为层：running-left（循环）
 [pet][behavior] 动画覆盖 → 交回仲裁器
-[probe] ① 观察 12 秒：位置变化=true｜位移次数=38｜出现过的 y=[847]（应只有一个）｜出现过的行号=[null,0,3,2,1,4]（1=右 2=左 0=待机 3=挥手 4=跳跃 5=趴卧）｜越界采样=0
-[probe] ①b 行号与方向一致：向右 3 次 / 向左 5 次 / 不一致 0 次
-[pet][renderer] 命中评估 css=(72,117) → 实体 ｜ 帧 row=0 col=0 ｜ 换算 local=(96,154) scale=0.75
-[pet] 命中状态 → 可交互（光标在宠物实体上）
-[pet][behavior] 用户抓住宠物 → 自主行为暂停
-[pet][behavior] 用户松开宠物 → 自主行为恢复
-[pet][behavior] 动画覆盖 → running-left（循环）
-[pet][renderer] 行为层：running-left（循环）
-[pet][renderer] 命中评估 css=(123,117) → 空白 ｜ 帧 row=2 col=3 ｜ 换算 local=(164,136) scale=0.75
-[pet] 命中状态 → 整窗穿透
-[pet][behavior] 动画覆盖 → 交回仲裁器
-[probe] ② 抓住不放 3 秒（抓在 0.5,0.75 上）：dragging=true suppressed=true｜期间位置变化=false（期望 false）｜松手后 5 秒位置变化=true（期望 true）｜位移次数 38 → 56
-[pet] 控制条显示（唤出即抢焦点；Esc 或点到别处可收）
-[pet] 控制条收起
 [pet][behavior] 动画覆盖 → waving（一次性）
 [pet][renderer] 行为层：waving（一次性）
 [pet][behavior] 动画覆盖 → 交回仲裁器
-[pet][behavior] 动画覆盖 → running-right（循环）
-[pet][renderer] 行为层：running-right（循环）
-[pet][behavior] 动画覆盖 → 交回仲裁器
-[pet][behavior] 动画覆盖 → running-right（循环）
-[pet][renderer] 行为层：running-right（循环）
-[pet][renderer] 命中评估 css=(111,117) → 实体 ｜ 帧 row=1 col=2 ｜ 换算 local=(148,137) scale=0.75
-[pet] 命中状态 → 可交互（光标在宠物实体上）
-[pet][behavior] 动画覆盖 → 交回仲裁器
 [probe] ③ 控制条：可见=true｜开着时位置变化=false（期望 false）｜关掉后位置变化=true（期望 true）
+[pet][behavior] 动画覆盖 → running-right（循环）
+[pet][renderer] 行为层：running-right（循环）
 [pet][status] 状态 idle → running @default（rev=1）
 [pet][status] 推送 running → running rev=1
 [pet][source] 文件状态：default → running（probe）
 [pet][renderer] 状态 running → running rev=1 ｜ 气泡「运行中」
+[pet][behavior] 动画覆盖 → 交回仲裁器
+[pet][behavior] 动画覆盖 → running-left（循环）
+[pet][renderer] 行为层：running-left（循环）
+[pet][behavior] 动画覆盖 → 交回仲裁器
+[pet][behavior] 动画覆盖 → running-right（循环）
+[pet][renderer] 行为层：running-right（循环）
+[pet][behavior] 动画覆盖 → 交回仲裁器
+[pet][behavior] 动画覆盖 → running-right（循环）
+[pet][renderer] 行为层：running-right（循环）
+[pet][behavior] 动画覆盖 → 交回仲裁器
+[pet][behavior] 动画覆盖 → running-left（循环）
+[pet][renderer] 行为层：running-left（循环）
+[pet][behavior] 动画覆盖 → 交回仲裁器
+[probe] ④ running 期间踱步：在动=true｜锚点=1249（观测期内出现过 1 个不同锚点，期望 1）｜离锚点最远 111px（上限 160px）｜相=idle（期望 idle 或 pacing，不该是 roaming/sleeping）｜画面行号=[7,2,1]（1=右 2=左 7=running）｜越界采样=0
 [pet][status] 状态 running → idle（rev=2）
 [pet][status] 推送 idle → idle rev=2
 [pet] 已清空全部会话（文件 + 适配器记忆 + 仲裁器记录）
 [pet][renderer] 状态 idle → idle rev=2
 [pet][behavior] 动画覆盖 → running-left（循环）
 [pet][renderer] 行为层：running-left（循环）
-[pet][renderer] 命中评估 css=(132,117) → 空白 ｜ 帧 row=2 col=4 ｜ 换算 local=(176,136) scale=0.75
-[pet] 命中状态 → 整窗穿透
-[pet][behavior] 动画覆盖 → 交回仲裁器
-[pet][behavior] 动画覆盖 → jumping（一次性）
-[pet][renderer] 行为层：jumping（一次性）
 [pet][behavior] 动画覆盖 → 交回仲裁器
 [pet][behavior] 动画覆盖 → running-left（循环）
 [pet][renderer] 行为层：running-left（循环）
 [pet][behavior] 动画覆盖 → 交回仲裁器
-[probe] ④ running 期间：位置变化=false（期望 false）｜相=idle（期望 idle）｜画面行号=[7]（期望含 7=running）｜清空会话后恢复移动=true（期望 true）
-[pet][renderer] 命中评估 css=(72,117) → 实体 ｜ 帧 row=0 col=2 ｜ 换算 local=(96,154) scale=0.75
+[pet][behavior] 动画覆盖 → jumping（一次性）
+[pet][renderer] 行为层：jumping（一次性）
+[pet][behavior] 动画覆盖 → 交回仲裁器
+[probe] ④b 清空会话后恢复自由漫游=true（期望 true）
+[pet][renderer] 命中评估 css=(67,109) → 实体 ｜ 帧 row=0 col=3 ｜ 换算 local=(95,153) scale=0.7
 [pet] 命中状态 → 可交互（光标在宠物实体上）
 [pet][behavior] 用户抓住宠物 → 自主行为暂停
 [pet][behavior] 用户松开宠物 → 自主行为恢复
 [pet][behavior] 动画覆盖 → running-right（循环）
 [pet][renderer] 行为层：running-right（循环）
-[pet][renderer] 命中评估 css=(10,117) → 空白 ｜ 帧 row=1 col=3 ｜ 换算 local=(13,137) scale=0.75
+[pet][renderer] 命中评估 css=(7,109) → 空白 ｜ 帧 row=1 col=3 ｜ 换算 local=(10,136) scale=0.7
 [pet] 命中状态 → 整窗穿透
 [pet][behavior] 动画覆盖 → 交回仲裁器
 [pet][behavior] 动画覆盖 → running-right（循环）
 [pet][renderer] 行为层：running-right（循环）
-[pet][behavior] 动画覆盖 → 交回仲裁器
-[pet][behavior] 动画覆盖 → jumping（一次性）
-[pet][renderer] 行为层：jumping（一次性）
-[pet][behavior] 动画覆盖 → 交回仲裁器
-[pet][behavior] 动画覆盖 → running-left（循环）
-[pet][renderer] 行为层：running-left（循环）
-[pet][renderer] 命中评估 css=(27,117) → 实体 ｜ 帧 row=2 col=1 ｜ 换算 local=(36,136) scale=0.75
-[pet] 命中状态 → 可交互（光标在宠物实体上）
-[pet][behavior] 动画覆盖 → 交回仲裁器
-[pet][behavior] 动画覆盖 → running-right（循环）
-[pet][renderer] 行为层：running-right（循环）
-[pet][renderer] 命中评估 css=(12,117) → 空白 ｜ 帧 row=1 col=1 ｜ 换算 local=(16,137) scale=0.75
-[pet] 命中状态 → 整窗穿透
 [pet][behavior] 动画覆盖 → 交回仲裁器
 [pet][behavior] 动画覆盖 → waving（一次性）
 [pet][renderer] 行为层：waving（一次性）
 [pet][behavior] 动画覆盖 → 交回仲裁器
 [pet][behavior] 动画覆盖 → running-left（循环）
 [pet][renderer] 行为层：running-left（循环）
-[pet][renderer] 命中评估 css=(18,117) → 实体 ｜ 帧 row=2 col=1 ｜ 换算 local=(24,136) scale=0.75
-[pet] 命中状态 → 可交互（光标在宠物实体上）
 [pet][behavior] 动画覆盖 → 交回仲裁器
 [pet][behavior] 动画覆盖 → running-left（循环）
 [pet][renderer] 行为层：running-left（循环）
-[pet][renderer] 命中评估 css=(129,117) → 空白 ｜ 帧 row=2 col=5 ｜ 换算 local=(172,136) scale=0.75
-[pet] 命中状态 → 整窗穿透
+[pet][renderer] 命中评估 css=(31,109) → 实体 ｜ 帧 row=2 col=6 ｜ 换算 local=(44,135) scale=0.7
+[pet] 命中状态 → 可交互（光标在宠物实体上）
 [pet][behavior] 动画覆盖 → 交回仲裁器
 [pet][behavior] 动画覆盖 → jumping（一次性）
 [pet][renderer] 行为层：jumping（一次性）
+[pet][renderer] 命中评估 css=(39,109) → 空白 ｜ 帧 row=4 col=3 ｜ 换算 local=(56,155) scale=0.7
+[pet] 命中状态 → 整窗穿透
+[pet][renderer] 命中评估 css=(39,109) → 实体 ｜ 帧 row=4 col=4 ｜ 换算 local=(56,155) scale=0.7
+[pet] 命中状态 → 可交互（光标在宠物实体上）
+[pet][behavior] 动画覆盖 → 交回仲裁器
+[pet][behavior] 动画覆盖 → running-right（循环）
+[pet][renderer] 行为层：running-right（循环）
+[pet][renderer] 命中评估 css=(9,109) → 空白 ｜ 帧 row=1 col=1 ｜ 换算 local=(12,136) scale=0.7
+[pet] 命中状态 → 整窗穿透
+[pet][behavior] 动画覆盖 → 交回仲裁器
+[pet][behavior] 动画覆盖 → running-right（循环）
+[pet][renderer] 行为层：running-right（循环）
+[pet][behavior] 动画覆盖 → 交回仲裁器
+[pet][behavior] 动画覆盖 → waving（一次性）
+[pet][renderer] 行为层：waving（一次性）
 [pet][behavior] 动画覆盖 → 交回仲裁器
 [pet][behavior] 动画覆盖 → failed（循环）
 [pet][renderer] 行为层：failed（循环）
-[pet][renderer] 命中评估 css=(72,117) → 实体 ｜ 帧 row=5 col=0 ｜ 换算 local=(96,95) scale=0.75
+[pet][renderer] 命中评估 css=(67,109) → 实体 ｜ 帧 row=5 col=0 ｜ 换算 local=(95,94) scale=0.7
 [pet] 命中状态 → 可交互（光标在宠物实体上）
 [pet][behavior] 用户抓住宠物 → 自主行为暂停
 [pet][behavior] 醒来（用户抓住它）
 [pet][behavior] 动画覆盖 → 交回仲裁器
 [pet][behavior] 用户松开宠物 → 自主行为恢复
-[probe] ⑤ 打盹：等到相=sleeping（期望 sleeping）画到第 5 行=true｜用时 20053ms｜期间行号=[0,3,1,4,2,5]｜单击后 相=idle 行号=0（期望醒来、离开 5）
+[probe] ⑤ 打盹：等到相=sleeping（期望 sleeping）画到第 5 行=true｜用时 20127ms｜期间行号=[0,3,1,2,4,5]｜单击后 相=idle 行号=0（期望醒来、离开 5）
 [probe] 判定：PASS
 [pet] 用户从菜单退出
 

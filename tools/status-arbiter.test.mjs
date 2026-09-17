@@ -615,6 +615,14 @@ section('⑭ 行为层策略');
   eq('策略来自宠物包：速度 96px/s（默认缩放下）', policy.speedPxPerSec, 96);
   eq('策略来自宠物包：打盹 300 秒后落 failed', `${policy.sleepAfterMs}-${policy.sleepState}`, '300000-failed');
   eq('微动作候选两个都在包里', policy.microCandidates.join('/'), 'waving/jumping');
+  eq('策略来自宠物包：踱步 60–180 秒一次',
+    `${policy.paceEveryMs.min}-${policy.paceEveryMs.max}`, '60000-180000');
+  eq('策略来自宠物包：踱步一次 60–300px（= 最多离开锚点 300px）',
+    `${policy.paceDistancePx.min}-${policy.paceDistancePx.max}`, '60-300');
+  check('踱步距离上限在"三四百像素"以内（用户要求，ADR 019）',
+    policy.paceDistancePx.max <= 400, `${policy.paceDistancePx.max}px`);
+  eq('踱步默认与漫游同速（位移速度是照着位移行的步频校过的）',
+    policy.paceSpeedPxPerSec, policy.speedPxPerSec);
   // 位移姿态按 role 推导，不硬编码 running-left/right —— 换宠物包也能对上
   eq('位移姿态从 role 推导（左）', policy.locomotion?.left, 'running-left');
   eq('位移姿态从 role 推导（右）', policy.locomotion?.right, 'running-right');
@@ -642,7 +650,8 @@ section('⑭ 行为层策略');
     for (let i = 0; i < n; i += 1) {
       clock.advance(33);
       const r = tickBehavior(st, {
-        now: clock.now(), pet: { x, y: 800, width: W, height: H }, workArea: AREA,
+        now: clock.now(), pet: { x, y: 800, width: W, height: H },
+        workArea: opt.workArea ?? AREA,
         scale: opt.scale ?? 0.7, status: opt.status ?? 'idle',
         suppressed: opt.suppressed ?? false, reducedMotion: opt.reducedMotion ?? false,
       }, p, rng);
@@ -731,17 +740,105 @@ section('⑭ 行为层策略');
     check('松手后接着走', r3.trail.length > 0, `${r3.trail.length} 次`);
   }
 
-  // —— ⑥ 有任务在跑时不漫游（主状态不是 idle 就整个让位）——
+  // —— ⑥ 有任务在跑时不漫游：交回业务动画，改走"踱步模式" ——
   {
     // 前置：先真的走起来（这样"交回动画"才有东西可交）
     const walk = simulate(dueNow(), 300);
     eq('前置：已经在漫游', walk.state.phase, 'roaming');
-    const r = simulate(walk.state, 1000, { status: 'running' });
-    eq('running 期间不动', r.trail.length, 0);
+    const r = simulate(walk.state, 1000, { status: 'running', startX: walk.x });
+    eq('running 期间不漫游（踱步还没到点）', r.trail.length, 0);
     eq('running 期间交回动画（一次）', r.plays.length, 1);
     eq('交回的是 null', r.plays[0]?.play, null);
-    eq('相回到 idle 且清掉打盹计时', r.state.idleSinceAt, null);
-    eq('目标也清掉（回来时重新挑）', r.state.targetX, null);
+    eq('清掉打盹计时（有任务时不打盹）', r.state.idleSinceAt, null);
+    eq('漫游目标也清掉（回到空闲时重新挑）', r.state.targetX, null);
+    eq('切进踱步模式的瞬间锚在当前位置', r.state.anchorX, walk.x);
+  }
+
+  // —— ⑥b 任务中踱步（ADR 019）：低频、短距离、锚在进入任务状态时的位置附近 ——
+  // 这一组量的是"用户看不到对错"的三件事：它到底走了多远、会不会越踱越远、频率有多低。
+  {
+    const fast = {
+      ...policy,
+      paceEveryMs: { min: 200, max: 200 },
+      paceDistancePx: { min: 40, max: 200 },
+    };
+    const st = { ...BEHAVIOR_IDLE, lastStepAt: clock.now() };
+    const r = simulate(st, 2000, { policy: fast, status: 'running' });
+    eq('锚点 = 进入任务状态时的位置', r.state.anchorX, 600);
+    check('到点后确实在走', r.trail.length > 5, `${r.trail.length} 次`);
+    check('踱一步不超过配置上限（200px）', Math.abs(r.x - 600) <= 200, `实测 ${Math.abs(r.x - 600)}px`);
+    check('朝工作区中心侧走（宠物在 600，落在左半屏 ⇒ 向右）', r.x >= 600, `x=${r.x}`);
+    const moving = r.plays.find((p) => p.play && p.play.loop === true);
+    check('踱步时画的是位移行（第 1/2 行）',
+      !!moving && /^running-(left|right)$/.test(moving.play.state), JSON.stringify(moving));
+
+    // **反复踱步不会越踱越远**：目标由锚点算、不由当前位置算（按当前位置累加会漂出去几百像素，
+    // 而且屏幕上只表现为"它怎么跑那么远"，没有任何报错）。
+    const many = simulate(r.state, 20_000, { policy: fast, status: 'running', startX: r.x });
+    check('踱几十次之后仍在锚点 200px 以内（无累积漂移）',
+      Math.abs(many.x - 600) <= 200, `实测 ${Math.abs(many.x - 600)}px`);
+    eq('锚点始终没被踱步改掉', many.state.anchorX, 600);
+
+    // 频率：默认节奏（60–180 秒）下 10 秒内一次都不该踱 —— 它是点缀，不是主要活动方式
+    const slow = simulate({ ...BEHAVIOR_IDLE, lastStepAt: clock.now() }, 10_000, { status: 'running' });
+    eq('默认节奏下 10 秒内一次都不踱', slow.trail.length, 0);
+
+    // 「减少动态效果」：不位移（与空闲漫游同一对待）
+    const rm = simulate({ ...BEHAVIOR_IDLE, lastStepAt: clock.now() }, 5000, {
+      policy: fast, status: 'running', reducedMotion: true,
+    });
+    eq('「减少动态效果」下不踱步', rm.trail.length, 0);
+
+    // 抑制：拖动/隐藏/全屏/控制条期间一步不动，且**清掉锚点**（恢复后在新位置重新锚定）
+    const sup = simulate({ ...BEHAVIOR_IDLE, lastStepAt: clock.now() }, 2000, {
+      policy: fast, status: 'running', suppressed: true,
+    });
+    eq('抑制期间一步不动', sup.trail.length, 0);
+    eq('抑制期间清掉锚点（恢复后重新锚定）', sup.state.busySinceAt, null);
+
+    // 关掉踱步：一次都不动，但仍然把已有的覆盖交回业务动画
+    // （注意"交回"只在真有覆盖可交时才发 —— 本来就是干净状态时不该多发一条空命令）
+    const off = { ...fast, paceEnabled: false };
+    const offR = simulate({
+      ...BEHAVIOR_IDLE, lastStepAt: clock.now(), sentPlay: { state: 'running-right', loop: true },
+    }, 3000, { policy: off, status: 'running' });
+    eq('busyPace.enabled=false 时一步不动', offR.trail.length, 0);
+    eq('把已有覆盖交回业务状态（只发一次）', offR.plays.length, 1);
+    eq('交回的是 null', offR.plays[0]?.play, null);
+
+    // 回到空闲：清记账、重新排程（不会立刻乱跑），并且交回那条位移覆盖
+    const pacing = {
+      ...many.state, phase: 'pacing', targetX: many.x + 100,
+      sentPlay: { state: 'running-right', loop: true },
+    };
+    const idled = simulate(pacing, 66, { policy: fast, status: 'idle', startX: many.x });
+    eq('回到空闲后清掉踱步记账',
+      `${idled.state.busySinceAt}-${idled.state.anchorX}-${idled.state.nextPaceAt}`, 'null-null-null');
+    eq('丢掉踱步相（不会带着 pacing 停在半路）', idled.state.phase !== 'pacing', true);
+    eq('回到空闲后重新开始打盹计时', idled.state.idleSinceAt !== null, true);
+    eq('回到空闲时交回业务动画', idled.plays[0]?.play, null);
+    const idleAfter = simulate(idled.state, 3000, { policy: fast, status: 'idle', startX: idled.x });
+    eq('回到空闲后不会立刻乱跑（漫游仍要等 25–90 秒）', idleAfter.trail.length, 0);
+  }
+
+  // —— ⑥c 不跨屏（ADR 019 锁定）：工作区换成"另一块屏"时，目标点夹在新工作区内 ——
+  // 落地机制：锚点每次（重）锚定都取当前位置 —— 把宠物拖到哪块屏，它就在哪块屏活动。
+  {
+    const second = { x: 1920, y: 0, width: 1280, height: 1024 };
+    const fast = { ...policy, paceEveryMs: { min: 100, max: 100 }, paceDistancePx: { min: 200, max: 200 } };
+    const r = simulate({ ...BEHAVIOR_IDLE, lastStepAt: clock.now() }, 1500, {
+      policy: fast, status: 'running', workArea: second, startX: 3010,
+    });
+    check('踱步目标夹在"宠物所在那块屏"内',
+      r.x >= second.x && r.x + W <= second.x + second.width, `x=${r.x}`);
+    eq('锚点留在第二块屏上（没被拉回第一块屏）', r.state.anchorX >= second.x, true);
+    check('朝第二块屏的中心侧走（3010 在其右半边 ⇒ 向左）', r.x <= 3010, `x=${r.x}`);
+
+    const roamOther = simulate(dueNow(), 1200, {
+      policy, workArea: second, startX: second.x + second.width - W,
+    });
+    check('漫游目标同样夹在宠物所在的那块屏',
+      roamOther.x >= second.x && roamOther.x + W <= second.x + second.width, `x=${roamOther.x}`);
   }
 
   // —— ⑦ 打盹：空闲够久 → 播 sleepState；状态一变就醒；醒来重新计时 ——

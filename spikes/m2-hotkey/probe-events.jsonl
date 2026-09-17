@@ -42,3 +42,7 @@
 {"sessionId":"a","status":"running","title":"a","ts":1789686706304,"origin":"file"}
 {"sessionId":"a","status":"running","title":"a","ts":1789686708350,"origin":"file"}
 {"sessionId":"b","status":"needs-input","title":"b","ts":1789686708350,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789687819233,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789687819992,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789687822041,"origin":"file"}
+{"sessionId":"b","status":"needs-input","title":"b","ts":1789687822041,"origin":"file"}

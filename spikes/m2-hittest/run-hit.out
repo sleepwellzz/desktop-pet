@@ -1,13 +1,13 @@
-spawned electron pid=199536 probe=probe.js
+spawned electron pid=201300 probe=probe.js
 [t+6s] report=false log=861B
 [t+12s] report=false log=861B
 [t+18s] report=false log=861B
 [t+24s] report=false log=861B
-[t+30s] report=false log=1239B
-[t+36s] report=false log=1398B
-[t+42s] report=false log=1398B
-[t+48s] report=false log=1398B
-[t+54s] report=true log=2087B
+[t+30s] report=false log=1399B
+[t+36s] report=false log=1399B
+[t+42s] report=false log=1399B
+[t+48s] report=false log=1399B
+[t+54s] report=true log=2089B
 --- probe.js 日志 ---
 [probe] boot electron=44.4.0
 [probe] 包=taotao-new scale=0.7 期望内容区=134x146 DIP
@@ -29,52 +29,52 @@ spawned electron pid=199536 probe=probe.js
  },
  "scaleFactor": 1.5,
  "windowDIP": {
-  "x": 1539,
-  "y": 847,
-  "width": 145,
-  "height": 157
+  "x": 1549,
+  "y": 857,
+  "width": 135,
+  "height": 147
  },
  "contentDIP": {
-  "x": 1539,
-  "y": 847,
-  "width": 144,
-  "height": 156
+  "x": 1549,
+  "y": 857,
+  "width": 134,
+  "height": 146
  },
  "windowPhysical": {
-  "left": 2309,
-  "top": 1271,
+  "left": 2324,
+  "top": 1286,
   "right": 2525,
   "bottom": 1505
  },
  "estimatedPhysical": {
-  "left": 2309,
-  "top": 1271,
+  "left": 2324,
+  "top": 1286,
   "right": 2525,
   "bottom": 1505
  },
  "rendererMetrics": {
-  "iw": 144,
-  "ih": 156,
+  "iw": 134,
+  "ih": 146,
   "dpr": 1.5,
-  "canvasW": 216,
-  "canvasH": 234
+  "canvasW": 201,
+  "canvasH": 219
  },
  "alphaProbe": [
   255,
   0
  ],
  "cursor": {
-  "x": 1542,
-  "y": 1446
+  "x": 1868,
+  "y": 1450
  }
 }
-[probe] 修复后·拖动前：采样 169 点 | 被宠物吃掉 45 | 穿透到靶窗 124 | 都没收到 0 | 都收到 0
-[probe] 修复后·拖动前 与"应该命中"比对：命中且吃到 45 | 应命中却穿透 2 | 应穿透却被吃 0 | 应穿透且穿透 122
-[probe] 修复后·拖动前 漏吃点明细（2 个，均为轮廓边缘）：(56,8) alpha=26 / (88,8) alpha=27
-[probe] 拖动：pointermove 收到 25 次；窗口 {"x":1539,"y":847,"width":145,"height":157} → {"x":1207,"y":607,"width":145,"height":157}（已移动）
-[probe] 修复后·拖动后：采样 169 点 | 被宠物吃掉 45 | 穿透到靶窗 124 | 都没收到 0 | 都收到 0
-[probe] 修复后·拖动后 与"应该命中"比对：命中且吃到 45 | 应命中却穿透 2 | 应穿透却被吃 0 | 应穿透且穿透 122
-[probe] 修复后·拖动后 漏吃点明细（2 个，均为轮廓边缘）：(56,8) alpha=26 / (88,8) alpha=27
+[probe] 修复后·拖动前：采样 156 点 | 被宠物吃掉 42 | 穿透到靶窗 114 | 都没收到 0 | 都收到 0
+[probe] 修复后·拖动前 与"应该命中"比对：命中且吃到 42 | 应命中却穿透 2 | 应穿透却被吃 0 | 应穿透且穿透 112
+[probe] 修复后·拖动前 漏吃点明细（2 个，均为轮廓边缘）：(88,8) alpha=16 / (24,56) alpha=31
+[probe] 拖动：pointermove 收到 25 次；窗口 {"x":1549,"y":857,"width":135,"height":147} → {"x":1217,"y":617,"width":135,"height":147}（已移动）
+[probe] 修复后·拖动后：采样 156 点 | 被宠物吃掉 42 | 穿透到靶窗 114 | 都没收到 0 | 都收到 0
+[probe] 修复后·拖动后 与"应该命中"比对：命中且吃到 42 | 应命中却穿透 2 | 应穿透却被吃 0 | 应穿透且穿透 112
+[probe] 修复后·拖动后 漏吃点明细（2 个，均为轮廓边缘）：(88,8) alpha=16 / (24,56) alpha=31
 [probe] 已写出 report.json
 [uncaught] TypeError: Object has been destroyed
     at Timeout.tickBehaviorLayer [as _onTimeout] (<工程目录>\dist\main\index.js:668:43)

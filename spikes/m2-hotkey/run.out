@@ -1,4 +1,4 @@
-spawned electron pid=197876 probe=probe-bubble-hotkey.js
+spawned electron pid=201812 probe=probe-bubble-hotkey.js
 --- bubble-hotkey.log ---
 [pet] 加载宠物包：<工程目录>
 [pet] 淘淘 · 1536x1872 · 8x9 @ 192x208 · 9 个状态
@@ -8,7 +8,7 @@ spawned electron pid=197876 probe=probe-bubble-hotkey.js
 [pet] 气泡层已创建（常态整窗穿透，不参与命中判定）
 [pet] 控制条已创建（宽 260，可聚焦）—— 唤出：右键宠物 / Super+Alt+P / 托盘菜单；失焦 200ms 后收起
 [WARN] [pet] 行为层已由 --no-behavior 关闭（探针/排查用）
-[pet] 行为层：停用（behavior.enabled=false），漫游 开（每 25–90s 走 80–320px，96px/s @缩放1.0），微动作 waving/jumping，打盹 300s → failed｜位移姿态 running-left/running-right
+[pet] 行为层：停用（behavior.enabled=false），漫游 开（每 25–90s 走 80–320px，96px/s @缩放1.0），微动作 waving/jumping，任务中踱步 开（每 60–180s 走 60–300px，锚在进入任务状态时的位置附近），打盹 300s → failed｜位移姿态 running-left/running-right
 [pet] --expose-actions：动作表与只读探针已挂到 globalThis（仅供探针）
 [pet] 窗口已显示，位置 {"x":1549,"y":857}
 [pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
