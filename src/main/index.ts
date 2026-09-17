@@ -162,9 +162,12 @@ function boot(): void {
   }
 
   /**
-   * 状态推送后要顺带做的事（目前是刷新托盘菜单里的状态行）。
-   * 用可变钩子而不是直接调 refreshMenu：状态源在 boot 早期就会**同步**产出第一条事件，
-   * 那时托盘与 refreshMenu 还没初始化（const 的 TDZ 会让启动直接抛异常）。
+   * 状态推送后要顺带做的事（刷新托盘菜单、气泡、控制条三处的状态）。
+   *
+   * 用可变钩子而不是直接调用，是为了让"推状态"与"谁在监听"解耦 —— 监听方有三处
+   * （托盘 / 气泡 / 控制条），而且它们全部在 `pushStatus` 定义**之后**才创建。
+   * （2026-09-17 审计：原先这里的理由写的是"状态源在 boot 早期同步产出第一条事件"，
+   * 那次改动把状态源的启动移到了所有窗口创建之后，理由已不成立；钩子本身保留。）
    */
   let afterStatusPush: (() => void) | null = null;
 
@@ -190,20 +193,9 @@ function boot(): void {
       log: (m) => console.log('[pet][source] ' + m),
     });
     console.log('[pet] 状态源：' + statusSource.describe());
-    statusSource.start((e: StatusEvent) => {
-      recordEvent(e);
-      if (arbiter.ingest(e)) pushStatus();
-    });
   } else {
     console.warn('[pet] 状态源已禁用（--no-status-source）：宠物只会播 idle');
   }
-
-  // 仲裁器需要"时间推进"才能处理粘滞超时、会话静默过期，以及被限流挡下的那次切换。
-  // 气泡的到期检查顺带挂在这里（它也是"到点就该收"的语义，没必要另开一个定时器）。
-  setInterval(() => {
-    if (arbiter.tick()) pushStatus();
-    expireBubble();
-  }, 250);
 
   // —— 托盘 / 右键菜单：一张动作表，两个入口共用（M2 ②）——
   // 设计见 docs/design/m2-tray-menu.md，可行性探针见 spikes/m2-menu。
@@ -604,6 +596,26 @@ function boot(): void {
     }
     handler(cmd.arg);
   });
+
+  // —— 状态源与时间推进：**必须等所有窗口都建好之后再启动** ——
+  // 为什么拖到这里（2026-09-17 审计发现的结构性隐患）：`statusSource.start()` 会**同步**读一次
+  // 状态文件并可能立刻 `pushStatus()` → `afterStatusPush()` → `refreshBar()`，而 `refreshBar`
+  // 读的是用 `let` 声明的 `bar`。今天不崩只是因为 boot 全程同步、异步事件插不进来 ——
+  // 顺序一改（或在中间插入任何 `await`）就会踩到 `let` 的 TDZ，**启动即崩**。
+  // 把"启动异步子系统"放在"所有窗口创建完毕"之后，这个依赖就从"靠隐式保证"变成"结构上不可能"。
+  if (statusSource) {
+    statusSource.start((e: StatusEvent) => {
+      recordEvent(e);
+      if (arbiter.ingest(e)) pushStatus();
+    });
+  }
+
+  // 仲裁器需要"时间推进"才能处理粘滞超时、会话静默过期，以及被限流挡下的那次切换。
+  // 气泡的到期检查顺带挂在这里（它也是"到点就该收"的语义，没必要另开一个定时器）。
+  setInterval(() => {
+    if (arbiter.tick()) pushStatus();
+    expireBubble();
+  }, 250);
 
   refreshMenu();   // 快捷键已定，菜单里那行"快捷键：…"要跟上
 

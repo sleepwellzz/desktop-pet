@@ -8,14 +8,14 @@
    "height": 1027
   },
   "pet": {
-   "x": 783,
-   "y": 435,
-   "width": 144,
-   "height": 156
+   "x": 790,
+   "y": 437,
+   "width": 134,
+   "height": 146
   },
   "bar": {
-   "x": 725,
-   "y": 599,
+   "x": 727,
+   "y": 591,
    "width": 260,
    "height": 72
   },
@@ -31,7 +31,7 @@
   ],
   "ackButtons": 1,
   "summary": "需要输入 · 2 条会话",
-  "scale": "75%",
+  "scale": "70%",
   "barHeight": 128
  },
  "expectHeightWithRows": 128,
@@ -44,7 +44,7 @@
   "barStateVisible": true
  },
  "panelCommands": {
-  "scaleText": "75%"
+  "scaleText": "70%"
  },
  "rejects": {
   "unknownLogged": true,
@@ -57,14 +57,14 @@
    "dy": -80
   },
   "barBefore": {
-   "x": 725,
-   "y": 599,
+   "x": 727,
+   "y": 591,
    "width": 260,
    "height": 128
   },
   "barAfter": {
-   "x": 555,
-   "y": 519,
+   "x": 557,
+   "y": 511,
    "width": 260,
    "height": 128
   },
@@ -78,13 +78,13 @@
    "height": 1027
   },
   "pet": {
-   "y": 873,
-   "h": 156,
-   "bottom": 1029
+   "y": 877,
+   "h": 146,
+   "bottom": 1023
   },
   "bar": {
-   "x": 555,
-   "y": 735,
+   "x": 557,
+   "y": 739,
    "width": 260,
    "height": 128
   },
@@ -97,14 +97,14 @@
  },
  "ghostHover": {
   "barBefore": {
-   "x": 555,
-   "y": 735,
+   "x": 557,
+   "y": 739,
    "width": 260,
    "height": 128
   },
   "ghostPoint": {
-   "x": 565,
-   "y": 799
+   "x": 567,
+   "y": 803
   },
   "ghostInsidePet": false,
   "hiddenByGrace": true,
@@ -112,7 +112,7 @@
   "stateBeforeFar": {
    "visible": true,
    "hasFocus": false,
-   "hoverSince": 1789596205453,
+   "hoverSince": 1789681843552,
    "hideAt": null,
    "suppressUntil": null,
    "armed": true
@@ -138,7 +138,7 @@
     "atMs": 200,
     "visible": true,
     "armed": true,
-    "hideInMs": 156,
+    "hideInMs": 166,
     "hoverSince": null,
     "petInteractive": false
    },

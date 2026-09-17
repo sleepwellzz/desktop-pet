@@ -146,6 +146,16 @@ app.whenReady().then(async () => {
       + ` ｜ 高度 ${bb?.height}（无会话时期望 ${report.placement.expectHeight}）`);
 
     // —— ② 内容：与仲裁器一致（写两条会话：b 需要输入、a 运行中）——
+    // **前置：先把面板唤出来并确认它可见。** 面板不可见时 `refreshBar()` 会早退 —— 那是正确设计
+    // （重新显示时 `show()` 会推最新内容），但本用例要验的是"面板内容随仲裁器更新"，
+    // 所以必须先让它可见。2026-09-17 踩过：`hoverGraceMs` 500→350 后面板收得更早，
+    // 探针却在"面板已收起"的状态下读 DOM，读到的是上一次渲染的空内容（4 条断言连环假失败）。
+    const petC = pet.getContentBounds();
+    const centerPx = px(petC.x + petC.width / 2, petC.y + petC.height / 2);
+    moveTo(centerPx.x, centerPx.y);
+    await sleep(1100);                        // > hoverDelayMs(300) + 余量
+    const visibleForContent = dbg.barVisible();
+    if (!visibleForContent) throw new Error('内容用例前置失败：悬停没有把面板唤出来');
     writeStatus({
       a: { status: 'running', title: 'a', ts: now() },
       b: { status: 'needs-input', title: '等你拍板', ts: now() },

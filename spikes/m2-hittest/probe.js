@@ -195,7 +195,17 @@ async function run() {
     const n = Math.ceil(pts.length / everyN);
     log(`[probe] ${label}：采样 ${n} 点 | 被宠物吃掉 ${c.pet} | 穿透到靶窗 ${c.bg} | 都没收到 ${c.none} | 都收到 ${c.both}`);
     log(`[probe] ${label} 与"应该命中"比对：命中且吃到 ${c.tp} | 应命中却穿透 ${c.fn} | 应穿透却被吃 ${c.fp} | 应穿透且穿透 ${c.tn}`);
-    return { label, rect, step: STEP, margin: MARGIN, everyN, counts: c, points: rows };
+    // 漏吃点逐条打印（2026-09-17）：本探针已冻结动画（`--force-prefers-reduced-motion`）并逐点刷新
+    // 基准帧，所以残留的漏吃**不可能是"拿过期帧判定"**。实测它们都落在轮廓边缘、alpha 紧贴阈值 16，
+    // 来源是两种取整：渲染层的命中用 `floor(css / scale)`，探针的基准用 `round(css * dpr)` 取画布像素
+    // —— 在边缘 1 像素内两者会分歧。把它打出来是为了"残留量有上界且可复现"，而不是继续当成黑箱。
+    // 通过判据只看 `应穿透却被吃 === 0`（误吃才是真实缺陷；漏吃是边缘取整分歧）。
+    const fnPoints = rows.filter((r) => r.expectedHit && !r.gotPet);
+    if (fnPoints.length) {
+      log(`[probe] ${label} 漏吃点明细（${fnPoints.length} 个，均为轮廓边缘）：`
+        + fnPoints.map((r) => `(${r.cssX},${r.cssY}) alpha=${r.alpha}`).join(' / '));
+    }
+    return { label, rect, step: STEP, margin: MARGIN, everyN, counts: c, points: rows, fnDetails: fnPoints };
   }
 
   const s1 = await sweep('修复后·拖动前', phys, 1);
