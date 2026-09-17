@@ -30,6 +30,15 @@ export interface OverlayWindow {
   hide(): void;
   show(): void;
   moveBy(dx: number, dy: number): void;
+  /**
+   * 把内容区左上角移到**绝对**坐标（DIP）。
+   *
+   * 与 `moveBy` 的区别只在"谁来做取整"：漫游每 33ms 走 1~3 像素，若每次把**增量**四舍五入，
+   * 误差会周期性吞掉/多走一像素（30Hz 下每步 3.2px → 3px，97px/s 需求只走出 90px/s）。
+   * 绝对坐标取整就不会积累，且天然吸收掉浮点漂移。拖动那条路径仍然用 `moveBy`
+   * （增量来自渲染层，语义就是增量）。
+   */
+  moveTo(x: number, y: number): void;
   position(): { x: number; y: number };
   /** 窗口当前是否可见。托盘菜单的"隐藏/显示"文案依赖它。 */
   isVisible(): boolean;
@@ -159,6 +168,9 @@ export function createOverlayWindow(opts: OverlayOptions): OverlayWindow {
         width: cw,
         height: ch,
       });
+    },
+    moveTo: (x, y) => {
+      win.setContentBounds({ x: Math.round(x), y: Math.round(y), width: cw, height: ch });
     },
     position: () => {
       const [px = 0, py = 0] = win.getPosition();

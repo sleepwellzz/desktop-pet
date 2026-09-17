@@ -168,8 +168,12 @@ window.pet.onStatus((p) => {
  * 把播放器收敛回仲裁器的当前状态。覆盖两条路径：
  *   ① 本地一次性动作（单击挥手）播完后的归位；
  *   ② 状态在一次性动作播放期间变化 —— 播完立刻接管，而不是等下一次状态事件。
+ *
+ * **行为层接管期间完全让位**（M3 第一块，ADR 018）：漫游/微动作/打盹都不来自业务状态，
+ * 若这里照旧收敛，每一帧都会被拉回主状态的姿态上 —— 表现为"宠物根本走不动"。
  */
 function reconcileStatus(): void {
+  if (behaviorOverride) return;
   const p = lastStatus;
   if (!p || !player || player.isOneShot) return;
   const rest = restingState(p);
@@ -177,6 +181,26 @@ function reconcileStatus(): void {
     player.setState(rest, { then: p.animation.then });
   }
 }
+
+// —— 行为层（M3 第一块）：漫游 / 微动作 / 打盹的动画覆盖 ——
+//
+// 主进程说演什么就演什么（与状态同一条纪律）；`null` = 交回仲裁器。
+// 覆盖期间 `reconcileStatus` 不再收敛（见上），所以走路能被看见。
+// 命中判定不受影响：它每帧查**当前帧**的 alpha（ADR 008），换了行/帧自然跟着换。
+let behaviorOverride: { state: string; loop: boolean } | null = null;
+
+window.pet.onBehavior((o) => {
+  behaviorOverride = o;
+  if (!player) return;
+  if (o) {
+    const changed = player.setState(o.state);
+    if (changed) window.pet.log(`行为层：${o.state}${o.loop ? '（循环）' : '（一次性）'}`);
+    return;
+  }
+  // 交回仲裁器：立刻落到当前主状态的静止落点，而不是等下一帧的 reconcile
+  const p = lastStatus;
+  if (p) player.setState(restingState(p), { then: p.animation.then });
+});
 
 // —— 命中测试：把"哪些像素算实体"交给我们自己判定 ——
 // 主进程常态整窗穿透（setIgnoreMouseEvents(true, { forward: true })），鼠标移动仍会转发到这里；
@@ -263,6 +287,8 @@ canvas.addEventListener('pointerdown', (e) => {
   lastX = e.screenX;
   lastY = e.screenY;
   canvas.setPointerCapture(e.pointerId);
+  // 告诉主进程"人在抓着它" → 行为层立刻停手，绝不与用户的手抢方向盘（ADR 018）。
+  window.pet.dragState(true);
 });
 
 canvas.addEventListener('pointermove', (e) => {
@@ -283,6 +309,7 @@ canvas.addEventListener('pointerup', (e) => {
   if (!dragging) return;                 // 同上：pointerup 的 button 对左键是 0，但不必依赖它
   dragging = false;
   canvas.releasePointerCapture(e.pointerId);
+  window.pet.dragState(false);
   const wasClick = moved < 4;
   if (wasClick && player) {
     // 单击 = 一、用户确认（「needs-input 驻留至用户确认」里的那个"确认"就落在这里，
@@ -343,11 +370,13 @@ function onPointerCancel(): void {
   if (!dragging) return;
   dragging = false;
   setInteractive(false);
+  window.pet.dragState(false);   // 不补这一句，行为层会以为人还抓着（直到窗口重载）
 }
 canvas.addEventListener('pointercancel', onPointerCancel);
 window.addEventListener('pointercancel', onPointerCancel);
 
 window.pet.onFullscreen((n) => window.pet.log(n.hidden ? `让位隐藏（前台：${n.fgTitle}）` : '恢复显示'));
 
-// 报到：告诉主进程可以下发 init 载荷了
-window.pet.ready();
+// 报到：告诉主进程可以下发 init 载荷了。顺带上报「减少动态效果」——
+// 这个偏好只有渲染层读得到（matchMedia），而行为层要靠它决定"要不要漫游"（ADR 018）。
+window.pet.ready({ reducedMotion });

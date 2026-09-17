@@ -63,6 +63,8 @@ async function pressHotkey() {
 }
 
 try { fs.rmSync(STATUS_FILE, { force: true }); } catch (_) { /* ignore */ }
+// 关掉自主行为层：宠物自己走动会把位置类断言搅乱（行为层有自己的探针 spikes/m3-behavior）。
+process.argv.push('--no-behavior');
 process.argv.push('--expose-actions');
 process.argv.push(`--status-file=${STATUS_FILE}`);
 require(path.join(DIST, 'main', 'index.js'));

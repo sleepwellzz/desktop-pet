@@ -38,3 +38,7 @@
 {"sessionId":"a","status":"running","title":"a","ts":1789684421892,"origin":"file"}
 {"sessionId":"a","status":"running","title":"a","ts":1789684423943,"origin":"file"}
 {"sessionId":"b","status":"needs-input","title":"b","ts":1789684423943,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789686705552,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789686706304,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789686708350,"origin":"file"}
+{"sessionId":"b","status":"needs-input","title":"b","ts":1789686708350,"origin":"file"}

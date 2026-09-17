@@ -27,8 +27,12 @@ import {
   type BarEvent, type BarPolicy, type BarState,
 } from '../kernel/bar-policy';
 import {
-  CH, type BarCommand, type BarCommandId, type BarView, type DragDelta, type HitState,
-  type PointerHint, type RendererInit, type StatusPush,
+  BEHAVIOR_IDLE, parseBehaviorPolicy, tickBehavior, wakeBehavior,
+  type BehaviorCommand, type BehaviorPolicy, type BehaviorState,
+} from '../kernel/behavior';
+import {
+  CH, type BarCommand, type BarCommandId, type BarView, type DragDelta, type DragState, type HitState,
+  type PointerHint, type ReadyInfo, type RendererInit, type StatusPush,
 } from '../shared/ipc';
 
 /** 菜单里的状态行文案。用业务状态而不是动画状态名（用户看到的应该是"在干什么"）。 */
@@ -615,6 +619,113 @@ function boot(): void {
     handler(cmd.arg);
   });
 
+  // —— 行为层：漫游 / 微动作 / 打盹（M3 第一块，ADR 018）——
+  //
+  // 分工与状态层一致：**规则全在纯函数里**（`kernel/behavior.ts`，时钟与随机数可注入、有单测），
+  // 这里只做三件事：攒输入 → 调 tick → 把命令落到窗口与 IPC 上。
+  // 为什么值得这么拆：这套规则全是"到点才发生"的（25 秒还是 28 秒后开始走，屏幕上完全看不出对错），
+  // 而它偏偏又是最容易把宠物弄坏的一块 —— 与用户拖动抢方向盘、走出工作区、走的时候点不动。
+  const behaviorMeta = (pack.runtime as unknown as Record<string, unknown>)['behavior'];
+  const behaviorPolicyRaw = parseBehaviorPolicy(
+    behaviorMeta, pack, (m) => console.warn('[pet][behavior] ' + m),
+  );
+  /**
+   * `--no-behavior`：关掉自主行为层。**这是给探针与排查用的接缝**（与 `--no-status-source` 同一套路）——
+   * 宠物会自己走动，位置类断言（命中图、控制条贴边、托盘点击坐标）全都会因此变脆：
+   * 探针读一次窗口位置、再按它算点击坐标，中间宠物走掉了就会点空。
+   * 行为层自己的判据在 `spikes/m3-behavior`（那边当然不能带这个开关）。
+   */
+  const behaviorOff = process.argv.includes('--no-behavior');
+  const behaviorPolicy: BehaviorPolicy = behaviorOff
+    ? { ...behaviorPolicyRaw, enabled: false }
+    : behaviorPolicyRaw;
+  if (behaviorOff) console.warn('[pet] 行为层已由 --no-behavior 关闭（探针/排查用）');
+  let behaviorState: BehaviorState = BEHAVIOR_IDLE;
+  /** 渲染层上报的系统「减少动态效果」。主进程读不到这个偏好，只能由渲染层报到时带上。 */
+  let rendererReducedMotion = false;
+  /** 用户正抓着宠物（渲染层上报的拖动边沿）。行为层据此停手。 */
+  let draggingPet = false;
+  /** 全屏让位导致宠物当前是隐藏的（与"用户手动隐藏"分开记：全屏退出时要恢复显示）。 */
+  let fullscreenHidden = false;
+  /** 诊断计数：探针与排查用（"它到底动没动过"）。 */
+  let behaviorTicks = 0;
+  let behaviorMoves = 0;
+
+  /** 这一 tick 允不允许宠物自己动。四个理由都是"现在不该动"。 */
+  function behaviorSuppressed(): boolean {
+    return draggingPet                       // 用户抓着它 —— 绝不与人的手抢方向盘
+      || !overlay.isVisible()                // 宠物本身不在（用户隐藏 / 全屏让位）
+      || fullscreenHidden                    // 兜底：让位期间即使窗口还没隐藏也不动
+      || barState.visible;                   // 面板开着：它锚在宠物身上，动了会一起飘
+  }
+
+  /** 把纯函数给的命令落到窗口与 IPC 上。命令的语义全在 kernel 侧，这里不做二次判断。 */
+  function applyBehaviorCommand(cmd: BehaviorCommand): void {
+    // `play` 是三态：缺省 = 不变（不发消息）、null = 交回仲裁器、对象 = 按它演。
+    if (cmd.play !== undefined) {
+      const o = cmd.play;
+      if (!overlay.browserWindow.isDestroyed()) {
+        overlay.browserWindow.webContents.send(CH.behavior, o);
+      }
+      console.log('[pet][behavior] 动画覆盖 → '
+        + (o ? `${o.state}${o.loop ? '（循环）' : '（一次性）'}` : '交回仲裁器'));
+    }
+    if (cmd.moveX !== null) {
+      const b = overlay.browserWindow.getContentBounds();
+      if (cmd.moveX !== b.x) {
+        overlay.moveTo(cmd.moveX, b.y);
+        behaviorMoves += 1;
+        const moved = overlay.browserWindow.getContentBounds();
+        // 窗口动了，三件东西必须跟着走：光标→客户区的映射（命中判定靠它）、气泡、控制条。
+        pushPointerHint();
+        bubble?.followPet(moved);
+        bar?.followPet(moved);
+      }
+    }
+  }
+
+  /**
+   * 行为层 tick，33ms（≈30Hz）。
+   *
+   * 为什么不并进 16ms 的光标轮询：窗口移动不需要 60Hz（拖动那条路径是"手在动"才发增量），
+   * 30Hz 已经足够顺；而且**分开跑就不会让"光标静止时轮询短路"顺带把行为层也冻住**。
+   */
+  function tickBehaviorLayer(): void {
+    behaviorTicks += 1;
+    const pet = overlay.browserWindow.getContentBounds();
+    const area = screen.getDisplayNearestPoint({
+      x: Math.round(pet.x + pet.width / 2),
+      y: Math.round(pet.y + pet.height / 2),
+    }).workArea;
+    const result = tickBehavior(behaviorState, {
+      now: Date.now(),
+      pet,
+      workArea: area,
+      scale: currentScale,
+      status: arbiter.state.status,
+      suppressed: behaviorSuppressed(),
+      reducedMotion: rendererReducedMotion,
+    }, behaviorPolicy, Math.random);
+    behaviorState = result.state;
+    applyBehaviorCommand(result.command);
+  }
+
+  /** 用户碰了宠物（单击 / 拖动）→ 从打盹里醒来并重新排程。 */
+  function wakePet(reason: string): void {
+    if (behaviorState.phase === 'sleeping') console.log(`[pet][behavior] 醒来（${reason}）`);
+    behaviorState = wakeBehavior(behaviorState, behaviorPolicy, Date.now(), Math.random);
+  }
+
+  console.log('[pet] 行为层：'
+    + (behaviorPolicy.enabled ? '启用' : '停用（behavior.enabled=false）')
+    + `，漫游 ${behaviorPolicy.roamEnabled ? '开' : '关'}`
+    + `（每 ${behaviorPolicy.roamEveryMs.min / 1000}–${behaviorPolicy.roamEveryMs.max / 1000}s 走 `
+    + `${behaviorPolicy.roamDistancePx.min}–${behaviorPolicy.roamDistancePx.max}px，`
+    + `${behaviorPolicy.speedPxPerSec}px/s @缩放1.0）`
+    + `，微动作 ${behaviorPolicy.microEnabled ? behaviorPolicy.microCandidates.join('/') : '关'}`
+    + `，打盹 ${behaviorPolicy.sleepAfterMs / 1000}s → ${behaviorPolicy.sleepState}`
+    + `｜位移姿态 ${behaviorPolicy.locomotion ? `${behaviorPolicy.locomotion.left}/${behaviorPolicy.locomotion.right}` : '缺失（不漫游）'}`);
+
   // —— 状态源与时间推进：**必须等所有窗口都建好之后再启动** ——
   // 为什么拖到这里（2026-09-17 审计发现的结构性隐患）：`statusSource.start()` 会**同步**读一次
   // 状态文件并可能立刻 `pushStatus()` → `afterStatusPush()` → `refreshBar()`，而 `refreshBar`
@@ -634,6 +745,11 @@ function boot(): void {
     if (arbiter.tick()) pushStatus();
     expireBubble();
   }, 250);
+
+  // 行为层的时间推进（漫游到点、微动作播完、打盹计时都靠它）。**放在这里才安全**：
+  // 上面那条 TDZ 教训同样适用于它 —— 它要读 `barState` / `arbiter` / `overlay`，
+  // 必须等所有窗口与状态层都装配完再启动。
+  setInterval(tickBehaviorLayer, 33);
 
   refreshMenu();   // 快捷键已定，菜单里那行"快捷键：…"要跟上
 
@@ -659,6 +775,13 @@ function boot(): void {
       menuView: () => petMenuView(),
       /** 面板该显示谁的名字（探针用它验"面板显示宠物名，而不是缩放百分比"）。 */
       petName: () => pack.manifest.displayName ?? pack.manifest.id,
+      // —— M3 行为层（探针用）——
+      behaviorState: () => behaviorState,
+      behaviorPolicy: () => behaviorPolicy,
+      behaviorTicks: () => behaviorTicks,
+      behaviorMoves: () => behaviorMoves,
+      behaviorSuppressed: () => behaviorSuppressed(),
+      draggingPet: () => draggingPet,
     };
     console.log('[pet] --expose-actions：动作表与只读探针已挂到 globalThis（仅供探针）');
   }
@@ -670,9 +793,11 @@ function boot(): void {
     bar?.destroy();
   });
 
-  ipcMain.on(CH.ready, () => {
+  ipcMain.on(CH.ready, (_e, info?: ReadyInfo) => {
     // 页面重载后渲染层会再次报到：payload 复用缓存，自检只跑一次
     payload ??= buildPayload();
+    // 「减少动态效果」只有渲染层读得到（matchMedia），行为层要靠它决定要不要漫游。
+    if (info && typeof info.reducedMotion === 'boolean') rendererReducedMotion = info.reducedMotion;
     // 新页面从"整窗穿透"起步，并立刻**强制**重报一次命中状态（见 ADR 009）
     overlay.resetToIgnore();
     overlay.browserWindow.webContents.send(CH.init, payload);
@@ -681,6 +806,10 @@ function boot(): void {
     // 之后宠物都静默回到 idle，而仲裁器还以为自己在 running。replay 标记让渲染层
     // 落到静止落点，不重播一次性动作。
     pushStatus(true);
+    // 行为层的覆盖也要补推：新页面的 `behaviorOverride` 是 null，而主进程侧
+    // `sentPlay` 仍记着"正在漫游" —— 不补这一句，全屏让位恢复后宠物会**滑着走**
+    // （窗口在动、腿却停在待机姿态）。（与 pushStatus(true) 同一个模式。）
+    overlay.browserWindow.webContents.send(CH.behavior, behaviorState.sentPlay);
     if (!selfCheckStarted) {
       selfCheckStarted = true;
       scheduleSelfCheck();
@@ -769,6 +898,16 @@ function boot(): void {
     bar?.followPet(petBounds);
   });
 
+  // 拖动的**边沿**（开始/结束）。行为层靠它停手 —— 只看"有没有拖动增量"是不行的：
+  // 用户抓着不放、手停一下是常态，那种猜法会让宠物在他手里自己走起来（ADR 018）。
+  ipcMain.on(CH.dragState, (_e, state: DragState) => {
+    const on = Boolean(state?.dragging);
+    if (on === draggingPet) return;
+    draggingPet = on;
+    console.log(`[pet][behavior] 用户${on ? '抓住' : '松开'}宠物 → 自主行为${on ? '暂停' : '恢复'}`);
+    if (on) wakePet('用户抓住它');
+  });
+
   ipcMain.on(CH.log, (_e, message: string) => console.log('[pet][renderer] ' + message));
 
   /**
@@ -790,7 +929,9 @@ function boot(): void {
   // —— 用户确认：解除 needs-input 粘滞 ——
   // 单击宠物即"我看到了"。不这样做的话，用户即使已经在终端里回答了问题，
   // 宠物还会举着手等到粘滞超时（默认 5 分钟），看起来像坏了。
+  // 同时**唤醒**：打盹是"没人理它"的表现，被摸一下当然要醒，并重新开始计时（ADR 018）。
   ipcMain.on(CH.ack, () => {
+    wakePet('用户单击');
     if (arbiter.ack()) pushStatus();
   });
 
@@ -799,6 +940,7 @@ function boot(): void {
     console.warn('[pet] 全屏检测不可用：' + (fullscreenUnavailableReason() ?? '未知原因') + '（宠物将不会自动让位）');
   }
   startFullscreenWatch((status) => {
+    fullscreenHidden = status.coversMonitor;
     if (status.coversMonitor) {
       overlay.hide();
       bubble?.hide();                     // 气泡是宠物的一部分，全屏让位时一起收

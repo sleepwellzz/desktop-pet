@@ -57,7 +57,37 @@ export const CH = {
    * 协议形状不变 —— 只是给联合类型加一个成员，输入框长在同一位置、走同一个通道。
    */
   barCommand: 'pet:bar-command',
+  /**
+   * 主进程 → 渲染层：**行为层的动画覆盖**（M3 第一块，ADR 018）。
+   *
+   * 为什么需要独立于 `CH.status`：漫游、微动作、打盹都不是**业务状态**，
+   * 它们是"没人在用时宠物自己在做什么"。把它们塞进 statusMap 会污染状态语义
+   * （托盘/气泡/面板都会开始显示一些不存在的业务状态）。
+   *
+   * 语义：`null` = 交回仲裁器（渲染层按主状态演）；非 null = 按它演（`loop:false` 是一次性动作）。
+   * 覆盖期间渲染层**不再**把播放器收敛回主状态 —— 否则每帧都会被拉回去，走不动。
+   */
+  behavior: 'pet:behavior',
+  /**
+   * 渲染层 → 主进程：拖动开始/结束。
+   *
+   * 为什么不能让主进程"若干毫秒没收到拖动增量就当作松手"：用户拖着不放、手停一下是常态，
+   * 那种猜法会让宠物在他手里开始自己走。行为层要靠这个位来决定"现在不许动"（ADR 018）。
+   */
+  dragState: 'pet:drag-state',
 } as const;
+
+/** 主进程 → 渲染层：行为层的动画覆盖。null = 交回仲裁器。 */
+export type BehaviorOverride = { state: string; loop: boolean } | null;
+
+/** 渲染层 → 主进程：拖动开始/结束。 */
+export interface DragState { dragging: boolean }
+
+/** 渲染层 → 主进程：报到时附带的能力/偏好上报。 */
+export interface ReadyInfo {
+  /** 系统「减少动态效果」。渲染层读得到（`matchMedia`），主进程读不到，所以由它上报。 */
+  reducedMotion?: boolean;
+}
 
 /** 主进程 → 渲染层：宠物包与渲染所需的全部信息。 */
 export interface RendererInit {

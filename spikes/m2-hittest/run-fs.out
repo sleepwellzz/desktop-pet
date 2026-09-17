@@ -1,30 +1,37 @@
-spawned electron pid=195608 probe=probe-fs-verify.js
-[t+6s] report=false log=1462B
-[t+12s] report=false log=1753B
-[t+18s] report=false log=2224B
-[t+24s] report=false log=2466B
-[t+30s] report=false log=2815B
-[t+36s] report=false log=3286B
-[t+42s] report=true log=3618B
+spawned electron pid=199236 probe=probe-fs-verify.js
+[t+6s] report=false log=1919B
+[t+12s] report=false log=2268B
+[t+18s] report=false log=2740B
+[t+24s] report=false log=3214B
+[t+30s] report=false log=3795B
+[t+36s] report=false log=3795B
+[t+42s] report=false log=4592B
+[t+48s] report=true log=4831B
 --- probe-fs-verify.js 日志 ---
 [pet] 加载宠物包：<工程目录>
-[pet] 淘淘 New · 1536x1872 · 8x9 @ 192x208 · 9 个状态
+[pet] 淘淘 · 1536x1872 · 8x9 @ 192x208 · 9 个状态
 [pet] 状态源：状态文件 C:\Users\<用户名>\.desktop-pet\status.json（监听目录 + 1000ms 轮询兜底）
 [pet] 快捷键已注册：Super+Alt+P（由 Win+Alt+P 归一化而来）
 [pet] 托盘已创建：<工程目录>\assets\tray.ico
 [pet] 气泡层已创建（常态整窗穿透，不参与命中判定）
 [pet] 控制条已创建（宽 260，可聚焦）—— 唤出：右键宠物 / Super+Alt+P / 托盘菜单；失焦 200ms 后收起
+[WARN] [pet] 行为层已由 --no-behavior 关闭（探针/排查用）
+[pet] 行为层：停用（behavior.enabled=false），漫游 开（每 25–90s 走 80–320px，96px/s @缩放1.0），微动作 waving/jumping，打盹 300s → failed｜位移姿态 running-left/running-right
 [pet][status] 会话 default 静默超过 15 分钟，按 idle 处理（疑似 agent 崩溃或未收尾）
 [pet][source] 文件状态：default → running（manual-acceptance）
-[pet] 窗口已显示，位置 {"x":1549,"y":857}
 [pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
+[pet] 窗口已显示，位置 {"x":1539,"y":847}
 [pet][renderer] 精灵图就绪 1536x1872，DPR=1.5；按 alpha<16 清空 2000388 个空白像素
-[pet][renderer] 命中评估 css=(-862,93) → 空白 ｜ 帧 row=0 col=0 ｜ 换算 local=(-1232,130) scale=0.7
+[pet][renderer] 命中评估 css=(-511,117) → 空白 ｜ 帧 row=0 col=0 ｜ 换算 local=(-682,154) scale=0.75
 [pet][renderer] 状态 idle → idle rev=0（重载补推）
 [probe] ======== 第 1 轮 ========
-[pet][renderer] 命中评估 css=(67,73) → 实体 ｜ 帧 row=0 col=1 ｜ 换算 local=(95,102) scale=0.7
+[pet][renderer] 命中评估 css=(72,78) → 实体 ｜ 帧 row=0 col=4 ｜ 换算 local=(96,102) scale=0.75
 [pet] 命中状态 → 可交互（光标在宠物实体上）
+[pet][behavior] 用户抓住宠物 → 自主行为暂停
+[pet][behavior] 用户松开宠物 → 自主行为恢复
 [probe] 全屏前单击：pointerdown=1 → ✅ 可点击
+[pet][behavior] 用户抓住宠物 → 自主行为暂停
+[pet][behavior] 用户松开宠物 → 自主行为恢复
 [probe] 全屏前拖动：窗口已移动 {"dx":-270,"dy":-200}；down=1 up=1 move=21 cancel=0 → ✅ 可拖动
 [probe] 启动外部全屏应用 …
 [pet] 检测到全屏应用「Electron」，已让位隐藏
@@ -34,13 +41,21 @@ spawned electron pid=195608 probe=probe-fs-verify.js
 [pet][renderer] 恢复显示
 [pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
 [pet][renderer] 精灵图就绪 1536x1872，DPR=1.5；按 alpha<16 清空 2000388 个空白像素
-[pet][renderer] 命中评估 css=(70,73) → 实体 ｜ 帧 row=0 col=0 ｜ 换算 local=(100,102) scale=0.7
+[pet][renderer] 命中评估 css=(75,78) → 实体 ｜ 帧 row=0 col=0 ｜ 换算 local=(100,102) scale=0.75
 [pet][renderer] 状态 idle → idle rev=0（重载补推）
 [probe] 宠物已恢复显示=true
+[pet][behavior] 用户抓住宠物 → 自主行为暂停
+[pet][behavior] 用户松开宠物 → 自主行为恢复
 [probe] 全屏后单击：pointerdown=1 → ✅ 可点击
+[pet][behavior] 用户抓住宠物 → 自主行为暂停
+[pet][behavior] 用户松开宠物 → 自主行为恢复
 [probe] 全屏后拖动：窗口已移动 {"dx":-270,"dy":-200}；down=1 up=1 move=21 cancel=0 → ✅ 可拖动
 [probe] ======== 第 2 轮 ========
+[pet][behavior] 用户抓住宠物 → 自主行为暂停
+[pet][behavior] 用户松开宠物 → 自主行为恢复
 [probe] 全屏前单击：pointerdown=1 → ✅ 可点击
+[pet][behavior] 用户抓住宠物 → 自主行为暂停
+[pet][behavior] 用户松开宠物 → 自主行为恢复
 [probe] 全屏前拖动：窗口已移动 {"dx":-270,"dy":-200}；down=1 up=1 move=21 cancel=0 → ✅ 可拖动
 [probe] 启动外部全屏应用 …
 [pet] 检测到全屏应用「Electron」，已让位隐藏
@@ -50,10 +65,14 @@ spawned electron pid=195608 probe=probe-fs-verify.js
 [pet][renderer] 恢复显示
 [pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
 [pet][renderer] 精灵图就绪 1536x1872，DPR=1.5；按 alpha<16 清空 2000388 个空白像素
-[pet][renderer] 命中评估 css=(70,73) → 实体 ｜ 帧 row=0 col=0 ｜ 换算 local=(100,102) scale=0.7
+[pet][renderer] 命中评估 css=(75,78) → 实体 ｜ 帧 row=0 col=0 ｜ 换算 local=(100,102) scale=0.75
 [pet][renderer] 状态 idle → idle rev=0（重载补推）
 [probe] 宠物已恢复显示=true
+[pet][behavior] 用户抓住宠物 → 自主行为暂停
+[pet][behavior] 用户松开宠物 → 自主行为恢复
 [probe] 全屏后单击：pointerdown=1 → ✅ 可点击
+[pet][behavior] 用户抓住宠物 → 自主行为暂停
+[pet][behavior] 用户松开宠物 → 自主行为恢复
 [probe] 全屏后拖动：窗口已移动 {"dx":-270,"dy":-200}；down=1 up=1 move=21 cancel=0 → ✅ 可拖动
 [probe] 结论：第1轮 全屏后单击=OK 拖动=OK；第2轮 全屏后单击=OK 拖动=OK
 [probe] 已写出 fs-verify.json

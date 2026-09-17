@@ -63,6 +63,8 @@ window.addEventListener('pointermove', function () { window.__ev.move++; }, true
 window.__vis = () => document.visibilityState + '/' + (window.innerWidth + 'x' + window.innerHeight);
 'ok'`;
 
+// 关掉自主行为层：宠物自己走动会把位置类断言搅乱（行为层有自己的探针 spikes/m3-behavior）。
+process.argv.push('--no-behavior');
 require(path.join(DIST, 'main', 'index.js'));
 
 async function waitForPetWindow(timeoutMs) {

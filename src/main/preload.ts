@@ -1,8 +1,8 @@
 // 渲染层与主进程之间只暴露窄接口，不开 nodeIntegration。
 import { contextBridge, ipcRenderer } from 'electron';
 import {
-  CH, type DragDelta, type FullscreenNotice, type HitState, type PointerHint, type RendererInit,
-  type StatusPush,
+  CH, type BehaviorOverride, type DragDelta, type DragState, type FullscreenNotice, type HitState,
+  type PointerHint, type ReadyInfo, type RendererInit, type StatusPush,
 } from '../shared/ipc';
 
 contextBridge.exposeInMainWorld('pet', {
@@ -20,10 +20,22 @@ contextBridge.exposeInMainWorld('pet', {
   onStatus: (cb: (push: StatusPush) => void): void => {
     ipcRenderer.on(CH.status, (_e, push: StatusPush) => cb(push));
   },
+  /**
+   * 行为层的动画覆盖（漫游 / 微动作 / 打盹）。null = 交回仲裁器。
+   * 覆盖期间渲染层不再把播放器收敛回主状态，否则每帧都会被拉回去。
+   */
+  onBehavior: (cb: (o: BehaviorOverride) => void): void => {
+    ipcRenderer.on(CH.behavior, (_e, o: BehaviorOverride) => cb(o));
+  },
   dragBy: (delta: DragDelta): void => { ipcRenderer.send(CH.drag, delta); },
+  /** 拖动开始/结束。行为层据此判断"现在不许自己动"。 */
+  dragState: (dragging: boolean): void => {
+    const state: DragState = { dragging };
+    ipcRenderer.send(CH.dragState, state);
+  },
   /** 用户确认：解除 needs-input 粘滞（单击宠物即触发）。 */
   ack: (): void => { ipcRenderer.send(CH.ack); },
-  /** 在宠物上按了右键：请主进程弹出宠物菜单（托盘那份菜单）。 */
+  /** 在宠物上按了右键：请主进程唤出/收起控制条。 */
   requestContextMenu: (): void => { ipcRenderer.send(CH.contextMenu); },
   /** 命中状态变化才上报，主进程据此切换整窗穿透。 */
   setInteractive: (interactive: boolean): void => {
@@ -31,6 +43,6 @@ contextBridge.exposeInMainWorld('pet', {
     ipcRenderer.send(CH.interactive, state);
   },
   log: (message: string): void => { ipcRenderer.send(CH.log, message); },
-  /** 通知主进程：preload 与页面脚本已就绪，可以下发 init 载荷了。 */
-  ready: (): void => { ipcRenderer.send(CH.ready); },
+  /** 通知主进程：preload 与页面脚本已就绪，可以下发 init 载荷了（顺带上报本层才知道的偏好）。 */
+  ready: (info?: ReadyInfo): void => { ipcRenderer.send(CH.ready, info); },
 });

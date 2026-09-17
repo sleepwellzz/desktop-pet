@@ -1,4 +1,4 @@
-spawned electron pid=191416 probe=probe-tray.js
+spawned electron pid=201260 probe=probe-tray.js
 [t+4s] report=false
 [t+8s] report=false
 [t+12s] report=false
@@ -7,17 +7,19 @@ spawned electron pid=191416 probe=probe-tray.js
 [t+24s] report=true
 --- probe-tray.log ---
 [pet] 加载宠物包：<工程目录>
-[pet] 淘淘 New · 1536x1872 · 8x9 @ 192x208 · 9 个状态
+[pet] 淘淘 · 1536x1872 · 8x9 @ 192x208 · 9 个状态
 [pet] 状态源：状态文件 <工程目录>\spikes\m2-menu\tray-status.json（监听目录 + 1000ms 轮询兜底）
 [pet] 快捷键已注册：Super+Alt+P（由 Win+Alt+P 归一化而来）
 [pet] 托盘已创建：<工程目录>\assets\tray.ico
 [pet] 气泡层已创建（常态整窗穿透，不参与命中判定）
 [pet] 控制条已创建（宽 260，可聚焦）—— 唤出：右键宠物 / Super+Alt+P / 托盘菜单；失焦 200ms 后收起
+[WARN] [pet] 行为层已由 --no-behavior 关闭（探针/排查用）
+[pet] 行为层：停用（behavior.enabled=false），漫游 开（每 25–90s 走 80–320px，96px/s @缩放1.0），微动作 waving/jumping，打盹 300s → failed｜位移姿态 running-left/running-right
 [pet] --expose-actions：动作表与只读探针已挂到 globalThis（仅供探针）
-[pet] 窗口已显示，位置 {"x":1549,"y":857}
 [pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
+[pet] 窗口已显示，位置 {"x":1539,"y":847}
 [pet][renderer] 精灵图就绪 1536x1872，DPR=1.5；按 alpha<16 清空 2000388 个空白像素
-[pet][renderer] 命中评估 css=(-1010,-727) → 空白 ｜ 帧 row=0 col=0 ｜ 换算 local=(-1443,-1041) scale=0.7
+[pet][renderer] 命中评估 css=(-1005,-722) → 空白 ｜ 帧 row=0 col=0 ｜ 换算 local=(-1340,-965) scale=0.75
 [pet][renderer] 状态 idle → idle rev=0（重载补推）
 [probe] 动作表已取到；DPR=1.5；cell={"width":192,"height":208}
 [pet] 已隐藏宠物（进程与托盘仍在，可从托盘恢复）
@@ -25,17 +27,24 @@ spawned electron pid=191416 probe=probe-tray.js
 [pet] 恢复显示宠物
 [pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
 [pet][renderer] 精灵图就绪 1536x1872，DPR=1.5；按 alpha<16 清空 2000388 个空白像素
-[pet][renderer] 命中评估 css=(-1010,-727) → 空白 ｜ 帧 row=0 col=0 ｜ 换算 local=(-1443,-1041) scale=0.7
+[pet][renderer] 命中评估 css=(-1005,-722) → 空白 ｜ 帧 row=0 col=0 ｜ 换算 local=(-1340,-965) scale=0.75
 [pet][renderer] 状态 idle → idle rev=0（重载补推）
-[pet][renderer] 命中评估 css=(67,73) → 实体 ｜ 帧 row=0 col=5 ｜ 换算 local=(95,102) scale=0.7
+[pet][renderer] 命中评估 css=(72,78) → 实体 ｜ 帧 row=0 col=1 ｜ 换算 local=(96,102) scale=0.75
 [pet] 命中状态 → 可交互（光标在宠物实体上）
-[probe] 显示后单击宠物：客户区(67,73) → pointerdown +1 → 命中；光标落到宠物上时 WS_EX_TRANSPARENT=false
+[pet][behavior] 用户抓住宠物 → 自主行为暂停
+[pet][behavior] 用户松开宠物 → 自主行为恢复
+[probe] 显示后单击宠物：客户区(72,78) → pointerdown +1 → 命中；光标落到宠物上时 WS_EX_TRANSPARENT=false
+[pet][behavior] 用户抓住宠物 → 自主行为暂停
+[pet][behavior] 用户松开宠物 → 自主行为恢复
 [probe] 显示后拖动：✅ 可拖动 {"dx":-270,"dy":-200}；指针事件 down=1 up=1 move=21 cancel=0；按下前 WS_EX_TRANSPARENT=false（拖动开始前=false）
+[pet] 重置缩放 → 0.7（宠物包默认值）
 [pet] 缩放 → 1（窗口内容区 192x208 DIP）
 [pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
 [pet][renderer] 精灵图就绪 1536x1872，DPR=1.5；按 alpha<16 清空 2000388 个空白像素
-[pet][renderer] 命中评估 css=(99,135) → 实体 ｜ 帧 row=0 col=0 ｜ 换算 local=(99,133) scale=1
+[pet][renderer] 命中评估 css=(99,130) → 实体 ｜ 帧 row=0 col=0 ｜ 换算 local=(99,128) scale=1
 [pet][renderer] 状态 idle → idle rev=0（重载补推）
+[pet][behavior] 用户抓住宠物 → 自主行为暂停
+[pet][behavior] 用户松开宠物 → 自主行为恢复
 [probe] 放大后单击中心：客户区(96,104) → pointerdown +1 → 命中；光标落到宠物上时 WS_EX_TRANSPARENT=false
 [pet][renderer] 命中评估 css=(4,4) → 空白 ｜ 帧 row=3 col=3 ｜ 换算 local=(4,3) scale=1
 [pet] 命中状态 → 整窗穿透
@@ -56,7 +65,11 @@ spawned electron pid=191416 probe=probe-tray.js
 [probe] 判定：PASS
 [probe] 调 actions.quit() —— 若进程之后仍在，说明"退出"没退干净
 [pet] 用户从菜单退出
+[uncaught] TypeError: Object has been destroyed
+    at Timeout.tickBehaviorLayer [as _onTimeout] (<工程目录>\dist\main\index.js:668:43)
+    at listOnTimeout (node:internal/timers:685:17)
+    at process.processTimers (node:internal/timers:618:7)
 
 
-✅ 退出用例通过：pid=191416 已消失
+✅ 退出用例通过：pid=201260 已消失
 探针判定：PASS 

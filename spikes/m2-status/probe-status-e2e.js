@@ -39,6 +39,8 @@ try { fs.rmSync(EVENT_LOG, { force: true }); } catch (_) { /* ignore */ }
 
 process.argv.push(`--status-file=${STATUS_FILE}`);
 process.argv.push(`--event-log=${EVENT_LOG}`);
+// 关掉自主行为层：宠物自己走动会把位置类断言搅乱（行为层有自己的探针 spikes/m3-behavior）。
+process.argv.push('--no-behavior');
 require(path.join(DIST, 'main', 'index.js'));
 
 const CELL_H = 208;

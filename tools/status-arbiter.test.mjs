@@ -38,6 +38,15 @@ function makeClock(start = 1_000_000) {
   return { now: () => t, advance(ms) { t += ms; return t; } };
 }
 
+/** 确定性伪随机（LCG）：行为层的"走多远、往哪边"必须可复现，否则断言只能写成含糊的范围。 */
+function makeRng(seed = 12345) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
 // —— ① 真实宠物包的 statusMap 解析契约 ——
 section('① statusMap → 动画（用 desktop-pet.json 的真实配置）');
 {
@@ -580,6 +589,225 @@ section('⑬ 清空会话：记录 / 视图 / 确认位一起清');
   arb2.ingest({ sessionId: 'x', status: 'needs-input', title: 'x' });
   eq('清空后再出现的同一会话不再被当成已读', arb2.viewSessions()[0].acknowledged, false);
   eq('它会重新举手等用户确认', arb2.state.status, 'needs-input');
+}
+
+// —— ⑭ 行为层：漫游 / 微动作 / 打盹（纯函数 + 虚拟时钟 + 固定随机种子）——
+// 这四条规则全是"到点才发生"的：25 秒还是 28 秒后开始走、走到边界是停还是掉头、
+// 用户抓住它时该不该动 —— 在屏幕上**完全看不出对错**（早几秒晚几秒都只是"它在走"）。
+// 所以策略必须钉在这里；真实窗口那一半（窗口真的动了、拖动时真的停）在 spikes/m3-behavior。
+section('⑭ 行为层策略');
+{
+  const { parseBehaviorPolicy, tickBehavior, BEHAVIOR_IDLE, roamSpeedPxPerSec } =
+    require(join(root, 'dist/kernel/behavior.js'));
+
+  const stateTable = {};
+  for (const [id, s] of Object.entries(runtimeManifest.states)) {
+    stateTable[id] = { frames: s.frames, fps: s.fps, role: s.role };
+  }
+  const warnings = [];
+  const policy = parseBehaviorPolicy(
+    runtimeManifest.behavior, { states: stateTable, scale: runtimeManifest.render.defaultScale },
+    (m) => warnings.push(m),
+  );
+  eq('策略来自宠物包：漫游间隔 25–90 秒（字段是毫秒）',
+    `${policy.roamEveryMs.min}-${policy.roamEveryMs.max}`, '25000-90000');
+  eq('策略来自宠物包：一次走 80–320px', `${policy.roamDistancePx.min}-${policy.roamDistancePx.max}`, '80-320');
+  eq('策略来自宠物包：速度 96px/s（默认缩放下）', policy.speedPxPerSec, 96);
+  eq('策略来自宠物包：打盹 300 秒后落 failed', `${policy.sleepAfterMs}-${policy.sleepState}`, '300000-failed');
+  eq('微动作候选两个都在包里', policy.microCandidates.join('/'), 'waving/jumping');
+  // 位移姿态按 role 推导，不硬编码 running-left/right —— 换宠物包也能对上
+  eq('位移姿态从 role 推导（左）', policy.locomotion?.left, 'running-left');
+  eq('位移姿态从 role 推导（右）', policy.locomotion?.right, 'running-right');
+  eq('一次性动作的时长由 frames/fps 算出（waving 4 帧 @8fps = 500ms）', policy.clipMs.waving, 500);
+  eq('parse 时没有告警', warnings.length, 0);
+  // 缺位移行 ⇒ 不漫游（而不是硬编码一个不存在的状态名）
+  const noLoco = parseBehaviorPolicy(runtimeManifest.behavior, {
+    states: { idle: { frames: 6, fps: 8 } }, scale: 0.7,
+  }, () => {});
+  eq('包里没有位移姿态时不漫游', noLoco.locomotion, null);
+
+  // —— 模拟窗口：每 33ms 一 tick，并把 moveX 真的应用到"窗口"上（真实系统里那一步由宿主做）——
+  const AREA = { x: 0, y: 0, width: 1920, height: 1040 };
+  const W = 134, H = 146;
+  const clock = makeClock(1_000_000);
+  const rng = makeRng(20260917);
+
+  const simulate = (st0, totalMs, opt = {}) => {
+    const p = opt.policy ?? policy;
+    let st = st0;
+    let x = opt.startX ?? 600;
+    const trail = [];
+    const plays = [];
+    const n = Math.max(1, Math.ceil(totalMs / 33));
+    for (let i = 0; i < n; i += 1) {
+      clock.advance(33);
+      const r = tickBehavior(st, {
+        now: clock.now(), pet: { x, y: 800, width: W, height: H }, workArea: AREA,
+        scale: opt.scale ?? 0.7, status: opt.status ?? 'idle',
+        suppressed: opt.suppressed ?? false, reducedMotion: opt.reducedMotion ?? false,
+      }, p, rng);
+      st = r.state;
+      if (r.command.moveX !== null && r.command.moveX !== x) {
+        x = r.command.moveX;
+        trail.push(x);
+      }
+      if (r.command.play !== undefined) plays.push({ at: i + 1, play: r.command.play });
+    }
+    return { state: st, x, trail, plays };
+  };
+  /** 造一个"现在就该动"的状态：抹掉排程与打盹计时，把两项计时都定在当前时刻。 */
+  const dueNow = (over = {}) => ({
+    ...BEHAVIOR_IDLE,
+    idleSinceAt: clock.now(),
+    nextRoamAt: clock.now(),
+    nextActionAt: clock.now() + 10 * 60_000,   // 微动作排到很后面，专测漫游
+    lastStepAt: clock.now(),
+    ...over,
+  });
+
+  // —— ① 启动后不会立刻乱跑：先排程，什么都不做 ——
+  {
+    const t0 = clock.now();
+    const r = simulate(BEHAVIOR_IDLE, 990);
+    eq('开工 1 秒内一动不动', r.trail.length, 0);
+    eq('也不改动画（交回仲裁器）', r.plays.length, 0);
+    const roamsIn = (r.state.nextRoamAt ?? 0) - t0;
+    check('首次漫游排在 25–90 秒之后', roamsIn >= 25_000 && roamsIn <= 90_000, `${Math.round(roamsIn / 1000)}s`);
+  }
+
+  // —— ② 到点开始走：播位移姿态、按朝向；到位后停下并重排程 ——
+  {
+    const r = simulate(dueNow({ phase: 'idle' }), 5000);
+    const first = r.plays[0];
+    check('开始漫游时下发一个位移姿态（循环）',
+      !!first && first.play?.loop === true && /^running-(left|right)$/.test(first.play.state),
+      JSON.stringify(first));
+    check('确实在移动', r.trail.length > 10, `${r.trail.length} 次`);
+    const dir = Math.sign(r.x - 600);
+    eq('朝向与移动方向一致', r.state.facing, dir > 0 ? 'right' : 'left');
+    eq('位移姿态与朝向一致',
+      first?.play?.state, dir > 0 ? 'running-right' : 'running-left');
+  }
+
+  // —— ③ 速度按缩放线性归一化（锁定决策：96px/s @ 默认缩放 0.7）——
+  // 目标点必须**足够远**，否则宠物中途就到了 —— 量到的是"走了多远"而不是"走多快"
+  // （第一版就是这样：1.4 缩放那组因为在 1 秒内到达目标，只走了 145px，假红一次）。
+  {
+    eq('缩放 1.4 时速度翻倍', roamSpeedPxPerSec(policy, 1.4), 192);
+    const far = { ...policy, roamDistancePx: { min: 900, max: 900 } };
+    const a = simulate(dueNow(), 1000, { policy: far });
+    const moved07 = Math.abs(a.x - 600);
+    check('0.7 缩放下 1 秒走约 96px', moved07 >= 88 && moved07 <= 104, `实测 ${moved07}px`);
+    clock.advance(1000);   // 隔开一点，别让两段共用同一个"到点"时刻
+    const b = simulate(dueNow(), 1000, { policy: far, scale: 1.4 });
+    const moved14 = Math.abs(b.x - 600);
+    check('1.4 缩放下 1 秒走约 192px（观感一致）', moved14 >= 176 && moved14 <= 208, `实测 ${moved14}px`);
+  }
+
+  // —— ④ 边界：贴在右边缘时只能往左走（edgePolicy 的"停止并翻转朝向"）——
+  {
+    const rightEdge = AREA.x + AREA.width - W;
+    const r = simulate(dueNow(), 1200, { startX: rightEdge });
+    check('贴右边缘时不会往右走（也不会停在原地不动）',
+      r.trail.length > 0 && r.x < rightEdge, `x=${r.x}（右边缘 ${rightEdge}）`);
+    eq('朝向翻到左', r.state.facing, 'left');
+    // 目标一定夹在工作区内
+    check('漫游目标夹进工作区', (r.state.targetX ?? 0) >= AREA.x && (r.state.targetX ?? 0) <= rightEdge,
+      String(r.state.targetX));
+  }
+
+  // —— ⑤ 用户抓着宠物时绝不自己动（这条是"抢方向盘"的唯一防线）——
+  {
+    const st = dueNow();
+    const r1 = simulate(st, 300);
+    const roaming = r1.state.phase === 'roaming';
+    eq('前置：已经在漫游', roaming, true);
+    const r2 = simulate(r1.state, 2000, { suppressed: true });
+    eq('抑制期间一次都不动', r2.trail.length, 0);
+    eq('抑制期间也不下发新的动画覆盖（只在第一次交回）',
+      r2.plays.filter((p) => p.play === null).length, 1);
+    eq('排程里的目标保留着（松手接着走）', r2.state.targetX !== null, true);
+    const r3 = simulate(r2.state, 600);
+    check('松手后接着走', r3.trail.length > 0, `${r3.trail.length} 次`);
+  }
+
+  // —— ⑥ 有任务在跑时不漫游（主状态不是 idle 就整个让位）——
+  {
+    // 前置：先真的走起来（这样"交回动画"才有东西可交）
+    const walk = simulate(dueNow(), 300);
+    eq('前置：已经在漫游', walk.state.phase, 'roaming');
+    const r = simulate(walk.state, 1000, { status: 'running' });
+    eq('running 期间不动', r.trail.length, 0);
+    eq('running 期间交回动画（一次）', r.plays.length, 1);
+    eq('交回的是 null', r.plays[0]?.play, null);
+    eq('相回到 idle 且清掉打盹计时', r.state.idleSinceAt, null);
+    eq('目标也清掉（回来时重新挑）', r.state.targetX, null);
+  }
+
+  // —— ⑦ 打盹：空闲够久 → 播 sleepState；状态一变就醒；醒来重新计时 ——
+  {
+    const asleep = { ...BEHAVIOR_IDLE, idleSinceAt: clock.now() - 300_001, lastStepAt: clock.now() };
+    const r = simulate(asleep, 66);
+    eq('空闲超过 300 秒 → 播 sleepState（循环）', r.plays[0]?.play?.state, 'failed');
+    eq('sleepState 是循环姿态', r.plays[0]?.play?.loop, true);
+    eq('不会每 tick 重复下发', r.plays.length, 1);
+    eq('相 = sleeping', r.state.phase, 'sleeping');
+    const woke = simulate(r.state, 66, { status: 'needs-input' });
+    eq('主状态一变就醒来（交回仲裁器）', woke.plays[0]?.play, null);
+    eq('醒来后清掉打盹相', woke.state.phase, 'idle');
+    const after = simulate(woke.state, 660);
+    eq('醒来后重新计时（不会立刻又睡着）', after.state.phase !== 'sleeping', true);
+
+    // 漫游/微动作**不得**重置打盹计时 —— 否则"每 25–90 秒走一次"会把 5 分钟的计时无限推后，
+    // 表现为"它永远不打盹"，而且屏幕上没有任何报错可循（ADR 018 记了这个坑）。
+    const nearlyAsleep = {
+      ...BEHAVIOR_IDLE, idleSinceAt: clock.now() - 299_000,
+      nextRoamAt: clock.now(), nextActionAt: clock.now() + 600_000, lastStepAt: clock.now(),
+    };
+    const roaming = simulate(nearlyAsleep, 1000);
+    eq('前置：先走起来', roaming.state.phase, 'roaming');
+    const napped = simulate(roaming.state, 6000);
+    eq('走完这一程就打盹（计时没被漫游重置）', napped.state.phase, 'sleeping');
+  }
+
+  // —— ⑧ 微动作：到点播一个候选（一次性），播完交回仲裁器 ——
+  {
+    const fast = { ...policy, roamEnabled: false, microEveryMs: { min: 100, max: 100 } };
+    const r = simulate({ ...BEHAVIOR_IDLE, lastStepAt: clock.now() }, 1200, { policy: fast });
+    const act = r.plays.find((p) => p.play && p.play.loop === false);
+    check('到点播一个候选（一次性）',
+      !!act && ['waving', 'jumping'].includes(act.play.state), JSON.stringify(r.plays));
+    const backIdx = r.plays.findIndex((p, i) => p.play === null && i > 0);
+    check('播完把动画交回仲裁器', backIdx >= 0, JSON.stringify(r.plays.map((p) => p.play?.state ?? null)));
+    eq('微动作期间不移动', r.trail.length, 0);
+  }
+
+  // —— ⑨ 「减少动态效果」：不漫游、不做微动作，但打盹（静态姿态）仍然允许 ——
+  {
+    const r = simulate(dueNow(), 1200, { reducedMotion: true });
+    eq('减少动态效果下不漫游', r.trail.length, 0);
+    eq('也不做微动作', r.plays.filter((p) => p.play && p.play.loop === false).length, 0);
+    const asleep = { ...BEHAVIOR_IDLE, idleSinceAt: clock.now() - 300_001, lastStepAt: clock.now() };
+    const s = simulate(asleep, 66, { reducedMotion: true });
+    eq('但打盹照常（它只是换一个静止姿态）', s.plays[0]?.play?.state, 'failed');
+  }
+
+  // —— ⑩ 交回仲裁器是**边沿**：只发一次，不会每 tick 重发 ——
+  {
+    const r = simulate({ ...BEHAVIOR_IDLE, lastStepAt: clock.now(), sentPlay: { state: 'running-left', loop: true } }, 100);
+    eq('第一条是交回', r.plays[0]?.play, null);
+    eq('之后不再重发', r.plays.length, 1);
+  }
+
+  // —— ⑪ 总开关：behavior.enabled=false 时彻底安静 ——
+  {
+    const off = parseBehaviorPolicy({ ...runtimeManifest.behavior, enabled: false }, {
+      states: stateTable, scale: 0.7,
+    }, () => {});
+    const r = simulate(dueNow(), 1200, { policy: off });
+    eq('总开关关掉后不动', r.trail.length, 0);
+    eq('总开关关掉后不播任何覆盖', r.plays.length, 0);
+  }
 }
 
 // —— 汇总 ——

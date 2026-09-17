@@ -1,22 +1,24 @@
 
 === key-path ===
-spawned electron pid=186768 probe=probe-key-path.js
+spawned electron pid=201652 probe=probe-key-path.js
 [pet] 加载宠物包：<工程目录>
-[pet] 淘淘 New · 1536x1872 · 8x9 @ 192x208 · 9 个状态
+[pet] 淘淘 · 1536x1872 · 8x9 @ 192x208 · 9 个状态
 [pet] 状态源：状态文件 <工程目录>\spikes\m2-control\probe-status.json（监听目录 + 1000ms 轮询兜底）
 [pet] 快捷键已注册：Super+Alt+P（由 Win+Alt+P 归一化而来）
 [pet] 托盘已创建：<工程目录>\assets\tray.ico
 [pet] 气泡层已创建（常态整窗穿透，不参与命中判定）
 [pet] 控制条已创建（宽 260，可聚焦）—— 唤出：右键宠物 / Super+Alt+P / 托盘菜单；失焦 200ms 后收起
+[WARN] [pet] 行为层已由 --no-behavior 关闭（探针/排查用）
+[pet] 行为层：停用（behavior.enabled=false），漫游 开（每 25–90s 走 80–320px，96px/s @缩放1.0），微动作 waving/jumping，打盹 300s → failed｜位移姿态 running-left/running-right
 [pet] --expose-actions：动作表与只读探针已挂到 globalThis（仅供探针）
 [pet] 窗口已显示，位置 {"x":1549,"y":857}
 [pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
 [pet][renderer] 精灵图就绪 1536x1872，DPR=1.5；按 alpha<16 清空 2000388 个空白像素
-[pet][renderer] 命中评估 css=(-856,38) → 空白 ｜ 帧 row=0 col=0 ｜ 换算 local=(-1223,52) scale=0.7
+[pet][renderer] 命中评估 css=(-300,-258) → 空白 ｜ 帧 row=0 col=0 ｜ 换算 local=(-429,-371) scale=0.7
 [pet][renderer] 状态 idle → idle rev=0（重载补推）
 [probe] 宠物窗=true 控制条窗=true 快捷键=Super+Alt+P DPR=1.5
 [probe] 初始（未唤出）：visible=false focused=false keys={"down":0,"esc":0,"last":""}
-[pet][renderer] 命中评估 css=(67,73) → 实体 ｜ 帧 row=0 col=1 ｜ 换算 local=(95,102) scale=0.7
+[pet][renderer] 命中评估 css=(67,73) → 实体 ｜ 帧 row=0 col=4 ｜ 换算 local=(95,102) scale=0.7
 [pet] 命中状态 → 可交互（光标在宠物实体上）
 [probe] 光标停在宠物中心 1.8 秒（期望：什么都不发生）：visible=false focused=false keys={"down":0,"esc":0,"last":""}
 [pet] 控制条显示（唤出即抢焦点；Esc 或点到别处可收）
@@ -39,14 +41,16 @@ spawned electron pid=186768 probe=probe-key-path.js
 探针判定：PASS
 
 === control ===
-spawned electron pid=196068 probe=probe-control.js
+spawned electron pid=201240 probe=probe-control.js
 [pet] 加载宠物包：<工程目录>
-[pet] 淘淘 New · 1536x1872 · 8x9 @ 192x208 · 9 个状态
+[pet] 淘淘 · 1536x1872 · 8x9 @ 192x208 · 9 个状态
 [pet] 状态源：状态文件 <工程目录>\spikes\m2-control\probe-status.json（监听目录 + 1000ms 轮询兜底）
 [pet] 快捷键已注册：Super+Alt+P（由 Win+Alt+P 归一化而来）
 [pet] 托盘已创建：<工程目录>\assets\tray.ico
 [pet] 气泡层已创建（常态整窗穿透，不参与命中判定）
 [pet] 控制条已创建（宽 260，可聚焦）—— 唤出：右键宠物 / Super+Alt+P / 托盘菜单；失焦 200ms 后收起
+[WARN] [pet] 行为层已由 --no-behavior 关闭（探针/排查用）
+[pet] 行为层：停用（behavior.enabled=false），漫游 开（每 25–90s 走 80–320px，96px/s @缩放1.0），微动作 waving/jumping，打盹 300s → failed｜位移姿态 running-left/running-right
 [pet] --expose-actions：动作表与只读探针已挂到 globalThis（仅供探针）
 [pet] 窗口已显示，位置 {"x":1549,"y":857}
 [pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
@@ -54,6 +58,8 @@ spawned electron pid=196068 probe=probe-control.js
 [pet][renderer] 命中评估 css=(67,73) → 实体 ｜ 帧 row=0 col=0 ｜ 换算 local=(95,102) scale=0.7
 [pet] 命中状态 → 可交互（光标在宠物实体上）
 [pet][renderer] 状态 idle → idle rev=0（重载补推）
+[pet][behavior] 用户抓住宠物 → 自主行为暂停
+[pet][behavior] 用户松开宠物 → 自主行为恢复
 [pet] 控制条显示（唤出即抢焦点；Esc 或点到别处可收）
 [probe] 位置：宠物 134x146@790,437 → 面板 260x72@727,591 ｜ 下间距=8（宠物包声明 8）水平偏差=0 ｜ 高度 72（无会话时期望 72）
 [pet][status] 状态 idle → running @a（rev=1）
@@ -66,7 +72,7 @@ spawned electron pid=196068 probe=probe-control.js
 [pet][status] 状态 running → needs-input @b（rev=2）
 [pet][status] 推送 needs-input → waiting rev=2 角标=1
 [pet][renderer] 状态 needs-input → waiting rev=2 ｜ 气泡「需要输入」 ｜ 另有 1 条活动会话
-[probe] 面板内容：摘要「需要输入 · 2 条会话」｜行数=2 确认按钮=1｜宠物名「淘淘 New」｜高度 128（2 条会话期望 128）｜
+[probe] 面板内容：摘要「需要输入 · 2 条会话」｜行数=2 确认按钮=1｜宠物名「淘淘」｜高度 128（2 条会话期望 128）｜
         行0: b · 等你拍板需要输入2 秒前确认
         行1: a · a运行中2 秒前
 [pet][status] 用户确认：b
@@ -77,7 +83,11 @@ spawned electron pid=196068 probe=probe-control.js
 [WARN] [pet] 控制条发来未知命令，已忽略：{"id":"nonsense-command"}
 [WARN] [pet] 控制条请求确认不存在的会话：不存在的会话（已忽略）
 [probe] 非法命令：未知 id 被记录=true｜不存在的会话被拒=true｜面板仍在=true
+[pet][behavior] 用户抓住宠物 → 自主行为暂停
+[pet][behavior] 用户松开宠物 → 自主行为恢复
 [probe] 拖动宠物 {"dx":-170,"dy":-80} → 面板 727,591 → 557,511 → ✅ 跟随
+[pet][behavior] 用户抓住宠物 → 自主行为暂停
+[pet][behavior] 用户松开宠物 → 自主行为恢复
 [probe] 宠物拖到工作区底边 y=877（底边 1023，工作区底 1027） → 面板 739,128 → ✅ 已翻到上方
 [probe] 已保存 control-shot.png
 [probe] 控制条扩展样式 = 0x188，WS_EX_TOOLWINDOW=true
@@ -86,7 +96,7 @@ spawned electron pid=196068 probe=probe-control.js
 [pet] 控制条显示（唤出即抢焦点；Esc 或点到别处可收）
 [pet] 控制条收起
 [probe] 右键宠物：唤出=true（状态机 {"visible":true,"hasFocus":true,"hideAt":null}） → 再右键一次收起=true
-[pet][renderer] 命中评估 css=(-53,-74) → 空白 ｜ 帧 row=7 col=3 ｜ 换算 local=(-76,-106) scale=0.7
+[pet][renderer] 命中评估 css=(-53,-74) → 空白 ｜ 帧 row=7 col=4 ｜ 换算 local=(-76,-106) scale=0.7
 [pet] 命中状态 → 整窗穿透
 [probe] 悬停不再唤出：停在宠物上 1.8 秒 → 可见=false（期望 false）｜停在旧面板矩形内 1.8 秒 → 可见=false（期望 false）
 [pet][renderer] 命中评估 css=(67,73) → 实体 ｜ 帧 row=7 col=2 ｜ 换算 local=(95,104) scale=0.7
@@ -105,6 +115,10 @@ spawned electron pid=196068 probe=probe-control.js
 [probe] hide-pet → 宠物可见=false（期望 false）面板可见=false（期望 false）
 [probe] 判定：PASS
 [pet] 用户从菜单退出
+[uncaught] TypeError: Object has been destroyed
+    at Timeout.tickBehaviorLayer [as _onTimeout] (<工程目录>\dist\main\index.js:668:43)
+    at listOnTimeout (node:internal/timers:685:17)
+    at process.processTimers (node:internal/timers:618:7)
 
 探针判定：PASS
 

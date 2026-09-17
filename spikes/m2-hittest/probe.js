@@ -112,6 +112,8 @@ const BG_HTML = '<html><body style="margin:0;background:#000"><script>'
 const { app: _app } = require('electron');
 _app.commandLine.appendSwitch('force-prefers-reduced-motion');
 
+// 关掉自主行为层：宠物自己走动会把位置类断言搅乱（行为层有自己的探针 spikes/m3-behavior）。
+process.argv.push('--no-behavior');
 require(path.join(DIST, 'main', 'index.js'));
 
 async function waitForPetWindow(timeoutMs) {
