@@ -112,7 +112,7 @@
   "stateBeforeFar": {
    "visible": true,
    "hasFocus": false,
-   "hoverSince": 1789681843552,
+   "hoverSince": 1789682827096,
    "hideAt": null,
    "suppressUntil": null,
    "armed": true
@@ -138,7 +138,7 @@
     "atMs": 200,
     "visible": true,
     "armed": true,
-    "hideInMs": 166,
+    "hideInMs": 164,
     "hoverSince": null,
     "petInteractive": false
    },

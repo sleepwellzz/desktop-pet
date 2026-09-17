@@ -1,0 +1,119 @@
+
+=== key-path ===
+spawned electron pid=192440 probe=probe-key-path.js
+[pet] 加载宠物包：<工程目录>
+[pet] 淘淘 New · 1536x1872 · 8x9 @ 192x208 · 9 个状态
+[pet] 状态源：状态文件 <工程目录>\spikes\m2-control\probe-status.json（监听目录 + 1000ms 轮询兜底）
+[pet] 快捷键已注册：Super+Alt+P（由 Win+Alt+P 归一化而来）
+[pet] 托盘已创建：<工程目录>\assets\tray.ico
+[pet] 气泡层已创建（常态整窗穿透，不参与命中判定）
+[pet] 控制条已创建（宽 260，可聚焦；悬停出现=开，悬停 300ms 出现 / 离开 350ms 收起）
+[pet] --expose-actions：动作表与只读探针已挂到 globalThis（仅供探针）
+[pet] 窗口已显示，位置 {"x":1549,"y":857}
+[pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
+[pet][renderer] 精灵图就绪 1536x1872，DPR=1.5；按 alpha<16 清空 2000388 个空白像素
+[pet][renderer] 命中评估 css=(-438,-485) → 空白 ｜ 帧 row=0 col=0 ｜ 换算 local=(-626,-695) scale=0.7
+[pet][renderer] 状态 idle → idle rev=0（重载补推）
+[probe] 宠物窗=true 控制条窗=true 快捷键=Super+Alt+P DPR=1.5
+[probe] 初始（未唤出）：visible=false focused=false keys={"down":0,"esc":0,"last":""}
+[pet][renderer] 命中评估 css=(67,73) → 实体 ｜ 帧 row=0 col=2 ｜ 换算 local=(95,102) scale=0.7
+[pet] 命中状态 → 可交互（光标在宠物实体上）
+[pet] 控制条显示（不抢焦点：悬停/菜单唤出）
+[probe] 悬停宠物 1.2 秒（期望出现且不抢焦点）：visible=true focused=false keys={"down":0,"esc":0,"last":""}
+[probe] 悬停唤出后按 A（无焦点 → 预期收不到）：visible=true focused=false keys={"down":0,"esc":0,"last":""}
+[pet][renderer] 命中评估 css=(-1489,-797) → 空白 ｜ 帧 row=0 col=4 ｜ 换算 local=(-2128,-1141) scale=0.7
+[pet] 命中状态 → 整窗穿透
+[pet] 控制条收起
+[probe] 光标移开 1.4 秒（期望已收起）：visible=false focused=false keys={"down":0,"esc":0,"last":""}
+[pet] 全局快捷键触发：唤出/收起控制条
+[pet] 控制条显示（抢焦点：快捷键唤出）
+[probe] 快捷键唤出（期望可见且抢到焦点）：visible=true focused=true keys={"down":0,"esc":0,"last":""}
+[probe] 快捷键唤出后按 A（预期收得到）：visible=true focused=true keys={"down":1,"esc":0,"last":"a"}
+[pet] 全局快捷键触发：唤出/收起控制条
+[pet] 控制条收起
+[probe] 再按快捷键收起：visible=false focused=false keys={"down":1,"esc":0,"last":"a"}
+[pet] 全局快捷键触发：唤出/收起控制条
+[pet] 控制条显示（抢焦点：快捷键唤出）
+[probe] 再次唤出（hide→show 往返后）：visible=true focused=true keys={"down":3,"esc":0,"last":"Alt"}
+[probe] 往返后按 A：visible=true focused=true keys={"down":4,"esc":0,"last":"a"}
+[pet] 控制条收起
+[probe] 按 Esc（期望收起）：visible=false focused=false keys={"down":5,"esc":1,"last":"Escape"}
+[probe] 判定：PASS
+[probe] 摘要：悬停唤出抢焦点=false（应 false）｜快捷键唤出抢焦点=true（应 true）｜键盘增量 悬停=0 快捷键=1 往返后=1｜Esc 收起=true
+[pet] 用户从菜单退出
+
+探针判定：PASS
+
+=== control ===
+spawned electron pid=190652 probe=probe-control.js
+[pet] 加载宠物包：<工程目录>
+[pet] 淘淘 New · 1536x1872 · 8x9 @ 192x208 · 9 个状态
+[pet] 状态源：状态文件 <工程目录>\spikes\m2-control\probe-status.json（监听目录 + 1000ms 轮询兜底）
+[pet] 快捷键已注册：Super+Alt+P（由 Win+Alt+P 归一化而来）
+[pet] 托盘已创建：<工程目录>\assets\tray.ico
+[pet] 气泡层已创建（常态整窗穿透，不参与命中判定）
+[pet] 控制条已创建（宽 260，可聚焦；悬停出现=开，悬停 300ms 出现 / 离开 350ms 收起）
+[pet] --expose-actions：动作表与只读探针已挂到 globalThis（仅供探针）
+[pet] 窗口已显示，位置 {"x":1549,"y":857}
+[pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
+[pet][renderer] 精灵图就绪 1536x1872，DPR=1.5；按 alpha<16 清空 2000388 个空白像素
+[pet][renderer] 命中评估 css=(-1489,-797) → 空白 ｜ 帧 row=0 col=0 ｜ 换算 local=(-2128,-1141) scale=0.7
+[pet][renderer] 状态 idle → idle rev=0（重载补推）
+[pet][renderer] 命中评估 css=(67,73) → 实体 ｜ 帧 row=0 col=1 ｜ 换算 local=(95,102) scale=0.7
+[pet] 命中状态 → 可交互（光标在宠物实体上）
+[pet] 控制条显示（不抢焦点：悬停/菜单唤出）
+[probe] 位置：宠物 134x146@790,437 → 面板 260x72@727,591 ｜ 下间距=8（宠物包声明 8）水平偏差=0 ｜ 高度 72（无会话时期望 72）
+[pet][status] 状态 idle → running @a（rev=1）
+[pet][status] 推送 running → running rev=1
+[pet][source] 文件状态：a → running（a）
+[pet][status] 进入粘滞：会话 b 需要输入，驻留至用户确认或 300s 超时
+[pet][status] 状态切换被限流（等待 500ms 窗格）：running → needs-input
+[pet][source] 文件状态：b → needs-input（等你拍板）
+[pet][renderer] 状态 running → running rev=1 ｜ 气泡「运行中」
+[pet][status] 状态 running → needs-input @b（rev=2）
+[pet][status] 推送 needs-input → waiting rev=2 角标=1
+[pet][renderer] 状态 needs-input → waiting rev=2 ｜ 气泡「需要输入」 ｜ 另有 1 条活动会话
+[probe] 面板内容：摘要「需要输入 · 2 条会话」｜行数=2 确认按钮=1｜高度 128（2 条会话期望 128）｜
+        行0: b · 等你拍板需要输入1 秒前确认
+        行1: a · a运行中1 秒前
+[pet][status] 用户确认：b
+[pet][status] 状态 needs-input → running @a（rev=3）
+[pet][status] 推送 running → running rev=3
+[pet][renderer] 状态 running → running rev=3 ｜ 气泡「运行中」
+[probe] 点确认：clicked → 确认按钮数=0（期望 0）
+[probe] 面板只读缩放值显示：70%（缩放按钮已撤，仅作显示）
+[WARN] [pet] 控制条发来未知命令，已忽略：{"id":"nonsense-command"}
+[WARN] [pet] 控制条请求确认不存在的会话：不存在的会话（已忽略）
+[probe] 非法命令：未知 id 被记录=true｜不存在的会话被拒=true｜面板仍在=true
+[probe] 拖动宠物 {"dx":-170,"dy":-80} → 面板 727,591 → 557,511 → ✅ 跟随
+[probe] 宠物拖到工作区底边 y=877（底边 1023，工作区底 1027） → 面板 739,128 → ✅ 已翻到上方
+[probe] 已保存 control-shot.png
+[probe] 控制条扩展样式 = 0x188，WS_EX_TOOLWINDOW=true
+[probe] 幽灵区域前置：宠物 620,877 134x146 ｜ barBounds={"x":557,"y":739,"width":260,"height":128} ｜ win.getContentBounds={"x":557,"y":739,"width":260,"height":128}
+[pet][renderer] 命中评估 css=(-560,-817) → 空白 ｜ 帧 row=7 col=2 ｜ 换算 local=(-800,-1168) scale=0.7
+[pet] 命中状态 → 整窗穿透
+[pet] 控制条收起
+[probe]   采样 200ms：visible=true armed=true hideIn=164ms hoverSince=null 渲染层命中=false
+[probe]   采样 400ms：visible=false armed=true hideIn=nullms hoverSince=null 渲染层命中=false
+[probe]   采样 600ms：visible=false armed=true hideIn=nullms hoverSince=null 渲染层命中=false
+[probe]   采样 800ms：visible=false armed=true hideIn=nullms hoverSince=null 渲染层命中=false
+[probe]   采样 1000ms：visible=false armed=true hideIn=nullms hoverSince=null 渲染层命中=false
+[probe]   采样 1200ms：visible=false armed=true hideIn=nullms hoverSince=null 渲染层命中=false
+[probe]   采样 1400ms：visible=false armed=true hideIn=nullms hoverSince=null 渲染层命中=false
+[probe]   采样 1600ms：visible=false armed=true hideIn=nullms hoverSince=null 渲染层命中=false
+[probe]   采样 1800ms：visible=false armed=true hideIn=nullms hoverSince=null 渲染层命中=false
+[probe]   采样 2000ms：visible=false armed=true hideIn=nullms hoverSince=null 渲染层命中=false
+[probe] 幽灵区域：面板旧矩形 557,739 260x128｜取点 567,803（落在宠物内=false） → 光标移远后面板收起=true → 再移到该点，面板被唤出=false
+[probe] 状态机 移远前={"visible":true,"hasFocus":false,"hoverSince":1789682827096,"hideAt":null,"suppressUntil":null,"armed":true}
+[probe] 状态机 移远后={"visible":false,"hasFocus":false,"hoverSince":null,"hideAt":null,"suppressUntil":null,"armed":true}
+[pet][renderer] 命中评估 css=(67,73) → 实体 ｜ 帧 row=7 col=2 ｜ 换算 local=(95,104) scale=0.7
+[pet] 命中状态 → 可交互（光标在宠物实体上）
+[pet] 控制条显示（不抢焦点：悬停/菜单唤出）
+[pet] 控制条收起
+[pet] 已隐藏宠物（进程与托盘仍在，可从托盘恢复）
+[probe] 点面板 × ：clicked:close-bar → 面板可见=false（期望 false）｜hide-pet → 宠物可见=false（期望 false）面板可见=false
+[probe] 判定：PASS
+
+探针判定：PASS
+
+全部探针 PASS
