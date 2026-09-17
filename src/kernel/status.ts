@@ -223,7 +223,14 @@ export class StatusArbiter {
     for (const id of targets) this.acknowledged.add(id);
     if (this.sticky && (!sessionId || this.sticky.sessionId === sessionId)) this.sticky = null;
     // 单击会频繁触发 ack，没有待确认会话时不要刷日志（否则真正的状态变化会被淹没）。
-    if (targets.length > 0) this.log(`用户确认：${targets.join('、')}`);
+    if (targets.length > 0) {
+      this.log(`用户确认：${targets.join('、')}`);
+      // **用户的确认是低频且明确的动作，不该被状态变化限流挡住。**
+      // 限流（minDisplay/throttle）是给 agent 的状态抖动用的；不重置窗格的话，
+      // 点完「确认」面板与宠物最多要等 500ms 才反应 —— 用户报告的观感就是"点了没反应"。
+      // 只在真有目标时重置：`ack()` 也是"单击宠物"的实现，每次都重置会把限流彻底废掉。
+      this.lastChangeAt = Number.NEGATIVE_INFINITY;
+    }
     return this.recompute(now);
   }
 

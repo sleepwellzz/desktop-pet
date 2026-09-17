@@ -5,7 +5,7 @@
 //   - 宿主（src/host）负责窗口与系统能力 —— 目前只有覆盖窗口与全屏检测
 //   - 播帧循环跑在渲染层：避免每帧 IPC，内核代码放哪都能跑
 import { app, ipcMain, Menu, screen } from 'electron';
-import { appendFileSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { loadPack } from '../kernel/pack';
@@ -222,6 +222,34 @@ function boot(): void {
     overlay.reload();
   }
 
+  /**
+   * 清空状态文件里的全部会话（菜单项「清空状态会话」）。
+   *
+   * 为什么需要它：状态文件是**快照**，进程重启后状态自然还在（这是当初选它而不是 HTTP 的
+   * 理由之一）—— 但副作用是"上一次跑完留下的会话"会在下次启动时被原样读回来。
+   * 2026-09-16 用户实测困惑："一启动就显示 default 在运行中，怎么喂都改不了" ——
+   * 其实改得掉，只是没人知道那条会话还留在文件里（按会话清只能靠 `喂状态.bat` 的 7/9）。
+   *
+   * 写侧本来只有 hook，这里破例由主进程写：这是用户主动请求的破坏性操作，
+   * 而且必须**同时**清掉文件与界面状态 —— 只清仲裁器的话，适配器下一次轮询会照着
+   * 未变的文件把会话读回来（它比较的是"文件内容是否变化"）。原子替换与 `pet-hook.mjs` 同款。
+   */
+  function clearStatusSessions(): void {
+    if (!statusFile) {
+      console.warn('[pet] 状态源已禁用，没有可清空的会话');
+      return;
+    }
+    try {
+      mkdirSync(dirname(statusFile), { recursive: true });
+      const tmp = `${statusFile}.tmp-${process.pid}`;
+      writeFileSync(tmp, JSON.stringify({ schema: 'desktop-pet/status/v1', sessions: {} }, null, 2) + '\n', 'utf8');
+      renameSync(tmp, statusFile);
+      console.log('[pet] 已清空状态文件里的全部会话（适配器会在下一次读盘时补 idle 收尾）');
+    } catch (e) {
+      console.error('[pet] 清空状态文件失败：' + String(e));
+    }
+  }
+
   /** 菜单视图：状态全部现读，菜单自己不持有状态（ADR 010 的唯一真值约定）。 */
   function petMenuView(): PetMenuView {
     const s = arbiter.state;
@@ -236,6 +264,7 @@ function boot(): void {
       defaultScale: pack.scale,
       scaleRange,
       scaleStep,
+      sessionCount: arbiter.viewSessions().length,
     };
   }
 
@@ -259,6 +288,9 @@ function boot(): void {
     },
     toggleControlBar() {
       toggleBar();
+    },
+    clearSessions() {
+      clearStatusSessions();
     },
     setScale(next) {
       const s = clampScale(next);
@@ -443,9 +475,6 @@ function boot(): void {
       sessions: arbiter.viewSessions(),
       maxRows: barMaxRows,
       scale: currentScale,
-      defaultScale: pack.scale,
-      scaleRange,
-      scaleStep,
       hotkey: activeHotkey,
       petVisible: overlay.isVisible(),
       rev: s.rev,
@@ -524,7 +553,13 @@ function boot(): void {
    */
   function updateBarHover(cursor: { x: number; y: number }): void {
     if (!bar) return;
-    const over = lastInteractive || pointInRect(cursor, bar.bounds());
+    // **面板不可见时不能把它的矩形算进来**（2026-09-16 用户实测报告的症状：
+    // "控制条出现/触发消息后，鼠标在离它很远的地方仍会被判定为即将触发控制条"）。
+    // 成因：隐藏之后 `bounds()` 返回的仍是它消失前那块矩形（260 宽 —— 比宠物宽 126 DIP，
+    // 左右各多出 63），鼠标只要掠过那片**空地**就会被算成"在控制条上"，于是又把面板叫回来。
+    // 面板不可见时它不占任何空间，这才是正确语义。
+    const barRect = bar.isVisible() ? bar.bounds() : null;
+    const over = lastInteractive || pointInRect(cursor, barRect);
     if (over !== lastBarOver) {
       lastBarOver = over;
       dispatchBar({ kind: 'hover', over });
@@ -542,9 +577,6 @@ function boot(): void {
     'hide-pet'() {
       if (overlay.isVisible()) actions.toggleVisibility();
     },
-    'scale-up'() { actions.setScale(currentScale + scaleStep); },
-    'scale-down'() { actions.setScale(currentScale - scaleStep); },
-    'reset-scale'() { actions.resetScale(); },
     'ack-session'(arg) {
       if (!arg || !arbiter.viewSessions().some((s) => s.sessionId === arg)) {
         console.warn(`[pet] 控制条请求确认不存在的会话：${arg ?? '(空)'}（已忽略）`);
@@ -585,6 +617,8 @@ function boot(): void {
       hotkey: () => activeHotkey,
       bubbleVisible: () => bubble?.isVisible() ?? false,
       petBounds: () => overlay.browserWindow.getContentBounds(),
+      /** 渲染层最近上报的命中状态。探针用它验证"光标远离宠物时必须为 false"。 */
+      petInteractive: () => lastInteractive,
       // —— M2 ④ 控制条（探针用）——
       barState: () => barState,
       barVisible: () => bar?.isVisible() ?? false,

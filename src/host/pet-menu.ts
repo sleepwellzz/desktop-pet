@@ -19,6 +19,8 @@ export interface PetMenuView {
   statusLine: string;
   /** 当前生效的全局快捷键；null 表示注册失败（此时如实展示"不可用"）。 */
   hotkey: string | null;
+  /** 状态文件里现存的会话数。0 时"清空状态会话"置灰。 */
+  sessionCount: number;
   /** 宠物包声明的默认缩放（"重置大小"的落点）。 */
   defaultScale: number;
   scaleRange: [number, number];
@@ -29,6 +31,14 @@ export interface PetMenuActions {
   toggleVisibility(): void;
   /** 唤出 / 收起悬浮控制条（M2 ④）。与全局快捷键同一条路径。 */
   toggleControlBar(): void;
+  /**
+   * 清空状态文件里的全部会话（M2 ④ 人工验收后补）。
+   *
+   * 起因：状态文件是快照，上次运行留下的会话会在下次启动时被原样读回来，
+   * 用户看到"一启动就显示某条会话在运行中、怎么喂都改不掉" —— 其实那条会话还留在文件里，
+   * 而按会话清只能靠 `喂状态.bat` 的 7/9。给一个显式的一键清空入口。
+   */
+  clearSessions(): void;
   setScale(scale: number): void;
   resetScale(): void;
   setAutoStart(on: boolean): void;
@@ -79,6 +89,14 @@ export function buildPetMenuTemplate(
       // 已经是默认值时置灰，避免"点了没反应"的疑惑
       enabled: Math.abs(view.scale - view.defaultScale) > 0.001,
       click: () => actions.resetScale(),
+    },
+    { type: 'separator' },
+    // 一键清掉状态文件里的残留会话：状态文件是快照，上次运行留下的会话会在下次启动时
+    // 照原样显示出来（用户实测困惑："一启动就显示某条会话在运行中，怎么喂都改不了"）。
+    {
+      label: `清空状态会话${view.sessionCount > 0 ? `（${view.sessionCount} 条）` : ''}`,
+      enabled: view.sessionCount > 0,
+      click: () => actions.clearSessions(),
     },
     { type: 'separator' },
     {

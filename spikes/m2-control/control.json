@@ -8,14 +8,14 @@
    "height": 1027
   },
   "pet": {
-   "x": 790,
-   "y": 437,
-   "width": 134,
-   "height": 146
+   "x": 783,
+   "y": 435,
+   "width": 144,
+   "height": 156
   },
   "bar": {
-   "x": 727,
-   "y": 591,
+   "x": 725,
+   "y": 599,
    "width": 260,
    "height": 72
   },
@@ -31,8 +31,7 @@
   ],
   "ackButtons": 1,
   "summary": "需要输入 · 2 条会话",
-  "scale": "70%",
-  "resetDisabled": true,
+  "scale": "75%",
   "barHeight": 128
  },
  "expectHeightWithRows": 128,
@@ -44,20 +43,8 @@
   ],
   "barStateVisible": true
  },
- "commands": {
-  "before": {
-   "w": 134,
-   "h": 146
-  },
-  "afterScaleUp": {
-   "w": 182,
-   "h": 198
-  },
-  "afterReset": {
-   "w": 134,
-   "h": 146
-  },
-  "scaleTextAfterUp": "95%"
+ "panelCommands": {
+  "scaleText": "75%"
  },
  "rejects": {
   "unknownLogged": true,
@@ -70,14 +57,14 @@
    "dy": -80
   },
   "barBefore": {
-   "x": 727,
-   "y": 591,
+   "x": 725,
+   "y": 599,
    "width": 260,
    "height": 128
   },
   "barAfter": {
-   "x": 557,
-   "y": 511,
+   "x": 555,
+   "y": 519,
    "width": 260,
    "height": 128
   },
@@ -91,13 +78,13 @@
    "height": 1027
   },
   "pet": {
-   "y": 877,
-   "h": 146,
-   "bottom": 1023
+   "y": 873,
+   "h": 156,
+   "bottom": 1029
   },
   "bar": {
-   "x": 557,
-   "y": 739,
+   "x": 555,
+   "y": 735,
    "width": 260,
    "height": 128
   },
@@ -108,7 +95,130 @@
   "exStyle": "0x188",
   "toolWindow": true
  },
+ "ghostHover": {
+  "barBefore": {
+   "x": 555,
+   "y": 735,
+   "width": 260,
+   "height": 128
+  },
+  "ghostPoint": {
+   "x": 565,
+   "y": 799
+  },
+  "ghostInsidePet": false,
+  "hiddenByGrace": true,
+  "visibleAgain": false,
+  "stateBeforeFar": {
+   "visible": true,
+   "hasFocus": false,
+   "hoverSince": 1789596205453,
+   "hideAt": null,
+   "suppressUntil": null,
+   "armed": true
+  },
+  "stateAfterFar": {
+   "visible": false,
+   "hasFocus": false,
+   "hoverSince": null,
+   "hideAt": null,
+   "suppressUntil": null,
+   "armed": true
+  },
+  "stateAfterGhost": {
+   "visible": false,
+   "hasFocus": false,
+   "hoverSince": null,
+   "hideAt": null,
+   "suppressUntil": null,
+   "armed": true
+  },
+  "samples": [
+   {
+    "atMs": 200,
+    "visible": true,
+    "armed": true,
+    "hideInMs": 156,
+    "hoverSince": null,
+    "petInteractive": false
+   },
+   {
+    "atMs": 400,
+    "visible": false,
+    "armed": true,
+    "hideInMs": null,
+    "hoverSince": null,
+    "petInteractive": false
+   },
+   {
+    "atMs": 600,
+    "visible": false,
+    "armed": true,
+    "hideInMs": null,
+    "hoverSince": null,
+    "petInteractive": false
+   },
+   {
+    "atMs": 800,
+    "visible": false,
+    "armed": true,
+    "hideInMs": null,
+    "hoverSince": null,
+    "petInteractive": false
+   },
+   {
+    "atMs": 1000,
+    "visible": false,
+    "armed": true,
+    "hideInMs": null,
+    "hoverSince": null,
+    "petInteractive": false
+   },
+   {
+    "atMs": 1200,
+    "visible": false,
+    "armed": true,
+    "hideInMs": null,
+    "hoverSince": null,
+    "petInteractive": false
+   },
+   {
+    "atMs": 1400,
+    "visible": false,
+    "armed": true,
+    "hideInMs": null,
+    "hoverSince": null,
+    "petInteractive": false
+   },
+   {
+    "atMs": 1600,
+    "visible": false,
+    "armed": true,
+    "hideInMs": null,
+    "hoverSince": null,
+    "petInteractive": false
+   },
+   {
+    "atMs": 1800,
+    "visible": false,
+    "armed": true,
+    "hideInMs": null,
+    "hoverSince": null,
+    "petInteractive": false
+   },
+   {
+    "atMs": 2000,
+    "visible": false,
+    "armed": true,
+    "hideInMs": null,
+    "hoverSince": null,
+    "petInteractive": false
+   }
+  ]
+ },
+ "reShownForClose": true,
  "teardown": {
+  "closeClicked": "clicked:close-bar",
   "afterCloseBar": false,
   "petHidden": true,
   "barAfterHidePet": false

@@ -108,16 +108,17 @@ export interface FullscreenNotice { hidden: boolean; fgTitle: string }
 export type BarCommandId =
   /** 隐藏宠物（控制条随之收起）。 */
   | 'hide-pet'
-  /** 按 `scaleStep` 放大 / 缩小。 */
-  | 'scale-up'
-  | 'scale-down'
-  /** 回到宠物包声明的默认缩放。 */
-  | 'reset-scale'
   /** 确认某条会话（解除 needs-input 粘滞），需要 `arg` = sessionId。 */
   | 'ack-session'
-  /** 弹出与托盘/右键同一份原生菜单（覆盖"退出"等全部动作，不必在面板里再实现一遍）。 */
+  /**
+   * 弹出与托盘/右键**同一份**原生菜单 —— 缩放、重置大小、开机自启、退出都在里面。
+   *
+   * 2026-09-16 用户验收后把面板上的 − / + / ↺ 三个缩放按钮撤掉了（"加减按钮不太需要，
+   * 只需在右键托盘处出现"）：面板只留"看一下状态、确认一下、收起"三件事，
+   * 缩放这类不常动的操作交给菜单，面板因此更短、误点更少。
+   */
   | 'popup-menu'
-  /** 收起控制条（等同 Esc）。 */
+  /** 收起控制条（等同 Esc 或面板右上角的 ×）。 */
   | 'close-bar';
 
 export interface BarCommand {
@@ -137,10 +138,8 @@ export interface BarView {
   sessions: SessionView[];
   /** 面板最多显示几行（超出显示"另有 N 条"）。 */
   maxRows: number;
+  /** 当前缩放，只读显示用（缩放操作本身在菜单里）。 */
   scale: number;
-  defaultScale: number;
-  scaleRange: [number, number];
-  scaleStep: number;
   /** 当前生效的全局快捷键；null = 注册失败（如实显示，不静默）。 */
   hotkey: string | null;
   petVisible: boolean;

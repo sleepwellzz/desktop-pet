@@ -22,7 +22,7 @@
   {
    "name": "setScale(1.0)",
    "bounds": {
-    "x": 1250,
+    "x": 1245,
     "y": 595,
     "width": 192,
     "height": 208
@@ -52,7 +52,7 @@
   {
    "name": "resetScale",
    "bounds": {
-    "x": 1279,
+    "x": 1274,
     "y": 657,
     "width": 134,
     "height": 146
@@ -75,11 +75,11 @@
    }
   }
  ],
- "pid": 157004,
+ "pid": 177968,
  "actionsAvailable": true,
  "trayCreated": true,
  "cursorBeforeQuit": {
-  "x": 1881,
+  "x": 1874,
   "y": 899
  },
  "failures": [],

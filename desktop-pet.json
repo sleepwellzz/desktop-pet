@@ -82,7 +82,7 @@
     "timerTickMs": 250
   },
   "controlBar": {
-    "note": "悬浮控制条（M2 ④，ADR 014）。本项目**第一个可聚焦窗口**：可聚焦 ⇒ 能拿焦点，但它只在用户主动唤出时拿（快捷键），悬停出现一律 showInactive（用户可能正在 IDE 里打字）。它是矩形直角不透明面板 —— 窗口矩形 ≈ 可视矩形，所以**不适用** ADR 008 那条逐像素命中纪律；代价是不做圆角（圆角会留 4 个透明三角吃掉下层应用的点击）。高度 = headerHeight + 行数 × rowHeight + footerHeight，行数 = min(会话数, maxRows) + （还有更多时 +1 行）。本轮不渲染自由文本输入框，原因见 docs/design/m2-control-bar.md。",
+    "note": "悬浮控制条（M2 ④，ADR 014）。本项目**第一个可聚焦窗口**：可聚焦 ⇒ 能拿焦点，但它只在用户主动唤出时拿（快捷键），悬停出现一律 showInactive（用户可能正在 IDE 里打字）。它是矩形直角不透明面板 —— 窗口矩形 ≈ 可视矩形，所以**不适用** ADR 008 那条逐像素命中纪律；代价是不做圆角（圆角会留 4 个透明三角吃掉下层应用的点击）。高度 = headerHeight + 行数 × rowHeight + footerHeight，行数 = min(会话数, maxRows) + （还有更多时 +1 行）。本轮不渲染自由文本输入框，原因见 docs/design/m2-control-bar.md。2026-09-16 人工验收后调整：动作排撤掉 −/+/↺（缩放交给菜单）、hoverGraceMs 500→350（用户反馈：移开后消失有点慢）。",
     "width": 260,
     "headerHeight": 30,
     "rowHeight": 28,
@@ -91,7 +91,7 @@
     "gapBelowPet": 8,
     "gapAbovePet": 10,
     "hoverDelayMs": 300,
-    "hoverGraceMs": 500,
+    "hoverGraceMs": 350,
     "blurHideMs": 200,
     "toggleSuppressMs": 1500,
     "showOnHover": true

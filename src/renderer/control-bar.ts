@@ -13,8 +13,17 @@ const scaleEl = document.getElementById('scale') as HTMLSpanElement;
 
 /** 白名单的镜像，仅用于"发之前再确认一次"。真正的白名单在主进程。 */
 const KNOWN_IDS: readonly BarCommandId[] = [
-  'hide-pet', 'scale-up', 'scale-down', 'reset-scale', 'ack-session', 'popup-menu', 'close-bar',
+  'hide-pet', 'ack-session', 'popup-menu', 'close-bar',
 ];
+
+/**
+ * 超过这个时长没动静的会话，在行里显式标出来。
+ *
+ * 起因（2026-09-16 用户实测）：状态文件是快照，上一次运行留下的会话会在下次启动时
+ * 被原样读回来 —— 用户看到"一启动就显示 default 在运行中"，却不知道那是残留，
+ * 只觉得"状态改不动"。把"很久没动静"标出来，是让界面自己解释这件事的最小手段。
+ */
+const STALE_HINT_MS = 5 * 60_000;
 
 function send(cmd: BarCommand): void {
   if (!KNOWN_IDS.includes(cmd.id)) return;      // 正常路径不会走到；防御性
@@ -101,6 +110,11 @@ function render(v: BarView): void {
     const t = document.createElement('span');
     t.className = 't';
     t.textContent = relTime(s.ts, Date.now());
+    if (Date.now() - s.ts > STALE_HINT_MS) {
+      t.classList.add('stale');
+      t.title = '这条会话很久没有动静了 —— 可能是上一次运行留下的残留。'
+        + '右键宠物或托盘菜单里的「清空状态会话」可以一键清掉。';
+    }
     row.appendChild(t);
     liveTimes.push({ el: t, ts: s.ts });
 
@@ -122,20 +136,18 @@ function render(v: BarView): void {
   }
 
   // —— 动作排 ——
+  // 只剩一个只读的缩放值与两个按钮（隐藏宠物 / ⋯），不再有需要按状态禁用的控件。
   scaleEl.textContent = `${Math.round(v.scale * 100)}%`;
-  const reset = barEl.querySelector<HTMLButtonElement>('[data-cmd="reset-scale"]');
-  if (reset) reset.disabled = Math.abs(v.scale - v.defaultScale) < 0.001;
-  const up = barEl.querySelector<HTMLButtonElement>('[data-cmd="scale-up"]');
-  if (up) up.disabled = v.scale >= v.scaleRange[1] - 0.001;
-  const down = barEl.querySelector<HTMLButtonElement>('[data-cmd="scale-down"]');
-  if (down) down.disabled = v.scale <= v.scaleRange[0] + 0.001;
 }
 
 /** 相对时间每秒刷新。只改文本节点，不重建 DOM —— 否则按钮的 hover 状态会每秒闪一次。 */
 setInterval(() => {
   if (!lastView) return;
   const now = Date.now();
-  for (const it of liveTimes) it.el.textContent = relTime(it.ts, now);
+  for (const it of liveTimes) {
+    it.el.textContent = relTime(it.ts, now);
+    it.el.classList.toggle('stale', now - it.ts > STALE_HINT_MS);
+  }
 }, 1000);
 
 window.petBar.onView(render);

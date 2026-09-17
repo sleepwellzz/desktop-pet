@@ -99,7 +99,6 @@ app.whenReady().then(async () => {
       ackButtons: document.querySelectorAll('#sessions .row .ack').length,
       summary: document.getElementById('summary').textContent,
       scale: document.getElementById('scale').textContent,
-      resetDisabled: !!document.querySelector('[data-cmd="reset-scale"]').disabled,
     })`).then(JSON.parse).catch((e) => ({ error: String(e) }));
 
     const send = async (cmd) => {
@@ -174,21 +173,12 @@ app.whenReady().then(async () => {
     report.ack = { clicked, rowsAfter: d2.rows, barStateVisible: stateAfterAck.visible };
     log(`[probe] 点确认：${clicked} → 确认按钮数=${d2.ackButtons}（期望 0）`);
 
-    // —— ④ 命令白名单：合法 id 落到真动作 ——
-    const scaleBefore = pet.getContentBounds();
-    await send({ id: 'scale-up' });
-    const scaleUp = pet.getContentBounds();
-    const dUp = await dom();
-    await send({ id: 'reset-scale' });
-    const scaleReset = pet.getContentBounds();
-    report.commands = {
-      before: { w: scaleBefore.width, h: scaleBefore.height },
-      afterScaleUp: { w: scaleUp.width, h: scaleUp.height },
-      afterReset: { w: scaleReset.width, h: scaleReset.height },
-      scaleTextAfterUp: dUp.scale,
-    };
-    log(`[probe] scale-up：${scaleBefore.width}x${scaleBefore.height} → ${scaleUp.width}x${scaleUp.height}（面板显示 ${dUp.scale}）`
-      + `；reset-scale → ${scaleReset.width}x${scaleReset.height}`);
+    // —— ④ 命令白名单 ——
+    // 面板上的 − / + / ↺ 已在人工验收后撤掉（缩放统一走菜单），所以这里只验白名单边界：
+    // 非法 id 与"不存在的会话"都必须被拒绝，且不能把面板或主进程弄坏。
+    const dPanel = await dom();
+    report.panelCommands = { scaleText: dPanel.scale };
+    log(`[probe] 面板只读缩放值显示：${dPanel.scale}（缩放按钮已撤，仅作显示）`);
 
     // 非法 id / 不存在的会话：都必须被忽略，且不能把面板或主进程弄坏
     const logBefore = fs.readFileSync(LOG, 'utf8').length;
@@ -263,14 +253,78 @@ app.whenReady().then(async () => {
     };
     log(`[probe] 控制条扩展样式 = 0x${(exStyle >>> 0).toString(16)}，WS_EX_TOOLWINDOW=${report.windowStyle.toolWindow}`);
 
-    // —— ⑧ close-bar 与 hide-pet ——
-    await send({ id: 'close-bar' });
+    // —— ⑦b 幽灵悬停区域 ——
+    // 直接对准用户 2026-09-16 报的症状："控制条出现后，鼠标在离它很远的地方仍会被判定为
+    // 即将触发控制条"。成因是面板**隐藏之后**它的旧矩形仍在参与 over 判定（宽 260，
+    // 比宠物宽 126 DIP）—— 鼠标掠过那片空地就把它叫回来。这里取一个"落在旧面板矩形内、
+    // 但在宠物之外"的点：面板因宽限收起后再移到该点，面板必须**不**出现。
+    const petNow = pet.getContentBounds();
+    const barBefore = dbg.barBounds();
+    if (!barBefore) throw new Error('幽灵区域用例需要面板当前可见');
+    const ghostPoint = { x: barBefore.x + 10, y: barBefore.y + Math.round(barBefore.height / 2) };
+    const ghostInsidePet = ghostPoint.x >= petNow.x && ghostPoint.x <= petNow.x + petNow.width
+      && ghostPoint.y >= petNow.y && ghostPoint.y <= petNow.y + petNow.height;
+    const farAway = px(60, 60);
+    const stateBeforeFar = dbg.barState();
+    log(`[probe] 幽灵区域前置：宠物 ${petNow.x},${petNow.y} ${petNow.width}x${petNow.height}`
+      + ` ｜ barBounds=${JSON.stringify(barBefore)} ｜ win.getContentBounds=${JSON.stringify(bar.getContentBounds())}`);
+    moveTo(farAway.x, farAway.y);
+    // 连续采样：`hideAt` 若每次都被刷新，说明存在"反复触发 hover"的抖动 —— 那正是"面板收不掉"的机制。
+    const samples = [];
+    for (let i = 0; i < 10; i += 1) {
+      await sleep(200);
+      const s = dbg.barState();
+      samples.push({
+        atMs: (i + 1) * 200, visible: s.visible, armed: s.armed,
+        hideInMs: s.hideAt === null ? null : s.hideAt - Date.now(),
+        hoverSince: s.hoverSince,
+        petInteractive: dbg.petInteractive(),
+      });
+    }
+    const hiddenByGrace = !dbg.barVisible();
+    const stateAfterFar = dbg.barState();
+    for (const s of samples) {
+      log(`[probe]   采样 ${s.atMs}ms：visible=${s.visible} armed=${s.armed} hideIn=${s.hideInMs}ms`
+        + ` hoverSince=${s.hoverSince} 渲染层命中=${s.petInteractive}`);
+    }
+    const ghostPx = px(ghostPoint.x, ghostPoint.y);
+    moveTo(ghostPx.x, ghostPx.y);
+    await sleep(1400);                        // > hoverDelayMs(300) + 余量
+    const visibleAgain = dbg.barVisible();
+    report.ghostHover = {
+      barBefore, ghostPoint, ghostInsidePet, hiddenByGrace, visibleAgain,
+      stateBeforeFar, stateAfterFar, stateAfterGhost: dbg.barState(), samples,
+    };
+    log(`[probe] 幽灵区域：面板旧矩形 ${barBefore.x},${barBefore.y} ${barBefore.width}x${barBefore.height}｜`
+      + `取点 ${ghostPoint.x},${ghostPoint.y}（落在宠物内=${ghostInsidePet}）`
+      + ` → 光标移远后面板收起=${hiddenByGrace} → 再移到该点，面板被唤出=${visibleAgain}`);
+    log(`[probe] 状态机 移远前=${JSON.stringify(stateBeforeFar)}`);
+    log(`[probe] 状态机 移远后=${JSON.stringify(stateAfterFar)}`);
+
+    // 把面板重新唤出来，好让 ⑧ 的 close-bar 有东西可关
+    const petPx = px(petNow.x + petNow.width / 2, petNow.y + petNow.height / 2);
+    moveTo(petPx.x, petPx.y);
+    await sleep(1200);
+    report.reShownForClose = dbg.barVisible();
+
+    // —— ⑧ 面板上的 × / close-bar / hide-pet ——
+    // × 用**真实 DOM 点击**验，而不是直接发命令：用户报的问题正是"× 点了没反应"，
+    // 直接 send 命令会绕过"按钮上有没有 data-cmd"那一层，恰好验不出那个 bug。
+    const closeClicked = await bar.webContents.executeJavaScript(`(() => {
+      const b = document.querySelector('#close');
+      if (!b) return 'no-button';
+      const cmd = b.dataset.cmd || '';
+      b.click();
+      return 'clicked:' + (cmd || '(no-datacmd)');
+    })()`).catch((e) => 'error:' + String(e));
+    await sleep(900);
     const afterClose = dbg.barVisible();
     await send({ id: 'hide-pet' });
     const petHidden = !pet.isVisible();
     const barAfterHidePet = dbg.barVisible();
-    report.teardown = { afterCloseBar: afterClose, petHidden, barAfterHidePet };
-    log(`[probe] close-bar → 面板可见=${afterClose}（期望 false）｜hide-pet → 宠物可见=${pet.isVisible()}（期望 false）面板可见=${barAfterHidePet}`);
+    report.teardown = { closeClicked, afterCloseBar: afterClose, petHidden, barAfterHidePet };
+    log(`[probe] 点面板 × ：${closeClicked} → 面板可见=${afterClose}（期望 false）｜`
+      + `hide-pet → 宠物可见=${pet.isVisible()}（期望 false）面板可见=${barAfterHidePet}`);
 
     // —— 判定 ——
     const fails = [];
@@ -290,15 +344,30 @@ app.whenReady().then(async () => {
     if (!String(d1.summary).includes('需要输入')) fails.push('摘要没显示"需要输入"');
     if (clicked !== 'clicked') fails.push('点不到确认按钮：' + clicked);
     if (d2.ackButtons !== 0) fails.push('点确认后按钮仍在（粘滞没解除）');
-    if (scaleUp.width <= scaleBefore.width) fails.push('scale-up 没有真的放大');
-    if (scaleReset.width !== scaleBefore.width) fails.push('reset-scale 没有回到默认尺寸');
+    if (!report.ghostHover.hiddenByGrace) fails.push('光标移远后面板没有按宽限收起（幽灵区域用例前置不成立）');
+    if (report.ghostHover.ghostInsidePet) fails.push('幽灵区域用例取的点落在宠物内，判据无效');
+    // 这条是 2026-09-16 用户报的"鼠标在离它很远的地方仍会被判定为即将触发控制条"的核心判据：
+    // 光标远离宠物时，渲染层的命中判定必须**稳定为 false**。
+    if (report.ghostHover.samples.some((s) => s.petInteractive)) {
+      fails.push('光标远离宠物时渲染层仍判定为命中实体（命中换算缺少客户区/单元格边界检查）');
+    }
+    // 600ms 之后（宽限 350ms + 余量）面板必须已经收起，且此后一直不可见。
+    const lateSamples = report.ghostHover.samples.filter((s) => s.atMs >= 600);
+    if (lateSamples.some((s) => s.visible)) {
+      fails.push('光标移远 600ms 后面板仍可见（悬停收起没生效 —— 判定在抖动时就是这个症状）');
+    }
+    if (report.ghostHover.visibleAgain) fails.push('面板隐藏后，它的旧矩形位置仍能把它唤出来（幽灵悬停区域）');
+    if (!report.reShownForClose) fails.push('close-bar 用例前置不成立（面板没能重新唤出）');
     if (!report.rejects.unknownLogged) fails.push('未知命令没有被记录（白名单形同虚设）');
     if (report.rejects.nonexistentLogged !== true) fails.push('ack-session 传不存在的会话没有被拒');
     if (!report.rejects.barStillVisible) fails.push('非法命令把面板弄没了');
     if (!report.follow.followed) fails.push('拖动宠物时控制条没有跟随');
     if (!report.flip.flippedAbove) fails.push('宠物贴到工作区底边时控制条没有翻到上方');
     if (!report.windowStyle.toolWindow) fails.push('控制条没有 WS_EX_TOOLWINDOW（可能出现在 Alt+Tab / 任务栏）');
-    if (afterClose !== false) fails.push('close-bar 没有收起面板');
+    if (report.teardown.closeClicked !== 'clicked:close-bar') {
+      fails.push('面板右上角的 × 不可用：' + report.teardown.closeClicked);
+    }
+    if (afterClose !== false) fails.push('点 × 后面板没有收起');
     if (!petHidden) fails.push('hide-pet 没有隐藏宠物');
     if (barAfterHidePet) fails.push('宠物隐藏后控制条还在');
     report.failures = fails;

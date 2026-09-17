@@ -351,7 +351,7 @@ section('⑪ 控制条显示策略');
   // 用真实运行参数（desktop-pet.json 的 controlBar 段），而不是测试里另写一份策略
   const policy = parseBarPolicy(runtimeManifest.controlBar);
   eq('策略来自宠物包：悬停 300ms 出现', policy.hoverDelayMs, 300);
-  eq('策略来自宠物包：离开 500ms 收起', policy.hoverGraceMs, 500);
+  eq('策略来自宠物包：离开 350ms 收起', policy.hoverGraceMs, 350);
   eq('策略来自宠物包：失焦 200ms 收起', policy.blurHideMs, 200);
   eq('策略来自宠物包：悬停默认开启', policy.showOnHover, true);
   const fallback = parseBarPolicy(undefined);
@@ -467,12 +467,18 @@ section('⑫ 会话视图 viewSessions');
   const b = v.find((x) => x.sessionId === 'b');
   eq('确认后原始状态仍是 needs-input', b.status, 'needs-input');
   eq('确认标记为真', b.acknowledged, true);
-  // 主状态**不会立刻**让给下一条：确认也要走 ADR 010 那条变化限流窗格。
-  // 界面因此会先显示"需要输入（已确认）"，半秒后才换成 running —— 这是既有设计的正常表现。
-  eq('确认后限流窗格内主状态仍是 b', v[0].sessionId, 'b');
+  // 主状态**立刻**让给下一条 —— 人工确认是低频且明确的动作，不该被变化限流挡住
+  // （限流是给 agent 的状态抖动用的）。这条是 2026-09-16 用户验收时报的
+  // "点确认后响应非常缓慢"的直接修复：不改的话最多要等 500ms 窗格。
+  eq('确认后立即让给下一条（不再等限流窗格）', arb.viewSessions()[0].sessionId, 'a');
+
+  // 但限流本身没有被废掉：确认之后的另一次状态变化仍要等窗格。
+  clock.advance(50);
+  arb.ingest({ sessionId: 'a', status: 'blocked' });
+  eq('确认之后的普通状态变化仍受限流约束', arb.state.status, 'running');
   clock.advance(600);
   arb.tick();
-  eq('限流窗格过后主状态让给下一条', arb.viewSessions()[0].sessionId, 'a');
+  eq('窗格到期后照常生效', arb.state.status, 'blocked');
 
   clock.advance(901_000);
   arb.tick();

@@ -212,11 +212,22 @@ function solidAt(sx: number, sy: number): boolean {
 /** 当前帧在窗口客户区坐标 cssX/cssY 处是否命中实体。 */
 function hitAt(cssX: number, cssY: number): boolean {
   if (!init || !player || !sheetData) return false;
-  const f = player.frame();
   const s = init.scale;
   const { width: cw, height: ch } = init.cell;
+  // ① **客户区之外一律不算命中。**
+  //    2026-09-16 用户实测抓到的 bug（症状："控制条出现后，鼠标在离它很远的地方仍会被判定为
+  //    即将触发控制条"，而且面板偶尔收不掉）。根因就在这里：光标在窗口外时 cssX/cssY 是**负数**，
+  //    经 `f.column * cw + localX` 这样的整数运算后会**落回图集内部的其它行列**，
+  //    命中到的其实是另一行的精灵（日志证据：同一个 css=(-553,-813) 在动画帧之间
+  //    时而判"空白"时而判"实体"）—— 判定随之抖动，悬停的 `hideAt` 被无限次重置。
+  if (cssX < 0 || cssY < 0 || cssX >= cw * s || cssY >= ch * s) return false;
+  const f = player.frame();
   const localX = Math.floor(cssX / s);
   const localY = Math.floor(cssY / s - f.offsetY);
+  // ② **单元格之外也不算。** 同一条链路的第二半：`offsetY`（各状态的对齐补偿，最大 61px）
+  //    会把局部坐标平移出当前单元格，滑到相邻行去命中别的精灵。少了这条，
+  //    状态一换（offsetY 变）判定就会在宠物轮廓外的一圈里忽真忽假。
+  if (localX < 0 || localY < 0 || localX >= cw || localY >= ch) return false;
   return solidAt(f.column * cw + localX, f.row * ch + localY);
 }
 

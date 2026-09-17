@@ -36,6 +36,8 @@
     .row .sid { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .row .st { flex: 0 0 auto; color: #aab4c2; }
     .row .t { flex: 0 0 auto; color: #7d8794; font-size: 11px; }
+    /* 很久没动静的会话（多半是上次运行留下的残留）：时间标成暖色，鼠标悬停能看到解释 */
+    .row .t.stale { color: #c98a4b; }
     .row.more { color: #7d8794; }
     .row .ack {
       flex: 0 0 auto; margin-left: 2px;
@@ -84,18 +86,19 @@
     <div id="head">
       <span id="dot" class="dot"></span>
       <span id="summary"></span>
-      <button id="close" title="收起（Esc）">×</button>
+      <!-- data-cmd 不能少：渲染层的点击是**事件委托**在 [data-cmd] 上做的，
+           少了它这个按钮就完全没反应（2026-09-16 用户实测："关闭键只能按 ESC，鼠标点无效"）。 -->
+      <button id="close" data-cmd="close-bar" title="收起（Esc）">×</button>
     </div>
     <div id="sessions"></div>
     <div id="actions">
       <button data-cmd="hide-pet">隐藏宠物</button>
       <span class="sp"></span>
-      <button data-cmd="scale-down" title="缩小">−</button>
-      <span id="scale"></span>
-      <button data-cmd="scale-up" title="放大">+</button>
-      <button data-cmd="reset-scale" title="重置为宠物包默认大小">↺</button>
+      <!-- 缩放只读显示。− / + / ↺ 三个按钮已按用户验收意见撤掉（"加减按钮不太需要，
+           只需在右键托盘处出现"），缩放操作统一走"⋯ 更多"里的那份原生菜单。 -->
+      <span id="scale" title="当前大小（在“⋯ 更多”里改）"></span>
       <span class="sp"></span>
-      <button data-cmd="popup-menu" title="全部菜单动作（含退出）">⋯</button>
+      <button data-cmd="popup-menu" title="全部菜单动作（缩放 / 开机自启 / 退出）">⋯</button>
     </div>
   </div>
   <script src="control-bar.js"></script>
