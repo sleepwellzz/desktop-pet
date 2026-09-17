@@ -234,6 +234,30 @@ export class StatusArbiter {
     return this.recompute(now);
   }
 
+  /**
+   * 清空**全部**会话记录（菜单「清空状态会话」，2026-09-17 补）。
+   *
+   * 为什么必须有它：状态文件是快照，"把文件写空"只解决了**来源**，仲裁器手里那份记录
+   * 不会因此消失 —— 适配器把"从快照里消失"翻译成"补一条 idle 收尾"，记录仍然留着，
+   * 于是 `viewSessions()` 依旧列出两行 idle、菜单依旧写「清空状态会话（2 条）」，
+   * 要等 15 分钟静默兜底才轮到它。用户视角就是"没清干净"（实测证据见 ADR 016）。
+   *
+   * 顺手清掉三样与会话绑定的东西：确认位（记录都没了，留着一个 id 只会在它下次出现时
+   * 被错误地当成"已读"）、被限流挡下的目标状态、以及粘滞指针。
+   * 与 `ack()` 同理，这是用户明确的破坏性动作，不该被状态限流挡 500ms。
+   *
+   * @returns 仲裁输出是否因此变化（变化才需要推送渲染层）。
+   */
+  clearSessions(): boolean {
+    const now = this.opts.now();
+    this.sessions.clear();
+    this.acknowledged.clear();
+    this.pending = null;
+    this.sticky = null;
+    this.lastChangeAt = Number.NEGATIVE_INFINITY;
+    return this.recompute(now);
+  }
+
   get state(): ArbiterState {
     const statusMap = this.opts.statusMap;
     const entry = statusMap?.[this.out.status];

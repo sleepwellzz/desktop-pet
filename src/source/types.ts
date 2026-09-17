@@ -14,6 +14,15 @@ export interface StatusSource {
   start(emit: (e: StatusEvent) => void): void | Promise<void>;
   /** 停止并释放资源。必须幂等。 */
   stop(): void | Promise<void>;
+  /**
+   * 忘掉内部累计的"上一次已知状态"（可选）。
+   *
+   * 调用方是主进程的「清空状态会话」：它先把来源写空，再让源丢掉记忆、让仲裁器丢掉记录 ——
+   * 否则"清空文件"这一步会被适配器 diff 成"每条会话都消失了"，各补一条 idle 收尾，
+   * 于是界面上的会话只是变了个状态、并没有消失（2026-09-17 实测，见 ADR 016）。
+   * 快照型来源（文件）需要它；无状态来源（HTTP 推送）可以没有。
+   */
+  reset?(): void;
   /** 人可读的配置描述，用于启动日志与将来的托盘提示。 */
   describe(): string;
 }

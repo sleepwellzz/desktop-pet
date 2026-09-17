@@ -1,0 +1,48 @@
+已启动桌宠（pid=189412，run=1789684360153-197708），等待状态源就绪 …
+  探针开始采样（epoch=1789684364174），开始注入 …
+  → 注入 running（处理中 → 第 7 行）
+  → 注入 needs-input（需要输入 → 第 6 行（等待））
+  → 注入 --clear（会话被移除 → 收尾回 idle）
+  → 注入 ready（就绪 → 挥手(3) 后落到 review(8)）
+  → 注入 blocked（受阻 → 第 5 行（趴卧））
+  → 注入 idle（任务结束 → 回 idle）
+
+=== 链路日志（应用侧） ===
+  [pet][status] 状态 idle → running @default（rev=1）
+  [pet][status] 推送 running → running rev=1
+  [pet][source] 文件状态：default → running
+  [pet][renderer] 状态 running → running rev=1 ｜ 气泡「运行中」
+  [pet][status] 进入粘滞：会话 default 需要输入，驻留至用户确认或 300s 超时
+  [pet][status] 状态 running → needs-input @default（rev=2）
+  [pet][status] 推送 needs-input → waiting rev=2
+  [pet][source] 文件状态：default → needs-input
+  [pet][renderer] 状态 needs-input → waiting rev=2 ｜ 气泡「需要输入」
+  [pet][status] 粘滞解除（会话 default，原因：会话转为 idle）
+  [pet][status] 状态 needs-input → idle（rev=3）
+  [pet][status] 推送 idle → idle rev=3
+  [pet][source] 文件状态：会话 default 已被移除，按 idle 处理
+  [pet][renderer] 状态 idle → idle rev=3
+  [pet][status] 状态 idle → ready @default（rev=4）
+  [pet][status] 推送 ready → waving → review rev=4
+  [pet][source] 文件状态：default → ready
+  [pet][renderer] 状态 ready → waving → review rev=4 ｜ 气泡「就绪（未读）」
+  [pet][status] 状态 ready → blocked @default（rev=5）
+  [pet][status] 推送 blocked → failed rev=5
+  [pet][source] 文件状态：default → blocked
+  [pet][renderer] 状态 blocked → failed rev=5 ｜ 气泡「已受阻」
+  [pet][status] 状态 blocked → idle（rev=6）
+  [pet][status] 推送 idle → idle rev=6
+  [pet][source] 文件状态：default → idle
+  [pet][renderer] 状态 idle → idle rev=6
+
+=== 帧行号核对（渲染层实际在画什么） ===
+  ✅ running      期望行 [7]，实际出现 [0,7]
+  ✅ needs-input  期望行 [6]，实际出现 [7,6]
+  ✅ --clear      期望行 [0]，实际出现 [0]
+  ✅ ready        期望行 [3 → 8]，实际出现 [0,3,8]
+  ✅ blocked      期望行 [5]，实际出现 [8,5]
+  ✅ idle         期望行 [0]，实际出现 [0]
+
+事件流水（events.jsonl）共 6 条，采样点 221 个
+
+结论：PASS

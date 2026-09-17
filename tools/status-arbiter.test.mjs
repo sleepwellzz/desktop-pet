@@ -6,7 +6,7 @@
 //
 // 跑法：node tools/status-arbiter.test.mjs   （需先 npm run build，测的是 dist 产物）
 import { createRequire } from 'node:module';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -272,6 +272,99 @@ try {
   rmSync(dir, { recursive: true, force: true });
 }
 
+// —— ⑧b 陈旧快照：没有 ts 的条目按"快照写入时刻"兜底 ——
+// 这是 2026-09-17 修掉的一条真缺陷（ADR 016）。缺陷形状：快照是原样读回的，而适配器
+// **刻意不补 Date.now()**（补了轮询就变成假心跳），于是事件里的 ts 是 undefined，
+// 内核的兜底 `ts ?? now` 把它盖章成"现在" —— 一份昨天写的 `running` 快照在启动后
+// "新鲜"整整 15 分钟，用户看到的是"一启动就显示某某在运行中"。
+// 正确语义是：**"不知道"不等于"刚刚"**。
+// 探针证据（真实文件 + 真实适配器，不弹窗）：spikes/m2-status/probe-stale-sessions.mjs。
+section('⑧b 没有 ts 的陈旧快照不再被当成新鲜');
+{
+  const HOUR = 3_600_000;
+
+  /**
+   * 起一轮真实适配器 + 真实仲裁器（临时文件、文件 mtime 倒回 ageMs）。
+   * 仲裁器的时钟用虚拟时钟，起点 = 真实当前时间（这样它能与文件 mtime 比大小）。
+   */
+  const boot = async (snapshot, ageMs) => {
+    const d = mkdtempSync(join(tmpdir(), 'pet-stale-'));
+    const f = join(d, 'status.json');
+    writeFileSync(f, JSON.stringify(snapshot), 'utf8');
+    const past = new Date(Date.now() - ageMs);
+    utimesSync(f, past, past);
+    const clock = makeClock(Date.now());
+    const logs = [];
+    const events = [];
+    const arb = new StatusArbiter({
+      statusMap: runtimeManifest.statusMap, now: clock.now, log: (m) => logs.push(m),
+    });
+    const src = createStatusFileSource({ path: f, pollMs: 40, log: (m) => logs.push(m) });
+    src.start((e) => { events.push(e); arb.ingest(e); });
+    await sleep(250);
+    return {
+      status: arb.state.status, rows: arb.viewSessions().length, logs, events,
+      stop: () => { src.stop(); rmSync(d, { recursive: true, force: true }); },
+    };
+  };
+
+  const stale = await boot(
+    { schema: 'desktop-pet/status/v1', sessions: { old: { status: 'running', title: '上次运行留下的' } } },
+    HOUR,
+  );
+  eq('无 ts + 1 小时前的快照 → 启动就是空闲（不再"新鲜" 15 分钟）', stale.status, 'idle');
+  eq('陈旧会话不出现在面板数据里', stale.rows, 0);
+  check('日志里有静默兜底的留痕', stale.logs.some((l) => l.includes('静默超过')));
+  stale.stop();
+
+  const fresh = await boot({ sessions: { n: { status: 'running', title: '刚写的' } } }, 0);
+  eq('刚写下的无 ts 快照照常生效（真在跑的会话不能被杀）', fresh.status, 'running');
+  fresh.stop();
+
+  const withTs = await boot({ sessions: { t: { status: 'running', ts: Date.now() - HOUR } } }, 0);
+  eq('带 ts 的陈旧会话行为不变（本来就正确）', withTs.status, 'idle');
+  withTs.stop();
+
+  const badTs = await boot({ sessions: { bad: { status: 'running', ts: '昨天' } } }, HOUR);
+  eq('ts 类型非法（非数字）也走 mtime 兜底', badTs.status, 'idle');
+  badTs.stop();
+
+  // —— 心跳排除：无 ts 的条目不得被"别的会话被写"带着续命 ——
+  // 同一次写入会让文件里**所有**会话的 mtime 兜底值一起变；若不排除，
+  // 只要任意一条会话被写，所有无 ts 的陈旧会话都会被续命 —— 等于把静默兜底关掉。
+  const d2 = mkdtempSync(join(tmpdir(), 'pet-hb-'));
+  const f2 = join(d2, 'status.json');
+  writeFileSync(f2, JSON.stringify({
+    schema: 'desktop-pet/status/v1',
+    sessions: { a: { status: 'running' }, b: { status: 'running' } },
+  }), 'utf8');
+  const past2 = new Date(Date.now() - HOUR);
+  utimesSync(f2, past2, past2);
+  const ev2 = [];
+  const src2 = createStatusFileSource({ path: f2, pollMs: 40, log: () => {} });
+  try {
+    src2.start((e) => ev2.push(e));
+    await sleep(250);
+    eq('首读：两条无 ts 会话各报一次', ev2.length, 2);
+    check('它们的时间戳是快照写入时刻（1 小时前）而不是"现在"',
+      ev2.every((e) => typeof e.ts === 'number' && Math.abs(e.ts - past2.getTime()) < 1000),
+      JSON.stringify(ev2.map((e) => e.ts)));
+    const n = ev2.length;
+    // 只改 a 的标题：文件被重写、mtime 变新，b 的内容一字未动
+    writeFileSync(f2, JSON.stringify({
+      schema: 'desktop-pet/status/v1',
+      sessions: { a: { status: 'running', title: '改了' }, b: { status: 'running' } },
+    }), 'utf8');
+    await sleep(300);
+    const tail = ev2.slice(n);
+    check('只有真正变化的那条产生事件（b 没有被顺手续命）',
+      tail.length === 1 && tail[0].sessionId === 'a', JSON.stringify(tail));
+  } finally {
+    src2.stop();
+    rmSync(d2, { recursive: true, force: true });
+  }
+}
+
 // —— ⑨ 气泡策略（纯函数 + 虚拟时钟）——
 section('⑨ 气泡显示策略');
 {
@@ -340,105 +433,69 @@ section('⑩ 快捷键人话 → Electron accelerator');
 }
 
 // —— ⑪ 控制条显示策略（纯函数 + 虚拟时钟）——
-// 这个 section 里有两组"肉眼看不出对错"的规则，它们是这个功能最容易坏掉的地方：
-//   1. 快捷键收起后**不能被悬停弹回来**；2. 宠物从全屏让位回来后**不能自动冒出面板**。
-// 两者都靠同一个 `armed` 位实现（光标没离开过就不许悬停唤出），而它唯一无法从
-// "当前光标在哪"推导出来 —— 所以必须钉在断言里，改动时一旦破坏立刻红。
+// **2026-09-17 起这份状态机只剩五条规则**：悬停唤出被移除，连"悬停计时 / armed 位 /
+// 抑制窗口"一起删掉了（ADR 016）——它们要防的场景（光标停在宠物上、快捷键收起后被弹回来、
+// 宠物让位回来自己冒出来）在悬停消失后不复存在。
+// 留下来的规则依旧"肉眼看不出对错"（收起早 200ms 与"面板自己冒出来"在屏幕上都是一瞬间），
+// 所以照旧钉在断言里。
 section('⑪ 控制条显示策略');
 {
   const { nextBarState, tickBarState, parseBarPolicy, BAR_HIDDEN } =
     require(join(root, 'dist/kernel/bar-policy.js'));
   // 用真实运行参数（desktop-pet.json 的 controlBar 段），而不是测试里另写一份策略
   const policy = parseBarPolicy(runtimeManifest.controlBar);
-  eq('策略来自宠物包：悬停 300ms 出现', policy.hoverDelayMs, 300);
-  eq('策略来自宠物包：离开 350ms 收起', policy.hoverGraceMs, 350);
   eq('策略来自宠物包：失焦 200ms 收起', policy.blurHideMs, 200);
-  eq('策略来自宠物包：悬停默认开启', policy.showOnHover, true);
-  const fallback = parseBarPolicy(undefined);
-  eq('漏配 controlBar 时仍有兜底策略', fallback.hoverDelayMs > 0 && fallback.showOnHover, true);
+  eq('漏配 controlBar 时仍有兜底策略', parseBarPolicy(undefined).blurHideMs > 0, true);
 
   const clock = makeClock();
   const ev = (s, e) => nextBarState(s, e, policy, clock.now());
-  const hover = (s, over) => ev(s, { kind: 'hover', over });
-  const after = (s, ms) => { clock.advance(ms); return tickBarState(s, policy, clock.now()); };
 
-  // —— 悬停：计时 → 到点出现 ——
-  let st = hover({ ...BAR_HIDDEN }, true);
-  eq('光标进入 → 开始计时', st.hoverSince, clock.now());
-  eq('不足 hoverDelayMs 不显示', tickBarState(st, policy, clock.now() + 299).visible, false);
-  st = tickBarState(st, policy, clock.now() + 300);
-  eq('到点显示', st.visible, true);
-  eq('悬停唤出不给自己记焦点（要 showInactive）', st.hasFocus, false);
+  // —— 唤出 / 收起：三条唤出路径（右键宠物 / 快捷键 / 托盘菜单）共用 toggle ——
+  let st = ev({ ...BAR_HIDDEN }, { kind: 'toggle' });
+  eq('toggle → 唤出', st.visible, true);
+  eq('状态机不替谁记焦点（焦点由窗口的真实 focus 事件送来）', st.hasFocus, false);
+  st = ev(st, { kind: 'toggle' });
+  eq('再 toggle → 收起', st.visible, false);
 
-  // —— 悬停：离开 → 宽限内回来则取消收起 ——
-  st = hover(st, false);
-  eq('离开后安排宽限收起', st.hideAt, clock.now() + policy.hoverGraceMs);
-  st = hover(st, true);
-  eq('宽限内光标回来 → 取消收起', st.hideAt, null);
-  eq('仍然可见', st.visible, true);
-
-  // —— 到点收起后必须**仍能再次悬停唤出** ——
-  // 这条防的是"tick 收起时顺手撤销 armed"：那样 armed 再也没有事件能解开，
-  // 表现为悬停唤出永久失效，而屏幕上看起来只是"控制条不再自动出现"。
-  st = hover(st, false);
-  st = after(st, policy.hoverGraceMs);
-  eq('宽限到点收起', st.visible, false);
-  st = hover(st, true);
-  eq('收起后光标再进来仍能开始计时（armed 没被到点收起吃掉）', st.hoverSince !== null, true);
-  st = after(st, policy.hoverDelayMs);
-  eq('能够再次显示', st.visible, true);
-
-  // —— 有焦点就不自动收，失焦才收 ——
-  let f = after(hover({ ...BAR_HIDDEN }, true), policy.hoverDelayMs);
-  f = ev(f, { kind: 'focus', hasFocus: true });
-  f = hover(f, false);
-  eq('有焦点时即使光标离开也不安排收起', f.hideAt, null);
-  eq('仍可见', f.visible, true);
+  // —— 焦点：有焦点就不自动收 ——
+  let f = ev(ev({ ...BAR_HIDDEN }, { kind: 'toggle' }), { kind: 'focus', hasFocus: true });
+  eq('有焦点时不安排收起', f.hideAt, null);
   const blurAt = clock.now();
   f = ev(f, { kind: 'focus', hasFocus: false });
-  eq('失焦后安排 blurHideMs 收起', f.hideAt, blurAt + policy.blurHideMs);
-  f = after(f, policy.blurHideMs);
-  eq('到点收起', f.visible, false);
+  eq('失焦后按 blurHideMs 安排收起', f.hideAt, blurAt + policy.blurHideMs);
+  eq('未到点仍可见', tickBarState(f, blurAt + policy.blurHideMs - 1).visible, true);
+  const g = tickBarState(f, blurAt + policy.blurHideMs);
+  eq('到点收起', g.visible, false);
+  eq('收起后不留收起计划', g.hideAt, null);
 
-  // —— 核心反面用例①：快捷键收起后，光标还停在宠物上 ——
-  let t = after(hover({ ...BAR_HIDDEN }, true), policy.hoverDelayMs);
-  t = ev(t, { kind: 'toggle' });
-  eq('快捷键收起', t.visible, false);
-  eq('同时进入抑制窗口', t.suppressUntil, clock.now() + policy.toggleSuppressMs);
-  t = hover(t, true);                                    // 光标原地没动 → 仍然 over=true
-  t = after(t, policy.toggleSuppressMs + 100);
-  eq('抑制期内不被悬停弹回来', t.visible, false);
-  t = hover(t, true);
-  t = after(t, policy.hoverDelayMs + 50);
-  eq('抑制过期后、光标从未离开 → 仍不补唤出', t.visible, false);
-  t = hover(t, false);
-  t = hover(t, true);
-  t = after(t, policy.hoverDelayMs);
-  eq('光标真的离开再回来 → 恢复可唤出', t.visible, true);
+  // —— 「⋯」弹原生菜单的场景：失焦后又在宽限内拿回焦点 → 取消收起 ——
+  // 这条对应主进程里的 `barMenuOpen` 屏蔽（原生菜单会夺走面板焦点）：
+  // 即便屏蔽失效、真的走到了失焦分支，只要焦点回来面板就不该消失。
+  let m = ev(ev({ ...BAR_HIDDEN }, { kind: 'toggle' }), { kind: 'focus', hasFocus: true });
+  m = ev(m, { kind: 'focus', hasFocus: false });
+  m = ev(m, { kind: 'focus', hasFocus: true });
+  eq('拿回焦点即取消收起', m.hideAt, null);
+  eq('仍可见', m.visible, true);
+  eq('有焦点时时间推进不会把它收掉', tickBarState(m, clock.now() + 600_000).visible, true);
 
-  // —— 核心反面用例②：宠物被隐藏后不自动重现 ——
-  let h = after(hover({ ...BAR_HIDDEN }, true), policy.hoverDelayMs);
-  h = ev(h, { kind: 'pet-hidden' });
-  eq('宠物隐藏 → 控制条立即收起', h.visible, false);
-  h = hover(h, true);
-  h = after(h, policy.hoverDelayMs + 100);
-  eq('宠物回来后光标还停在原处 → 不自动冒出面板', h.visible, false);
+  // —— 不可见时的失焦不该凭空安排收起 ——
+  const idleBlur = ev({ ...BAR_HIDDEN }, { kind: 'focus', hasFocus: false });
+  eq('不可见时失焦不安排收起', idleBlur.hideAt, null);
 
-  // —— request-close：Esc / 收起按钮 ——
-  let c = after(hover({ ...BAR_HIDDEN }, true), policy.hoverDelayMs);
-  c = ev(c, { kind: 'request-close' });
+  // —— request-close：Esc / × ——
+  const c = ev(ev({ ...BAR_HIDDEN }, { kind: 'toggle' }), { kind: 'request-close' });
   eq('Esc → 立即隐藏', c.visible, false);
 
-  // —— showOnHover=false：悬停彻底不响应，快捷键仍可用 ——
-  const noHover = parseBarPolicy({ ...runtimeManifest.controlBar, showOnHover: false });
-  let n = nextBarState({ ...BAR_HIDDEN }, { kind: 'hover', over: true }, noHover, clock.now());
-  n = tickBarState(n, noHover, clock.now() + 10_000);
-  eq('showOnHover=false 时悬停永不唤出', n.visible, false);
-  n = nextBarState(n, { kind: 'toggle' }, noHover, clock.now());
-  eq('但快捷键仍可唤出', n.visible, true);
+  // —— pet-hidden：宠物被隐藏时面板一起收，且不会自己回来 ——
+  // （从前这条要靠 `armed` 位挡住"全屏退出瞬间光标还停在原处 → 面板自己冒出来"；
+  //   现在没有悬停路径，面板只在显式唤出时出现，所以这条是天然成立的。）
+  let h = ev({ ...BAR_HIDDEN }, { kind: 'toggle' });
+  h = ev(h, { kind: 'pet-hidden' });
+  eq('宠物隐藏 → 控制条立即收起', h.visible, false);
+  eq('宠物回来后也不会自动重现', tickBarState(h, clock.now() + 600_000).visible, false);
 
   // —— 不变量：不可见的状态不得自称有焦点 / 留着收起计划 ——
-  const inv = ev(ev({ ...BAR_HIDDEN }, { kind: 'focus', hasFocus: true }), { kind: 'pet-hidden' });
+  const inv = ev(ev({ ...BAR_HIDDEN }, { kind: 'toggle' }), { kind: 'pet-hidden' });
   eq('隐藏后清掉焦点记账', inv.hasFocus, false);
   eq('隐藏后不留收起计划', inv.hideAt, null);
 }
@@ -483,6 +540,46 @@ section('⑫ 会话视图 viewSessions');
   clock.advance(901_000);
   arb.tick();
   eq('静默过期的会话不出现在视图里', arb.viewSessions().length, 0);
+}
+
+// —— ⑬ clearSessions：菜单「清空状态会话」必须把**视图**也清掉 ——
+// 2026-09-17 实测的缺陷（ADR 016）：清空状态文件后主状态回落 idle（宠物确实松手了），
+// 但 `viewSessions()` 仍是两条 idle —— 面板照旧列两行、菜单照旧写「清空状态会话（2 条）」，
+// 要等 15 分钟静默兜底才轮到它们。用户视角就是"没清干净"。
+// 成因：适配器把"从快照消失"翻译成"补一条 idle 收尾"，仲裁器保留该记录，
+// 而视图的过滤条件是"15 分钟内的记录" —— 清空产生的是一排 idle 行，不是"没有行"。
+section('⑬ 清空会话：记录 / 视图 / 确认位一起清');
+{
+  const clock = makeClock();
+  const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now });
+  arb.ingest({ sessionId: 'a', status: 'running', title: 'a' });
+  clock.advance(600);
+  arb.ingest({ sessionId: 'b', status: 'needs-input', title: 'b' });
+  eq('清空前：主状态是 needs-input', arb.state.status, 'needs-input');
+  eq('清空前：面板两行', arb.viewSessions().length, 2);
+
+  const changed = arb.clearSessions();
+  eq('清空会改变仲裁输出（需要推给渲染层）', changed, true);
+  eq('清空后主状态回落 idle', arb.state.status, 'idle');
+  eq('清空后面板一行都不剩', arb.viewSessions().length, 0);
+  eq('主状态的会话指针也清掉', arb.state.sessionId, null);
+
+  // 清空是用户明确的破坏性动作，本身就是即时生效的（不被 500ms 限流窗格挡住）
+  clock.advance(600);
+  arb.ingest({ sessionId: 'c', status: 'blocked' });
+  eq('清空之后状态层照常工作', arb.state.status, 'blocked');
+
+  // —— 确认位也要清：否则同一个 sessionId 下次再出现会被当成"已读" ——
+  const c2 = makeClock();
+  const arb2 = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: c2.now });
+  arb2.ingest({ sessionId: 'x', status: 'needs-input', title: 'x' });
+  arb2.ack('x');
+  eq('前置：该会话已被确认', arb2.viewSessions()[0].acknowledged, true);
+  arb2.clearSessions();
+  c2.advance(600);
+  arb2.ingest({ sessionId: 'x', status: 'needs-input', title: 'x' });
+  eq('清空后再出现的同一会话不再被当成已读', arb2.viewSessions()[0].acknowledged, false);
+  eq('它会重新举手等用户确认', arb2.state.status, 'needs-input');
 }
 
 // —— 汇总 ——

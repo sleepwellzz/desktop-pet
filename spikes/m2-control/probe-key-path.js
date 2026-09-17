@@ -10,12 +10,12 @@
  *   键盘不受影响 → 隐藏/显示不必 reload（更简单）；
  *   键盘也断     → 每次显示后必须 reload 渲染层。
  *
- * 顺便量两件只有真实探针能回答的事：
- *   - 悬停唤出**不抢焦点**（用户可能正在 IDE 里打字）；
- *   - 快捷键唤出**抢焦点**（用户明确按了键）；
- *   - Esc 真的能收起。
+ * 同时钉住 2026-09-17 的新交互模型（ADR 016）：
+ *   - **悬停不再唤出**（停在宠物上 1.8 秒必须什么都不发生）；
+ *   - **右键宠物 = 唤出**，且唤出即抢焦点（所以键盘与 Esc 都可达）；
+ *   - 收起后再唤出，键盘照常投递。
  *
- * 用法：node spikes/m2-control/run.mjs
+ * 用法：node spikes/m2-control/run.mjs key-path
  */
 const { app, BrowserWindow, screen } = require('electron');
 const fs = require('node:fs');
@@ -44,6 +44,7 @@ const keybd_event = user32.func('void keybd_event(uint vk, uint scan, uint flags
 const mouse_event = user32.func('void mouse_event(uint flags, uint dx, uint dy, uint data, uint64_t extra)');
 const GetSystemMetrics = user32.func('int GetSystemMetrics(int index)');
 const MOVE = 0x0001, ABSOLUTE = 0x8000, KEYUP = 0x0002;
+const RIGHT_DOWN = 0x0008, RIGHT_UP = 0x0010;
 const VK_LWIN = 0x5B, VK_MENU = 0x12, VK_P = 0x50, VK_A = 0x41, VK_ESCAPE = 0x1B;
 const VX = GetSystemMetrics(76), VY = GetSystemMetrics(77), VW = GetSystemMetrics(78), VH = GetSystemMetrics(79);
 const moveTo = (x, y) => mouse_event(MOVE | ABSOLUTE,
@@ -102,7 +103,6 @@ app.whenReady().then(async () => {
 
     const keys = async () => bar.webContents.executeJavaScript('JSON.stringify(window.__keys)')
       .then((s) => JSON.parse(s)).catch(() => null);
-    const snap = () => ({ visible: dbg.barVisible(), focus: bar.isFocused(), keys: null });
     const step = async (label) => {
       const s = { label, visible: dbg.barVisible(), focused: bar.isFocused(), keys: await keys() };
       report.steps.push(s);
@@ -118,42 +118,44 @@ app.whenReady().then(async () => {
     await bar.webContents.executeJavaScript(INJECT);
     await step('初始（未唤出）');
 
-    // —— ① 悬停唤出：应当**不抢焦点** ——
-    const pb = pet.getContentBounds();
-    const center = px(pb.x + pb.width / 2, pb.y + pb.height / 2);
-    moveTo(center.x, center.y);
-    await sleep(1200);
-    const hovered = await step('悬停宠物 1.2 秒（期望出现且不抢焦点）');
-    report.hover = { visible: hovered.visible, focused: hovered.focused };
+    const petCenterPx = () => {
+      const p = pet.getContentBounds();
+      return px(p.x + p.width / 2, p.y + p.height / 2);
+    };
+    const rightClickPet = async () => {
+      const p = petCenterPx();
+      moveTo(p.x, p.y); await sleep(450);
+      mouse_event(RIGHT_DOWN, 0, 0, 0, 0); await sleep(70);
+      mouse_event(RIGHT_UP, 0, 0, 0, 0);
+      await sleep(1100);
+    };
 
-    // 悬停唤出后注入一个普通按键：没焦点就应当收不到（这是设计要的，不是缺陷）
-    const k0 = hovered.keys?.down ?? 0;
-    tap(VK_A);
-    await sleep(500);
-    const hoverKey = await step('悬停唤出后按 A（无焦点 → 预期收不到）');
-    report.hoverKeyboard = (hoverKey.keys?.down ?? 0) - k0;
+    // —— ① 悬停不再唤出（2026-09-17 移除了这条路径，必须钉住"不会自己回来"）——
+    // 这是新旧模型之间最容易悄悄回流的差异：谁要是把悬停逻辑加回来，这里立刻红。
+    const c = petCenterPx();
+    moveTo(c.x, c.y);
+    await sleep(1800);
+    const hovered = await step('光标停在宠物中心 1.8 秒（期望：什么都不发生）');
+    report.hoverShows = hovered.visible;
 
-    // —— 光标移开，等宽限收起 ——
-    moveTo(px(60, 60).x, px(60, 60).y);
-    await sleep(1400);
-    await step('光标移开 1.4 秒（期望已收起）');
-
-    // —— ② 快捷键唤出：应当**抢焦点** ——
-    await pressHotkey();
-    await sleep(1500);
+    // —— ② 右键宠物唤出：应当**抢焦点**（否则键盘与 Esc 都到不了面板）——
+    await rightClickPet();
     const k1 = (await keys())?.down ?? 0;
-    const shown = await step('快捷键唤出（期望可见且抢到焦点）');
+    const shown = await step('右键宠物（期望可见且抢到焦点）');
     tap(VK_A);
     await sleep(500);
-    const shownKey = await step('快捷键唤出后按 A（预期收得到）');
-    report.hotkeyShow = { visible: shown.visible, focused: shown.focused, keyDelta: (shownKey.keys?.down ?? 0) - k1 };
+    const shownKey = await step('唤出后按 A（预期收得到）');
+    report.rightClickShow = {
+      visible: shown.visible, focused: shown.focused,
+      keyDelta: (shownKey.keys?.down ?? 0) - k1,
+    };
 
     // —— ③ 关键：hide → show 往返之后，键盘还进不进得来 ——
     // 这就是 ADR 009 那个坑在**键盘路径**上的复现实验。
     await pressHotkey();          // 收起
     await sleep(1200);
-    const hidden = await step('再按快捷键收起');
-    await pressHotkey();          // 唤出
+    const hidden = await step('按快捷键收起');
+    await pressHotkey();          // 再唤出
     await sleep(1500);
     const k2 = (await keys())?.down ?? 0;
     const reshown = await step('再次唤出（hide→show 往返后）');
@@ -168,30 +170,37 @@ app.whenReady().then(async () => {
       keysAlive: reshownKey.keys !== null,
     };
 
-    // —— ④ Esc 真的能收起 ——
+    // —— ④ Esc 真的能收起，且收起来之后不会自己回来 ——
     const beforeEsc = dbg.barVisible();
     tap(VK_ESCAPE);
     await sleep(1000);
     const afterEsc = await step('按 Esc（期望收起）');
-    report.escape = { before: beforeEsc, after: afterEsc.visible, escCount: afterEsc.keys?.esc ?? 0 };
+    await sleep(800);
+    const staysHidden = await step('Esc 收起后停留 0.8 秒（期望仍不可见）');
+    report.escape = {
+      before: beforeEsc, after: afterEsc.visible, escCount: afterEsc.keys?.esc ?? 0,
+      staysHidden: !staysHidden.visible,
+    };
 
     // —— 判定 ——
     const fails = [];
-    if (!report.hover.visible) fails.push('悬停宠物 1.2 秒后控制条没有出现');
-    if (report.hover.focused) fails.push('悬停唤出抢了焦点（应当 showInactive 不抢）');
-    if (!report.hotkeyShow.visible) fails.push('快捷键没能唤出控制条');
-    if (!report.hotkeyShow.focused) fails.push('快捷键唤出后没有拿到焦点（键盘将永远进不来）');
-    if (report.hotkeyShow.keyDelta < 1) fails.push('快捷键唤出后键盘事件收不到（焦点拿到了但消息不通）');
+    if (report.hoverShows) fails.push('光标停在宠物上 1.8 秒把面板唤出来了（悬停应已彻底移除）');
+    if (!report.rightClickShow.visible) fails.push('右键宠物没能唤出控制条');
+    if (!report.rightClickShow.focused) fails.push('右键唤出后没有拿到焦点（键盘将永远进不来）');
+    if (report.rightClickShow.keyDelta < 1) fails.push('右键唤出后键盘事件收不到（焦点拿到了但消息不通）');
+    if (report.roundTrip.hiddenVisible !== false) fails.push('快捷键没能收起控制条（往返用例前置不成立）');
     if (!report.roundTrip.keysAlive) fails.push('往返后页面里的计数器丢了（说明渲染层被 reload，注入失效）');
+    if (!report.roundTrip.visible) fails.push('往返后没能再次唤出');
     if (report.roundTrip.keyDelta < 1) fails.push('hide→show 往返之后键盘事件不再投递（ADR 009 在键盘路径同样复现 → 必须 reload）');
     if (report.escape.before !== true) fails.push('按 Esc 前控制条不是可见的（用例前置不成立）');
     if (report.escape.after !== false) fails.push('Esc 没能收起控制条');
+    if (!report.escape.staysHidden) fails.push('Esc 收起后面板又自己回来了');
     report.failures = fails;
     report.verdict = fails.length === 0 ? 'PASS' : 'FAIL';
     log(`[probe] 判定：${report.verdict}${fails.length ? ' —— ' + fails.join('；') : ''}`);
-    log(`[probe] 摘要：悬停唤出抢焦点=${report.hover.focused}（应 false）｜快捷键唤出抢焦点=${report.hotkeyShow.focused}（应 true）`
-      + `｜键盘增量 悬停=${report.hoverKeyboard} 快捷键=${report.hotkeyShow.keyDelta} 往返后=${report.roundTrip.keyDelta}`
-      + `｜Esc 收起=${report.escape.after === false}`);
+    log(`[probe] 摘要：悬停唤出=${report.hoverShows}（应 false）｜右键唤出抢焦点=${report.rightClickShow.focused}（应 true）`
+      + `｜键盘增量 右键唤出=${report.rightClickShow.keyDelta} 往返后=${report.roundTrip.keyDelta}`
+      + `｜Esc 收起=${report.escape.after === false} 收回后不自动重现=${report.escape.staysHidden}`);
   } catch (e) {
     report.error = String((e && e.stack) || e);
     log('[probe] 失败：' + report.error);

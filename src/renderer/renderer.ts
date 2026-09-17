@@ -248,7 +248,7 @@ function evaluateHit(cssX: number, cssY: number, force = false): void {
   setInteractive(hit, force);
 }
 
-// —— 交互：按住拖动；单击（未拖动）触发一次性挥手；右键弹宠物菜单 ——
+// —— 交互：按住拖动；单击（未拖动）播「拜一下」并确认；右键唤出控制条 ——
 let dragging = false;
 let moved = 0;
 let lastX = 0;
@@ -285,8 +285,11 @@ canvas.addEventListener('pointerup', (e) => {
   canvas.releasePointerCapture(e.pointerId);
   const wasClick = moved < 4;
   if (wasClick && player) {
-    // 单击 = 用户确认：「needs-input 驻留至用户确认」里的那个"确认"就落在这里。
-    // 不接这条线的话，用户即使已经在别处回答了问题，宠物还会举着手等到粘滞超时（见 ADR 010）。
+    // 单击 = 一、用户确认（「needs-input 驻留至用户确认」里的那个"确认"就落在这里，
+    // 不接这条线的话，用户即使已经在别处回答了问题，宠物还会举着手等到粘滞超时，见 ADR 010）；
+    // 二、播一次「拜一下」—— 第 3 行 `waving` 在淘淘 New 里画的正是**双手抱拳致意**的姿态
+    // （见 docs/status-reference.png，别按状态名猜外观）。
+    // 单击**不唤出控制条**：那是右键宠物的事（ADR 016），左键只做"陪一下"。
     window.pet.ack();
     // 「减少动态效果」下不播一次性动作：帧推进被关闭，它会卡在首帧回不到静止状态。
     if (!reducedMotion && !player.setState('waving')) player.setState('idle');
@@ -295,12 +298,11 @@ canvas.addEventListener('pointerup', (e) => {
 });
 
 /**
- * 右键 → 弹出宠物菜单。
+ * 右键 → 请求主进程**唤出/收起控制条**（2026-09-17 起，ADR 016；此前是弹原生菜单）。
  *
  * 为什么由渲染层触发（而不是主进程监听鼠标）：窗口常态整窗穿透，只有渲染层知道
  * 光标是否落在精灵实体上（ADR 008）。Windows 不会替我们判断"这一下算不算点在宠物身上"。
- * 菜单本身是原生菜单，已实测在 `WS_EX_NOACTIVATE | TOPMOST` 的窗口上可弹出、可点击
- * （`spikes/m2-menu`）。
+ * 完整菜单仍在两条路径上：托盘右键、以及控制条面板里的「⋯」。
  */
 canvas.addEventListener('contextmenu', (e) => {
   e.preventDefault();

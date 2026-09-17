@@ -1,0 +1,51 @@
+spawned electron pid=192292 probe=probe-bubble-hotkey.js
+--- bubble-hotkey.log ---
+[pet] 加载宠物包：<工程目录>
+[pet] 淘淘 New · 1536x1872 · 8x9 @ 192x208 · 9 个状态
+[pet] 状态源：状态文件 <工程目录>\spikes\m2-hotkey\probe-status.json（监听目录 + 1000ms 轮询兜底）
+[pet] 快捷键已注册：Super+Alt+P（由 Win+Alt+P 归一化而来）
+[pet] 托盘已创建：<工程目录>\assets\tray.ico
+[pet] 气泡层已创建（常态整窗穿透，不参与命中判定）
+[pet] 控制条已创建（宽 260，可聚焦）—— 唤出：右键宠物 / Super+Alt+P / 托盘菜单；失焦 200ms 后收起
+[pet] --expose-actions：动作表与只读探针已挂到 globalThis（仅供探针）
+[pet] 窗口已显示，位置 {"x":1549,"y":857}
+[pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
+[pet][renderer] 精灵图就绪 1536x1872，DPR=1.5；按 alpha<16 清空 2000388 个空白像素
+[pet][renderer] 命中评估 css=(-295,-258) → 空白 ｜ 帧 row=0 col=0 ｜ 换算 local=(-422,-371) scale=0.7
+[pet][renderer] 状态 idle → idle rev=0（重载补推）
+[probe] 宠物窗=true 气泡窗=true 快捷键=Super+Alt+P DPR=1.5
+[pet] 全局快捷键触发：唤出/收起控制条
+[pet] 控制条显示（唤出即抢焦点；Esc 或点到别处可收）
+[pet] 全局快捷键触发：唤出/收起控制条
+[pet] 控制条收起
+[probe] 快捷键 Super+Alt+P：宠物可见 true → 按一次控制条=true → 再按控制条=false ｜ 宠物仍可见=true
+[pet][status] 状态 idle → running @a（rev=1）
+[pet][status] 推送 running → running rev=1
+[pet][source] 文件状态：a → running（a）
+[pet][renderer] 状态 running → running rev=1 ｜ 气泡「运行中」
+[probe] running（2 秒后应自动收起）：策略 visible=true「运行中」badge=0 ｜页面 hidden=false 文本「运行中」角标「」｜窗 88x38@809,446 与宠物重叠=否
+[probe] running 心跳（不重置计时）：策略 visible=true「运行中」badge=0 ｜页面 hidden=false 文本「运行中」角标「」｜窗 88x38@809,446 与宠物重叠=否
+[probe] running 到期后：窗口可见=false 策略 visible=false
+[pet][status] 进入粘滞：会话 b 需要输入，驻留至用户确认或 300s 超时
+[pet][status] 状态 running → needs-input @b（rev=2）
+[pet][status] 推送 needs-input → waiting rev=2 角标=1
+[pet][source] 文件状态：b → needs-input（b）
+[pet][renderer] 状态 needs-input → waiting rev=2 ｜ 气泡「需要输入」 ｜ 另有 1 条活动会话
+[probe] needs-input（常驻）+ 多会话角标：策略 visible=true「需要输入」badge=1 ｜页面 hidden=false 文本「需要输入」角标「+1」｜窗 110x38@798,446 与宠物重叠=否
+[probe] needs-input 2.5 秒后仍应常驻：窗口可见=true
+[probe] 已保存 bubble-shot.png
+[probe] 文字几何：字号=13px line-height=20px 行盒=20.00px（canvas 估字体盒 17.00px / 墨迹 12.00px）｜ 左右余量=1.69/1.70px ｜ 胶囊高 38.00
+[probe] 文字裁切（差分）：裁切时墨迹行 20..39，关掉 overflow 后 20..39（窗口高 57px @1.5x） → 被裁 上 0 / 下 0 物理像素（0.00 / 0.00 DIP）
+[pet][renderer] 命中评估 css=(67,73) → 实体 ｜ 帧 row=6 col=4 ｜ 换算 local=(95,102) scale=0.7
+[pet] 命中状态 → 可交互（光标在宠物实体上）
+[probe] 拖宠物 {"dx":-200,"dy":-100} → 气泡从 798,446 到 1361,709 → ✅ 跟随
+[pet][status] 用户确认：b
+[pet][status] 状态 needs-input → running @a（rev=3）
+[pet][status] 推送 running → running rev=3
+[pet][renderer] 状态 running → running rev=3 ｜ 气泡「运行中」
+[probe] 气泡工作期间点宠物：pointerdown 2 → 4 ✅ 仍可点
+[probe] 判定：PASS
+[pet] 用户从菜单退出
+
+
+探针判定：PASS 

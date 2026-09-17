@@ -82,7 +82,7 @@
     "timerTickMs": 250
   },
   "controlBar": {
-    "note": "悬浮控制条（M2 ④，ADR 014）。本项目**第一个可聚焦窗口**：可聚焦 ⇒ 能拿焦点，但它只在用户主动唤出时拿（快捷键），悬停出现一律 showInactive（用户可能正在 IDE 里打字）。它是矩形直角不透明面板 —— 窗口矩形 ≈ 可视矩形，所以**不适用** ADR 008 那条逐像素命中纪律；代价是不做圆角（圆角会留 4 个透明三角吃掉下层应用的点击）。高度 = headerHeight + 行数 × rowHeight + footerHeight，行数 = min(会话数, maxRows) + （还有更多时 +1 行）。本轮不渲染自由文本输入框，原因见 docs/design/m2-control-bar.md。2026-09-16 人工验收后调整：动作排撤掉 −/+/↺（缩放交给菜单）、hoverGraceMs 500→350（用户反馈：移开后消失有点慢）。",
+    "note": "控制条（M2 ④，ADR 014；2026-09-17 交互模型修订见 ADR 016）。本项目第一个可聚焦窗口：**唤出即抢焦点** —— 唤出入口只有三条，全是用户明确动作（右键宠物 / Win+Alt+P / 托盘菜单「控制条」），没有悬停唤出（曾有过 300ms 悬停出现，已删除：桌宠常驻角落、光标是顺便掠过的，自动弹出必然变成'我没叫它它自己冒出来'）。关闭：Esc / 面板 × / 再唤出一次 / 点到别处（失焦 blurHideMs）/ 宠物被隐藏。它是矩形直角不透明面板 —— 窗口矩形 ≈ 可视矩形，所以**不适用** ADR 008 那条逐像素命中纪律；代价是不做圆角（圆角会留 4 个透明三角吃掉下层应用的点击）。高度 = headerHeight + 行数 × rowHeight + footerHeight，行数 = min(会话数, maxRows) + （还有更多时 +1 行）。面板内容 = 状态行 + 会话行（可就地「确认」）+ 动作排（隐藏宠物 / 宠物名 / ⋯ 完整菜单）；**不渲染自由文本输入框**，原因见 docs/design/m2-control-bar.md。2026-09-16 人工验收后撤掉 −/+/↺（缩放交给菜单）；2026-09-17 把动作排里的只读缩放百分比换成宠物名。",
     "width": 260,
     "headerHeight": 30,
     "rowHeight": 28,
@@ -90,17 +90,14 @@
     "maxRows": 5,
     "gapBelowPet": 8,
     "gapAbovePet": 10,
-    "hoverDelayMs": 300,
-    "hoverGraceMs": 350,
-    "blurHideMs": 200,
-    "toggleSuppressMs": 1500,
-    "showOnHover": true
+    "blurHideMs": 200
   },
   "interaction": {
     "drag": "按住拖动，松开后记忆位置；拖动期间抑制自主漫游",
-    "click": "单击切换下一个宠物 / 显示快捷输入",
-    "doubleClick": "唤起主窗口",
-    "rightClickMenu": ["隐藏宠物", "控制条", "切换宠物", "宠物大小", "重置大小", "开机自启", "退出"],
+    "click": "单击 = 播一次「拜一下」（第 3 行 waving，见 docs/status-reference.png），同时充当对 needs-input 的确认（ADR 010）。**不唤出任何面板** —— 左键只做'陪一下'。",
+    "doubleClick": "唤起主窗口（未实现，M3+）",
+    "rightClick": "宠物上右键 = 唤出/收起控制条（ADR 016）。不再弹原生菜单 —— 完整菜单在托盘右键与面板的「⋯」里，两条路径都能到达全部动作。",
+    "rightClickMenu": ["隐藏宠物", "控制条", "宠物大小", "重置大小", "清空状态会话", "开机自启", "退出"],
     "hideShortcut": { "default": "Win+Alt+P", "fallbacks": ["Ctrl+Alt+P", "Win+Alt+Space", "Ctrl+Shift+Alt+P"], "action": "唤出/收起控制条（M2 ④ 起；此前是切换宠物显示/隐藏，见 ADR 014）", "conflictRisk": "Win+Alt+P 在 Windows 上可能与部分显卡/AI 工具快捷键冲突。注意：这里是**人话**写法，代码注册前会归一化成 Electron 的 accelerator（Windows 键在 Electron 里叫 Super）—— 直接拿 Win+Alt+P 去注册会返回成功但永不触发，见 spikes/m2-hotkey/。" },
     "tray": ["显示/隐藏", "宠物管理", "设置", "退出"]
   },

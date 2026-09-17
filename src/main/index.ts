@@ -19,7 +19,7 @@ import { buildPetMenuTemplate, type PetMenuActions, type PetMenuView } from '../
 import { isAutoStartEnabled, writeAutoStart } from '../host/autostart';
 import { registerHotkey, unregisterHotkeys } from '../host/hotkey';
 import { createBubbleLayer, type BubbleLayer } from '../host/bubble-layer';
-import { createControlBar, type ControlBar, type Rect } from '../host/control-bar';
+import { createControlBar, type ControlBar } from '../host/control-bar';
 import { loadPrefs, savePrefs } from '../host/prefs';
 import { BUBBLE_HIDDEN, bubbleExpired, nextBubbleState, parseBubblePolicy, type BubbleState } from '../kernel/bubble-policy';
 import {
@@ -222,9 +222,13 @@ function boot(): void {
    * 2026-09-16 用户实测困惑："一启动就显示 default 在运行中，怎么喂都改不了" ——
    * 其实改得掉，只是没人知道那条会话还留在文件里（按会话清只能靠 `喂状态.bat` 的 7/9）。
    *
-   * 写侧本来只有 hook，这里破例由主进程写：这是用户主动请求的破坏性操作，
-   * 而且必须**同时**清掉文件与界面状态 —— 只清仲裁器的话，适配器下一次轮询会照着
-   * 未变的文件把会话读回来（它比较的是"文件内容是否变化"）。原子替换与 `pet-hook.mjs` 同款。
+   * **三处都要清，缺一处用户看到的都是"没清干净"**（2026-09-17 实测，ADR 016）：
+   *   ① 文件：写一份空快照（原子替换，与 `pet-hook.mjs` 同款）；
+   *   ② 适配器的记忆：`reset()`。否则它下一次读盘会把"空快照"diff 成"每条会话都消失了"，
+   *      各补一条 idle 收尾 —— 刚清掉的会话立刻以 idle 的形式回来；
+   *   ③ 仲裁器的记录：`clearSessions()`。否则那些记录仍在（面板照旧列两行、
+   *      菜单照旧写「清空状态会话（N 条）」），要等 15 分钟静默兜底才轮到它们。
+   * 最后再刷新面板与菜单，让计数当场归零。
    */
   function clearStatusSessions(): void {
     if (!statusFile) {
@@ -236,10 +240,18 @@ function boot(): void {
       const tmp = `${statusFile}.tmp-${process.pid}`;
       writeFileSync(tmp, JSON.stringify({ schema: 'desktop-pet/status/v1', sessions: {} }, null, 2) + '\n', 'utf8');
       renameSync(tmp, statusFile);
-      console.log('[pet] 已清空状态文件里的全部会话（适配器会在下一次读盘时补 idle 收尾）');
     } catch (e) {
       console.error('[pet] 清空状态文件失败：' + String(e));
+      return;                                // 文件没写成功就别再动内存里的状态，免得两边错开
     }
+    statusSource?.reset?.();
+    const changed = arbiter.clearSessions();
+    // 输出变化时走完整的推送路径（它顺带刷新托盘、气泡、面板三处）；
+    // 输出没变（本来就没有会话在要求注意）时，面板与菜单的行数也仍要刷成 0。
+    if (changed) pushStatus();
+    refreshBar();
+    refreshMenu();
+    console.log('[pet] 已清空全部会话（文件 + 适配器记忆 + 仲裁器记录）');
   }
 
   /** 菜单视图：状态全部现读，菜单自己不持有状态（ADR 010 的唯一真值约定）。 */
@@ -431,10 +443,15 @@ function boot(): void {
 
   let bar: ControlBar | null = null;
   let barState: BarState = BAR_HIDDEN;
-  /** 本次显示是否要抢焦点。只有"快捷键唤出"会置真（悬停 / 菜单唤出一律 showInactive）。 */
-  let barWantFocus = false;
-  /** 上一次算出的"光标在 宠物 ∪ 控制条 上"。悬停是**边沿触发**的，所以必须记住上一次。 */
-  let lastBarOver = false;
+  /**
+   * 原生菜单是否正开着（面板的「⋯」）。
+   *
+   * 为什么需要这个位（2026-09-17，ADR 016）：Windows 的原生菜单会**夺走弹出它的那个窗口
+   * 的焦点**。若不屏蔽，菜单刚弹出来面板就吃到一次 `blur` → `blurHideMs` 后自己收起
+   * （菜单随之消失）—— 表现就是"⋯ 点了没反应"，而且只有真手点才复现。
+   * 菜单关闭时再按当时的真实焦点补一次记账（见下方 closeBarMenu）。
+   */
+  let barMenuOpen = false;
 
   try {
     bar = createControlBar({
@@ -449,11 +466,14 @@ function boot(): void {
       gapAbovePet: barNum('gapAbovePet', 10),
       // 翻到宠物上方时让开气泡，否则面板会正好盖住它（气泡 32 高 + 6 间距）
       reservedAbove: () => (bubble?.isVisible() ? 38 : 0),
-      onFocusChange: (hasFocus) => dispatchBar({ kind: 'focus', hasFocus }),
+      onFocusChange: (hasFocus) => {
+        if (barMenuOpen) return;             // 菜单开着时的失焦不算"用户点到别处"（见上）
+        dispatchBar({ kind: 'focus', hasFocus });
+      },
     });
     bar.followPet(overlay.browserWindow.getContentBounds());
-    console.log(`[pet] 控制条已创建（宽 ${barWidth}，可聚焦；悬停出现=${barPolicy.showOnHover ? '开' : '关'}` +
-      `，悬停 ${barPolicy.hoverDelayMs}ms 出现 / 离开 ${barPolicy.hoverGraceMs}ms 收起）`);
+    console.log(`[pet] 控制条已创建（宽 ${barWidth}，可聚焦）—— 唤出：右键宠物 / ${activeHotkey ?? 'Win+Alt+P'} / 托盘菜单；`
+      + `失焦 ${barPolicy.blurHideMs}ms 后收起`);
   } catch (e) {
     console.error('[pet] 控制条创建失败（宠物本体不受影响）：' + String(e));
   }
@@ -466,21 +486,26 @@ function boot(): void {
       statusLabels: STATUS_TEXT,
       sessions: arbiter.viewSessions(),
       maxRows: barMaxRows,
-      scale: currentScale,
+      petName: pack.manifest.displayName ?? pack.manifest.id,
       hotkey: activeHotkey,
       petVisible: overlay.isVisible(),
       rev: s.rev,
     };
   }
 
-  /** 把状态机的判定落到实际窗口上。调用方只需保证 `barState` 已更新。 */
+  /**
+   * 把状态机的判定落到实际窗口上。调用方只需保证 `barState` 已更新。
+   *
+   * 显示一律**抢焦点**（`focus: true`）：三条唤出路径（右键宠物 / 快捷键 / 托盘菜单项）
+   * 都是用户明确表达"我要看它"的动作，而悬停那条"可能正在打字"的路径已经不存在了
+   * （ADR 016）。抢焦点换来的是"点到别处即关"与 Esc 可收 —— 面板因此像一个真窗口。
+   */
   function syncBar(): void {
     if (!bar) return;
     if (barState.visible) {
       if (!bar.isVisible()) {
-        bar.show(barView(), { focus: barWantFocus });
-        console.log(`[pet] 控制条显示（${barWantFocus ? '抢焦点：快捷键唤出' : '不抢焦点：悬停/菜单唤出'}）`);
-        barWantFocus = false;
+        bar.show(barView(), { focus: true });
+        console.log('[pet] 控制条显示（唤出即抢焦点；Esc 或点到别处可收）');
       } else {
         bar.update(barView());
       }
@@ -493,26 +518,23 @@ function boot(): void {
   /** 喂一个事件给显示状态机（策略是纯函数，见 kernel/bar-policy.ts）。 */
   function dispatchBar(ev: BarEvent): void {
     if (!bar) return;
-    const prev = barState;
-    barState = nextBarState(prev, ev, barPolicy, Date.now());
-    if (ev.kind === 'toggle' && barState.visible && !prev.visible) barWantFocus = true;
+    barState = nextBarState(barState, ev, barPolicy, Date.now());
     syncBar();
   }
 
   /**
    * 宠物消失（托盘隐藏 / 右键隐藏 / 全屏让位）时把控制条一起收掉。
-   * 走的是 `pet-hidden` 事件而不是直接 `bar.hide()`：状态机里那条规则同时负责
-   * **撤销悬停唤出资格**，否则全屏退出瞬间光标还停在原处，300ms 后面板会自己冒出来。
+   * 走的是 `pet-hidden` 事件而不是直接 `bar.hide()`：状态机那条规则同时把"计划收起"
+   * 与焦点记账一起清掉，免得留下一份与窗口对不上的账。
    */
   function hideBar(reason: string): void {
     if (!bar) return;
     const wasOn = barState.visible || bar.isVisible();
-    barState = nextBarState(barState, { kind: 'pet-hidden' }, barPolicy, Date.now());
-    syncBar();
+    dispatchBar({ kind: 'pet-hidden' });
     if (wasOn) console.log(`[pet] 控制条跟随隐藏（${reason}）`);
   }
 
-  /** 快捷键与菜单"控制条"项的共同入口。 */
+  /** 快捷键、宠物右键与托盘菜单「控制条」的共同入口。 */
   function toggleBar(): void {
     if (!bar) return;
     if (!overlay.isVisible()) {
@@ -526,39 +548,22 @@ function boot(): void {
     dispatchBar({ kind: 'toggle' });
   }
 
-  /** 状态 / 缩放变化后刷新面板内容（未显示时什么都不做）。 */
+  /** 状态变化后刷新面板内容（未显示时什么都不做）。 */
   function refreshBar(): void {
     if (!bar || !barState.visible) return;
     bar.update(barView());
   }
 
-  function pointInRect(p: { x: number; y: number }, r: Rect | null): boolean {
-    return !!r && p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height;
-  }
-
   /**
-   * 悬停判定的驱动源，每 16ms 由光标轮询调用。
+   * 时间推进：把状态机的"到点收起"落到窗口上，每 16ms 由光标轮询顺带调用。
    *
-   * `over = 光标在宠物实体上（渲染层的 alpha 判定，`lastInteractive`）∪ 光标在控制条矩形内`。
-   * **不需要新增任何 IPC** —— 两半都在主进程手边。除了算 over，它还要驱动状态机的
-   * 到点显示 / 到点收起：`hideAt` 到期时用户的光标往往已经静止，只剩轮询还在跑。
+   * 为什么挂在这里而不是另开定时器：`hideAt` 到期时用户的光标往往已经静止
+   * （甚至已经去干别的了），这一刻**只剩这个轮询还在转**。不可见时它是恒等的，零开销。
    */
-  function updateBarHover(cursor: { x: number; y: number }): void {
+  function tickBar(): void {
     if (!bar) return;
-    // **面板不可见时不能把它的矩形算进来**（2026-09-16 用户实测报告的症状：
-    // "控制条出现/触发消息后，鼠标在离它很远的地方仍会被判定为即将触发控制条"）。
-    // 成因：隐藏之后 `bounds()` 返回的仍是它消失前那块矩形（260 宽 —— 比宠物宽 126 DIP，
-    // 左右各多出 63），鼠标只要掠过那片**空地**就会被算成"在控制条上"，于是又把面板叫回来。
-    // 面板不可见时它不占任何空间，这才是正确语义。
-    const barRect = bar.isVisible() ? bar.bounds() : null;
-    const over = lastInteractive || pointInRect(cursor, barRect);
-    if (over !== lastBarOver) {
-      lastBarOver = over;
-      dispatchBar({ kind: 'hover', over });
-      return;                                  // dispatchBar 里已经同步过窗口
-    }
     const before = barState;
-    barState = tickBarState(barState, barPolicy, Date.now());
+    barState = tickBarState(barState, Date.now());
     if (barState !== before) syncBar();
   }
 
@@ -581,8 +586,21 @@ function boot(): void {
       if (!bar) return;
       // 弹的是**同一份**原生菜单（含"退出"），所以面板里不必再实现一遍退出按钮，
       // 也就不会因为多一个"退出"而增加误点风险（D4 的取舍）。
-      Menu.buildFromTemplate(buildPetMenuTemplate(petMenuView(), actions))
-        .popup({ window: bar.browserWindow });
+      //
+      // `barMenuOpen` 见它的声明处：原生菜单会夺走面板的焦点，若不屏蔽，
+      // 面板会在菜单弹出的同一瞬间吃到 blur，`blurHideMs` 后连菜单一起消失。
+      // 菜单关闭时按**当时的真实焦点**补一次记账，避免"菜单关了但面板以为永远失焦"。
+      barMenuOpen = true;
+      const menu = Menu.buildFromTemplate(buildPetMenuTemplate(petMenuView(), actions));
+      menu.popup({
+        window: bar.browserWindow,
+        callback: () => {
+          barMenuOpen = false;
+          if (!bar) return;
+          const focused = bar.browserWindow.isFocused();
+          dispatchBar({ kind: 'focus', hasFocus: focused });
+        },
+      });
     },
     'close-bar'() { dispatchBar({ kind: 'request-close' }); },
   };
@@ -637,6 +655,10 @@ function boot(): void {
       barBounds: () => bar?.bounds() ?? null,
       barToggle: () => toggleBar(),
       barPolicy: () => barPolicy,
+      /** 菜单视图（含 `sessionCount`）：探针用它验「清空状态会话」后计数归零。 */
+      menuView: () => petMenuView(),
+      /** 面板该显示谁的名字（探针用它验"面板显示宠物名，而不是缩放百分比"）。 */
+      petName: () => pack.manifest.displayName ?? pack.manifest.id,
     };
     console.log('[pet] --expose-actions：动作表与只读探针已挂到 globalThis（仅供探针）');
   }
@@ -701,16 +723,18 @@ function boot(): void {
    */
   let lastCursor: { x: number; y: number } | null = null;
   function pollPointer(): void {
+    // 控制条的"到点收起"靠这个 16ms 的轮询推进（没有悬停路径了，但"到点收起"仍然需要
+    // 一个调度源；见 tickBar 的注释）。放在最前面：它不该受"宠物窗口是否可见"影响。
+    tickBar();
     const win = overlay.browserWindow;
     if (win.isDestroyed() || !win.isVisible()) return;
     const cp = screen.getCursorScreenPoint();
-    // 命中判定只在光标真移动时才有新信息可报；但**控制条的悬停状态机每 tick 都要跑**
-    // （`hideAt` 到期时用户的光标往往已经静止，只剩这个轮询还在转）。
+    // 命中判定只在光标真移动时才有新信息可报（渲染层每帧都会用它复评命中，
+    // 见 renderer.ts 的 tick），所以这里按位置变化去抖。
     if (!lastCursor || cp.x !== lastCursor.x || cp.y !== lastCursor.y) {
       lastCursor = { x: cp.x, y: cp.y };
       pushPointerHint();
     }
-    updateBarHover(cp);
   }
   setInterval(pollPointer, 16);
 
@@ -748,13 +772,19 @@ function boot(): void {
   ipcMain.on(CH.log, (_e, message: string) => console.log('[pet][renderer] ' + message));
 
   /**
-   * 宠物上右键 → 弹出宠物菜单。命中判定在渲染层（ADR 008），主进程只管弹。
-   * 原生菜单在 `WS_EX_NOACTIVATE | TOPMOST` 的透明窗口上可弹出、可点击，
-   * 已由 `spikes/m2-menu` 用真实点击实测确认（不是推断）。
+   * 宠物上右键 → **唤出/收起控制条**（2026-09-17 起，ADR 016）。
+   *
+   * 为什么不再直接弹原生菜单：右键宠物与右键托盘要做两件不一样的事 ——
+   *   宠物右键 = 打开控制条（状态仪表盘 + 确认 + 快捷动作）；
+   *   托盘右键 = 打开完整菜单（缩放 / 自启 / 退出 / 清空会话）。
+   * 而"完整菜单"在面板里还有一个入口（「⋯」），所以两条路径都能到达全部动作，
+   * 冗余却没有互相遮挡（此前面板、宠物右键、托盘三处弹同一份菜单，用户判断"没必要这么复杂"）。
+   *
+   * 触发点必须在渲染层：窗口常态整窗穿透、命中与否由渲染层的 alpha 采样决定（ADR 008），
+   * 只有它知道这一下右键落在精灵轮廓上还是一片空白。
    */
   ipcMain.on(CH.contextMenu, () => {
-    Menu.buildFromTemplate(buildPetMenuTemplate(petMenuView(), actions))
-      .popup({ window: overlay.browserWindow });
+    toggleBar();
   });
 
   // —— 用户确认：解除 needs-input 粘滞 ——

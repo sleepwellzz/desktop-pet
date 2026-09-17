@@ -9,7 +9,7 @@ const barEl = document.getElementById('bar') as HTMLDivElement;
 const dotEl = document.getElementById('dot') as HTMLSpanElement;
 const summaryEl = document.getElementById('summary') as HTMLSpanElement;
 const sessionsEl = document.getElementById('sessions') as HTMLDivElement;
-const scaleEl = document.getElementById('scale') as HTMLSpanElement;
+const petNameEl = document.getElementById('pet-name') as HTMLSpanElement;
 
 /** 白名单的镜像，仅用于"发之前再确认一次"。真正的白名单在主进程。 */
 const KNOWN_IDS: readonly BarCommandId[] = [
@@ -136,8 +136,11 @@ function render(v: BarView): void {
   }
 
   // —— 动作排 ——
-  // 只剩一个只读的缩放值与两个按钮（隐藏宠物 / ⋯），不再有需要按状态禁用的控件。
-  scaleEl.textContent = `${Math.round(v.scale * 100)}%`;
+  // 面板刻意只有三个东西：一个动作（隐藏宠物）、一个身份（是谁）、一个出口（⋯ 完整菜单）。
+  // 缩放曾经在这里有一个只读的百分比，2026-09-17 换成宠物名 —— 只读的 `70%` 既点不动、
+  // 也不是用户关心的事，而"这块面板是谁的"才是它该回答的（ADR 016）。
+  petNameEl.textContent = v.petName;
+  petNameEl.title = `宠物包：${v.petName}（大小在托盘 / 右键菜单的「宠物大小」里改）`;
 }
 
 /** 相对时间每秒刷新。只改文本节点，不重建 DOM —— 否则按钮的 hover 状态会每秒闪一次。 */

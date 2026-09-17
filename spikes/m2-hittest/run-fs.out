@@ -1,0 +1,60 @@
+spawned electron pid=195608 probe=probe-fs-verify.js
+[t+6s] report=false log=1462B
+[t+12s] report=false log=1753B
+[t+18s] report=false log=2224B
+[t+24s] report=false log=2466B
+[t+30s] report=false log=2815B
+[t+36s] report=false log=3286B
+[t+42s] report=true log=3618B
+--- probe-fs-verify.js 日志 ---
+[pet] 加载宠物包：<工程目录>
+[pet] 淘淘 New · 1536x1872 · 8x9 @ 192x208 · 9 个状态
+[pet] 状态源：状态文件 C:\Users\<用户名>\.desktop-pet\status.json（监听目录 + 1000ms 轮询兜底）
+[pet] 快捷键已注册：Super+Alt+P（由 Win+Alt+P 归一化而来）
+[pet] 托盘已创建：<工程目录>\assets\tray.ico
+[pet] 气泡层已创建（常态整窗穿透，不参与命中判定）
+[pet] 控制条已创建（宽 260，可聚焦）—— 唤出：右键宠物 / Super+Alt+P / 托盘菜单；失焦 200ms 后收起
+[pet][status] 会话 default 静默超过 15 分钟，按 idle 处理（疑似 agent 崩溃或未收尾）
+[pet][source] 文件状态：default → running（manual-acceptance）
+[pet] 窗口已显示，位置 {"x":1549,"y":857}
+[pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
+[pet][renderer] 精灵图就绪 1536x1872，DPR=1.5；按 alpha<16 清空 2000388 个空白像素
+[pet][renderer] 命中评估 css=(-862,93) → 空白 ｜ 帧 row=0 col=0 ｜ 换算 local=(-1232,130) scale=0.7
+[pet][renderer] 状态 idle → idle rev=0（重载补推）
+[probe] ======== 第 1 轮 ========
+[pet][renderer] 命中评估 css=(67,73) → 实体 ｜ 帧 row=0 col=1 ｜ 换算 local=(95,102) scale=0.7
+[pet] 命中状态 → 可交互（光标在宠物实体上）
+[probe] 全屏前单击：pointerdown=1 → ✅ 可点击
+[probe] 全屏前拖动：窗口已移动 {"dx":-270,"dy":-200}；down=1 up=1 move=21 cancel=0 → ✅ 可拖动
+[probe] 启动外部全屏应用 …
+[pet] 检测到全屏应用「Electron」，已让位隐藏
+[pet][renderer] 让位隐藏（前台：Electron）
+[probe] 宠物已隐藏=true
+[pet] 全屏应用已退出，恢复显示（已重载渲染层以恢复输入通路）
+[pet][renderer] 恢复显示
+[pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
+[pet][renderer] 精灵图就绪 1536x1872，DPR=1.5；按 alpha<16 清空 2000388 个空白像素
+[pet][renderer] 命中评估 css=(70,73) → 实体 ｜ 帧 row=0 col=0 ｜ 换算 local=(100,102) scale=0.7
+[pet][renderer] 状态 idle → idle rev=0（重载补推）
+[probe] 宠物已恢复显示=true
+[probe] 全屏后单击：pointerdown=1 → ✅ 可点击
+[probe] 全屏后拖动：窗口已移动 {"dx":-270,"dy":-200}；down=1 up=1 move=21 cancel=0 → ✅ 可拖动
+[probe] ======== 第 2 轮 ========
+[probe] 全屏前单击：pointerdown=1 → ✅ 可点击
+[probe] 全屏前拖动：窗口已移动 {"dx":-270,"dy":-200}；down=1 up=1 move=21 cancel=0 → ✅ 可拖动
+[probe] 启动外部全屏应用 …
+[pet] 检测到全屏应用「Electron」，已让位隐藏
+[pet][renderer] 让位隐藏（前台：Electron）
+[probe] 宠物已隐藏=true
+[pet] 全屏应用已退出，恢复显示（已重载渲染层以恢复输入通路）
+[pet][renderer] 恢复显示
+[pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
+[pet][renderer] 精灵图就绪 1536x1872，DPR=1.5；按 alpha<16 清空 2000388 个空白像素
+[pet][renderer] 命中评估 css=(70,73) → 实体 ｜ 帧 row=0 col=0 ｜ 换算 local=(100,102) scale=0.7
+[pet][renderer] 状态 idle → idle rev=0（重载补推）
+[probe] 宠物已恢复显示=true
+[probe] 全屏后单击：pointerdown=1 → ✅ 可点击
+[probe] 全屏后拖动：窗口已移动 {"dx":-270,"dy":-200}；down=1 up=1 move=21 cancel=0 → ✅ 可拖动
+[probe] 结论：第1轮 全屏后单击=OK 拖动=OK；第2轮 全屏后单击=OK 拖动=OK
+[probe] 已写出 fs-verify.json
+
