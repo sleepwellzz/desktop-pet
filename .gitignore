@@ -23,3 +23,6 @@ spikes/**/hook-payloads.jsonl
 spikes/**/live-sample.jsonl
 spikes/**/startup-timing.json
 spikes/**/startup-cost.json
+
+# 一次性脚本与临时提交信息
+.tmp-*
