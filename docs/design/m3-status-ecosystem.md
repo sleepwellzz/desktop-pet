@@ -306,7 +306,17 @@ DEFAULT_SCOPES = [SettingsScope.USER, SettingsScope.PROJECT, SettingsScope.PROJE
 |---|---|---|---|
 | **0** | ~~闸门：桌面是否执行 hooks~~ ✅ **已完成 = YES**（2026-09-18，证据见 §1.1）：桌面把 agent 跑在内嵌 `cli/bin/codebuddy --serve` 上，且默认作用域含 PROJECT ⇒ 工程级 `.codebuddy/settings.json` 会被读 | 进程树 + `DEFAULT_SCOPES` 定义 | 已给出明确结论与证据 |
 | 1 | ~~hook 触发与 payload 实测~~ ✅ **已通过（2026-09-18 真实回合）**：5 条事件实测到位，**含空格路径正常**；`session_id` 与进程树、`sessions/*.json` **三处一致**；payload 比文档更丰富（详见 ADR 020） | 工程级配置 + 真实回合 | 已给出结论与证据 |
-| 2 | **状态序列对账（通道 A）** | 同一次真实回合，宠物侧 `events.jsonl` × agent 侧事件流按时间轴对齐 | 顺序 `running → … → ready`；**不允许卡在 running 不回 ready**；不允许出现映射表外的状态。**⚠️ 需开着桌宠**（首次验证时桌宠没运行，做不了） |
+| 2 | ~~状态序列对账（通道 A）~~ ✅ **已通过（2026-09-18，桌宠运行后）**：宠物侧 `ready`(09:56:57.853) ← `Stop`(09:56:57.851)；`running`(10:02:42.862) ← `UserPromptSubmit`(10:02:42.860)；**`idle_prompt` 被正确忽略（宠物侧无对应事件）** ⇒ 3b 的修复在真实环境确认有效 | 宠物侧 `events.jsonl` × hook 侧 payload 时间轴 | 已给出结论与证据 |
+| 6 | **性能预算** | 计一次典型回合的额外耗时 | **⚠️ 测量陷阱（已实测）**：`events.jsonl` 里的 `ts` 是**写侧产生时刻**，不是宠物收到时刻（实测两者只差 2ms，那是 hook 进程内落 payload→写状态文件的间隔）。**拿它算端到端延迟会严重低估。** 需要另找时间基准（主进程日志或探针加戳） |
+
+> **新发现（2026-09-18，用户启动桌宠时撞到）：`ready` 的落点 `review` 是循环终态、没有出口。**
+> `ready` → 动画 `waving` → **落到第 8 行"小厨师姿态"（对照 `docs/status-reference.png` 确认）**，
+> 而 `review` 是 `loop: true` 的循环态 ⇒ **只要 agent 干过一次活，宠物就永久"炒菜"**。
+> `Stop` 现在每次回合结束都会触发，所以这个问题会**稳定复现**（用户此前没见过，是因为那时没有真实 hook）。
+> 一条支持"这是缺陷"的现成论据：气泡对 `ready` 是 `holdMsByStatus.ready = 6000`
+> ⇒ **气泡 6 秒就收了、宠物还在炒菜**，两者不一致。
+> **但改成什么是产品决策**（`ready → 挥手 → 落到 review` 本身是 M2 ① 验收过的行为），
+> **列为待用户拍板**，选项与推荐见 ADR 020「真实回合的第二个发现」。
 | 3 | **`needs-input` 端到端** | 触发一次真实授权等待 | 宠物进 `needs-input` 且粘滞、确认后解除。**触发不了就如实记"未验证"，不许用模拟顶替** |
 | 3a | ~~判据 3 的前置~~ ✅ **已通过（2026-09-18）**：我此前据 `--permission-mode fullAccess` 预测"不弹审批"，**被实测推翻** —— 真实回合里 `permission_mode` 是 `"default"`，`PermissionRequest` 弹了两次（`tool_name: "Read"`） | 真实回合 payload | **判据 3 可做**，信号已在手 |
 | 3b | **`Notification` 按类型分流** ✅ **已修（真实回合抓到的缺陷）**：`idle_prompt`（"干完了在等你"）原本被映射成 `needs-input`，会在 `Stop` 后约一分钟必然触发一次 ⇒ 每次干完活宠物都举手，让 `needs-input` **贬值**。改为良性类型白名单，命中的不写状态 | `tools/codebuddy-hook-map.mjs` + 8 项新单测 | 已修并钉住 |
