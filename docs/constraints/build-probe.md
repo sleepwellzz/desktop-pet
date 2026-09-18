@@ -15,6 +15,10 @@
 - **改了 renderer 或 preload 之后必须跑完整 `npm run build`** —— preload 是 **esbuild** 打包的。
   症状很隐蔽：探针拿到 **0 个采样点**，日志里 `Unable to load preload script ... module not found`
   + 渲染层 `exports is not defined`（ADR 021 踩坑）。
+- **在 `dist/` 里 grep 中文会假失败**：esbuild 默认 `charset=ascii`，会把非 ASCII 字符转义成
+  `\u5168...` 的形式。所以在产物里搜"全部已确认"要**先反转义再找**，否则会得出
+  "这个功能没进产物"的错误结论（2026-09-18 就这么误判过一次）。
+  HTML 是 `copy-assets` 直接复制的、不经过 esbuild，**中文原样保留** —— 两者表现不同。
 - 这个环境的 Bash shim **没有 npm**：用 `node tools/npm-run.mjs build`（或 `typecheck` / `start`）。
   完整类型检查是 `npm run typecheck`（跑两份 tsconfig）。
 
