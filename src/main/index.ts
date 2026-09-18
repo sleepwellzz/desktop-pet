@@ -635,6 +635,8 @@ function boot(): void {
       if (overlay.isVisible()) actions.toggleVisibility();
     },
     'ack-session'(arg) {
+      // 白名单：会话必须真的在面板上。（过期的 `ready` 已被视图过滤 ⇒ 单行 ack 会被拒，
+      // 但那一行本来就不给按钮、也不需要被确认；「全部已确认」走的是不带参的 `ack()`。）
       if (!arg || !arbiter.viewSessions().some((s) => s.sessionId === arg)) {
         console.warn(`[pet] 控制条请求确认不存在的会话：${arg ?? '(空)'}（已忽略）`);
         return;

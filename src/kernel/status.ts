@@ -465,6 +465,13 @@ export class StatusArbiter {
     const primary = this.out.sessionId;
     return [...this.sessions.values()]
       .filter((r) => now - r.ts <= this.opts.sessionStaleMs)
+      // `ready` 的通报时效已过 ⇒ 不再出现在面板上（ADR 024）。
+      // **退场必须走到视图**：只改仲裁输出（宠物回待机）却留着这一行，会得到一个
+      // 既没有出口、也没有手动出口的常驻行 —— 它 `isAckable` 为 false（不给「确认」按钮），
+      // 又只能等上游 15 分钟不心跳才被静默兜底清掉，期间还一直撑高面板。
+      // **只过滤视图，不删记录**：上游再把它改成 running 时这一行要能回来；
+      // 而"继续重报 ready"不会让它复活 —— `readySince` 不随重报重置（见 `ingest`）。
+      .filter((r) => !(r.status === 'ready' && this.effectiveStatus(r, now) !== 'ready'))
       .sort((a, b) => {
         if (a.sessionId === primary) return -1;
         if (b.sessionId === primary) return 1;
@@ -475,6 +482,8 @@ export class StatusArbiter {
         status: r.status,
         acknowledged: this.acknowledged.has(r.sessionId),
         // "已过期"= 它不再参与仲裁（`effectiveStatus` 把它看成 idle），但原始 status 仍如实保留。
+        // 上面已把过期的 `ready` 过滤掉 ⇒ 这里实际恒为 false；字段保留是因为 `isAckable`
+        // 是公开谓词，可能对任意形状求值（渲染层的对应分支同理，是兜底不是死代码）。
         expired: r.status === 'ready' && this.effectiveStatus(r, now) !== 'ready',
         title: r.title,
         ts: r.ts,

@@ -126,6 +126,7 @@ function render(v: BarView): void {
     } else if (s.expired) {
       // 内核已按到期把它降级为 idle（宠物不再摆那副姿态）。如实说明，
       // 否则用户会以为"面板坏了"或"还得再点一下"。
+      // 兜底分支：`viewSessions()` 已把过期的 `ready` 过滤掉（ADR 024），正常路径到不了这里。
       st.textContent = `${label(s.status)}（已过期）`;
     } else {
       st.textContent = label(s.status);

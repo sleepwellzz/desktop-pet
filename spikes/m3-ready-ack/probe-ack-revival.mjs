@@ -141,8 +141,12 @@ console.log('\n=== 情形 3：ready 被文件源重报（ts 变化）===');
   clock += 20_000;
   arb2.ingest({ sessionId: SID, status: 'ready', ts: clock });   // 上游又重报一次
   arb2.tick(clock);
-  console.log(`  重报一次 ready 后：主状态 = ${arb2.state.status}，expired = ${arb2.viewSessions()[0].expired}`);
+  // 面板那一行：ADR 024 之后，被确认的 `ready` 通报会**直接从面板退场**（确认即已读），
+  // 所以这里不再有 `expired` 可读 —— 消解成功的表现就是"行没了"，而不是"行上打了个已读标签"。
+  const rows2 = arb2.viewSessions();
+  console.log(`  重报一次 ready 后：主状态 = ${arb2.state.status}，面板行数 = ${rows2.length}`);
   check('重报 ready **不该**让已确认的它复活', arb2.state.status, 'idle');
+  check('已读的通报不再占面板（确认即退场）', rows2.length, 0);
 }
 
 const failed = results.filter((x) => !x.ok);

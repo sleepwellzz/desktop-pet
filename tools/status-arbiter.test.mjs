@@ -553,7 +553,7 @@ section('⑨b ready 的通报时效');
     eq('两条都到期 → 全部回 idle（不是只退一条）', arb.state.status, 'idle');
   }
 
-  // —— ⑦ viewSessions 如实标记 expired（面板不能说谎）——
+  // —— ⑦ 到期的通报从面板退场（ADR 024：退场必须走到视图，不能只改仲裁输出）——
   {
     const clock = makeClock();
     const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now, readyTimeoutMs: t.readyMs });
@@ -564,8 +564,10 @@ section('⑨b ready 的通报时效');
     clock.advance(61_000);
     arb.tick();
     v = arb.viewSessions();
-    eq('到期后标记 expired（界面据此显示"通报已过期"而不是"就绪"）', v[0].expired, true);
-    eq('原始状态仍如实保留（内核不替 UI 说谎）', v[0].status, 'ready');
+    // ADR 024：过期的通报**不再**留在面板上（此前它挂着不动、又不给「确认」按钮 = 没有出口）。
+    // 记录本身保留（`snapshot()` 仍看得到），上游改口 running 时这一行会回来（见 ⑫b）。
+    eq('到期后不再出现在面板上', v.length, 0);
+    eq('原始记录仍保留（内核不替 UI 说谎，只是不展示）', arb.snapshot()[0].status, 'ready');
   }
 }
 
@@ -692,6 +694,50 @@ section('⑫ 会话视图 viewSessions');
   clock.advance(901_000);
   arb.tick();
   eq('静默过期的会话不出现在视图里', arb.viewSessions().length, 0);
+}
+
+// —— ⑫b 过期的 `ready` 通报不再占面板（挂起清单 #14，ADR 024）——
+// 成因：`ready` 的 60 秒通报时效只改了**仲裁输出**（宠物回待机），没改**面板视图**，
+// 于是留下一行常驻的「（已过期）」。它 `isAckable` 为 false ⇒ 没有「确认」按钮 ⇒
+// 用户**没有任何手段**消掉它，只能等上游 15 分钟不心跳（而生产里上游每 15–60 秒重报一次，
+// 重报刷新 `ts` ⇒ 静默兜底永远不触发）⇒ 这一行事实上永久驻留，还会撑高面板。
+// 修法：视图过滤。**不删记录** —— 上游改口 running 时这一行要能回来。
+section('⑫b 过期的 ready 通报不再占面板（ADR 024）');
+{
+  const clock = makeClock();
+  const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: () => clock.now() });
+  arb.ingest({ sessionId: 'wb:1', status: 'running' });
+  arb.ingest({ sessionId: 'wb:1', status: 'ready', title: '干完了' });
+  eq('前置：面板列出这一行', arb.viewSessions().length, 1);
+
+  clock.advance(61_000);
+  arb.tick();
+  eq('通报到点：主状态回 idle（本就正确）', arb.state.status, 'idle');
+  eq('通报到点：面板不再列出这一行（本次修的就是这条）', arb.viewSessions().length, 0);
+  eq('记录本身仍在（只是不展示）', arb.snapshot().length, 1);
+
+  // 反向用例（防误杀）：过滤不能变成"这条会话被遗忘"。
+  arb.ingest({ sessionId: 'wb:1', status: 'running' });
+  clock.advance(600);                       // 跨过 500ms 变化限流窗格（判据纪律）
+  arb.tick();                               // 窗格由 tick 应用 —— 只推进时钟不会切主状态
+  eq('上游改口 running ⇒ 面板重新列出这一行', arb.viewSessions().length, 1);
+  eq('主状态跟着回 running（没被"已过期"误杀）', arb.state.status, 'running');
+  eq('这一行不再标"已过期"', arb.viewSessions()[0].expired, false);
+
+  // 其余状态不受影响：过滤范围必须窄（只针对 ready）。
+  arb.ingest({ sessionId: 'wb:2', status: 'idle' });
+  arb.ingest({ sessionId: 'wb:3', status: 'blocked' });
+  clock.advance(61_000);                    // 只跨过通报时效，别跨到 15 分钟静默兜底
+  arb.tick();
+  eq('idle 与 blocked 不受这条过滤影响（仍在面板上）', arb.viewSessions().length, 3);
+
+  // 已确认的 `needs-input` 行仍然显示（用户刚确认过，看到它是合理反馈，不算死行）。
+  const clock2 = makeClock();
+  const arb2 = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: () => clock2.now() });
+  arb2.ingest({ sessionId: 'wb:x', status: 'needs-input' });
+  arb2.ack('wb:x');
+  eq('已确认的 needs-input 仍出现在面板上（带「已确认」标签）', arb2.viewSessions().length, 1);
+  eq('它确实被标为已确认', arb2.viewSessions()[0].acknowledged, true);
 }
 
 // —— ⑬ clearSessions：菜单「清空状态会话」必须把**视图**也清掉 ——
@@ -1199,9 +1245,15 @@ section('⑯ isAckable 真值表（五种状态 × 已确认 × 已过期）');
     const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now });
     arb.ingest({ sessionId: 's', status });
     clock.advance(600);
+    const want = isAckable({ status });
     arb.ack();
     const row = arb.viewSessions().find((x) => x.sessionId === 's');
-    eq(`ack() 对 ${status} 的记账与谓词一致`, row.acknowledged, isAckable({ status }));
+    // "确认成功"在不同状态上表现不同，两种都算消解：
+    //  · `needs-input` —— 行还在，但标上 acknowledged（用户确认过，留个痕迹是合理的）；
+    //  · `ready` —— 确认即"已读"，通报当场退场 ⇒ 行从视图消失（ADR 024 之后这才可见）。
+    // 其余状态 `ack()` 不记账 ⇒ 行还在且没标 acknowledged。
+    const got = row ? row.acknowledged : true;
+    eq(`ack() 对 ${status} 的记账与谓词一致`, got, want);
   }
 
   // ③ 结构性：渲染层不许再自带一份判据（它只能 import 内核那一份）
