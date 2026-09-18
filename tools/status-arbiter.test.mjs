@@ -382,7 +382,12 @@ section('⑨ 气泡显示策略');
   // 用真实运行参数做断言（desktop-pet.json 的 bubble 段），而不是测试里另写一份策略
   const policy = parseBubblePolicy(runtimeManifest.bubble);
   eq('策略来自宠物包：needs-input 常驻', policy.stickyStatuses.includes('needs-input'), true);
+  // blocked 也常驻（ADR 021）：第 5 行趴卧被「已受阻」与「打盹」共用，气泡是唯一的区分手段，
+  // 4 秒就收起会让两种含义在画面上重新不可分。打盹没有气泡，那才是「没事」的默认样子。
+  eq('策略来自宠物包：blocked 也常驻（区分 blocked 与打盹的唯一手段）',
+    policy.stickyStatuses.includes('blocked'), true);
   eq('策略来自宠物包：running 2 秒', policy.holdMsByStatus['running'], 2000);
+  eq('blocked 不再挂在定时表上（它走常驻那一支）', policy.holdMsByStatus['blocked'], undefined);
 
   const clock = makeClock();
   let st = { ...BUBBLE_HIDDEN };
@@ -420,10 +425,148 @@ section('⑨ 气泡显示策略');
   eq('needs-input 常驻（hideAt=null）', sticky.hideAt, null);
   eq('常驻状态永不到期', bubbleExpired(sticky, clock.now() + 999_999), false);
 
-  // 状态变化 → 重新计时
-  const afterSticky = nextBubbleState(sticky, { status: 'blocked', text: '已受阻', badgeCount: 0 }, policy, clock.now());
-  eq('状态变化后换成新文案', afterSticky.text, '已受阻');
-  eq('状态变化后重新计时（4 秒）', afterSticky.hideAt, clock.now() + 4000);
+  // blocked 也常驻（ADR 021）：同样的断言形状，防止后续改动把它挪回定时表
+  const blockedSticky = nextBubbleState(hidden, { status: 'blocked', text: '已受阻', badgeCount: 0 }, policy, clock.now());
+  eq('blocked → 显示', blockedSticky.visible, true);
+  eq('blocked 常驻（hideAt=null）', blockedSticky.hideAt, null);
+  eq('blocked 常驻不过期', bubbleExpired(blockedSticky, clock.now() + 999_999), false);
+
+  // 状态变化 → 重新计时（用 ready 这条仍然定时的状态来测）
+  const afterSticky = nextBubbleState(sticky, { status: 'ready', text: '就绪（未读）', badgeCount: 0 }, policy, clock.now());
+  eq('状态变化后换成新文案', afterSticky.text, '就绪（未读）');
+  eq('状态变化后重新计时（6 秒）', afterSticky.hideAt, clock.now() + 6000);
+}
+
+// —— ⑨b `ready` 的到点收敛（ADR 021）——
+// 这是本轮修掉的那条真缺陷：`ready` 是一个**通报**而不是求助，一次 Stop 事件就能让宠物
+// 把那格姿态摆到 15 分钟静默兜底为止 —— 用户视角就是"我什么都没让它干，它却一直在炒菜"。
+// 这条规则同样"肉眼看不出对错"（早 30 秒晚 30 秒都只表现为"它还摆着那副样子"），
+// 所以钉在虚拟时钟上。
+section('⑨b ready 的通报时效');
+{
+  const t = runtimeManifest.statusTimeouts;
+  eq('策略来自宠物包：ready 通报 60 秒', t.readyMs, 60000);
+  eq('策略来自宠物包：ready 比 needs-input 粘滞（5 分钟）短得多',
+    t.readyMs < t.stickyMs, true);
+
+  // —— ① 到点自动退场 ——
+  {
+    const clock = makeClock();
+    const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now, readyTimeoutMs: t.readyMs });
+    arb.ingest({ sessionId: 'a', status: 'running' });
+    eq('前置：running', arb.state.status, 'running');
+    clock.advance(600);
+    arb.ingest({ sessionId: 'a', status: 'ready' });
+    eq('干完了 → ready', arb.state.status, 'ready');
+    eq('动画是 waving → review（小厨师）', `${arb.state.animation.state}→${arb.state.animation.then}`, 'waving→review');
+
+    clock.advance(59_000);
+    eq('59 秒仍在 ready（用户还来得及看见）', arb.tick(), false);
+    eq('59 秒时状态没变', arb.state.status, 'ready');
+
+    clock.advance(2_000);          // 累计 61 秒
+    eq('超过 60 秒 → 通报到期，输出变化', arb.tick(), true);
+    eq('回落到 idle（宠物松手）', arb.state.status, 'idle');
+    eq('角标也不再把这条算成活动会话', arb.state.badgeCount, 0);
+  }
+
+  // —— ② ready 期间的心跳不得把时效推后（与 needs-input 那条同源）——
+  // 拿"每次心跳都刷新 ts"来实现保活的话，这条机制会在它最该生效的场景下失效。
+  {
+    const clock = makeClock();
+    const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now, readyTimeoutMs: t.readyMs });
+    arb.ingest({ sessionId: 'a', status: 'ready' });
+    eq('前置：ready', arb.state.status, 'ready');
+    let pushed = 0;
+    let expiredAt = null;
+    for (let i = 1; i <= 10; i += 1) {
+      clock.advance(10_000);       // 每 10 秒重报一次 ready（上游常见）
+      const changed = arb.ingest({ sessionId: 'a', status: 'ready', ts: clock.now() });
+      // 唯一允许的输出变化就是"到点退场"本身 —— 心跳不该刷出任何状态迁移。
+      if (changed) {
+        pushed += 1;
+        expiredAt = i * 10_000;
+        eq('唯一的输出变化只能是「到点退场」', arb.state.status, 'idle');
+      }
+    }
+    eq('10 次心跳里只有一次输出变化（就是到点退场那次）', pushed, 1);
+    // 这条是全部要害：**退场时刻必须仍是 t=0 起算的 60 秒，而不是最后一次心跳之后 60 秒**。
+    eq('退场发生在第 60 秒（时效没被心跳推后）', expiredAt, 60_000);
+    eq('累计 100 秒 → 已退场', arb.state.status, 'idle');
+  }
+
+  // —— ③ 时钟不前进也不该退场（"到期"必须真按时间算，不是按 tick 次数）——
+  {
+    const clock = makeClock();
+    const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now, readyTimeoutMs: t.readyMs });
+    arb.ingest({ sessionId: 'a', status: 'ready' });
+    for (let i = 0; i < 100; i += 1) arb.tick();   // 时间不动，tick 一百次
+    eq('时间没走就不退场（判据是时刻而不是 tick 次数）', arb.state.status, 'ready');
+  }
+
+  // —— ④ 单击宠物（ack）立刻消解 ready ——
+  // "点它一下"在两种状态下都是"我看到了"的意思。少了这条，用户点完之后
+  // 宠物还要靠超时才肯放下那副姿态，观感就是"点了没用"。
+  {
+    const clock = makeClock();
+    const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now, readyTimeoutMs: t.readyMs });
+    arb.ingest({ sessionId: 'a', status: 'ready' });
+    eq('前置：ready', arb.state.status, 'ready');
+    eq('单击宠物（ack）立刻改变输出', arb.ack(), true);
+    eq('已读 → 回 idle，不用等 60 秒', arb.state.status, 'idle');
+    // 关键反证：心跳不得把"已读"撤销（把计时删掉再靠 ts 判定就会这样）
+    clock.advance(10_000);
+    arb.ingest({ sessionId: 'a', status: 'ready', ts: clock.now() });
+    eq('ack 之后的 ready 重报不会把它复活', arb.state.status, 'idle');
+  }
+
+  // —— ⑤ 会话自己转回 running 时，下一次 ready 重新起算（不是一次性的）——
+  {
+    const clock = makeClock();
+    const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now, readyTimeoutMs: t.readyMs });
+    arb.ingest({ sessionId: 'a', status: 'ready' });
+    clock.advance(61_000);
+    arb.tick();
+    eq('第一次通报到期', arb.state.status, 'idle');
+    clock.advance(600);
+    arb.ingest({ sessionId: 'a', status: 'running' });
+    eq('又跑起来了', arb.state.status, 'running');
+    clock.advance(600);
+    arb.ingest({ sessionId: 'a', status: 'ready' });
+    eq('第二次干完照样通报', arb.state.status, 'ready');
+    clock.advance(61_000);
+    arb.tick();
+    eq('第二次通报也照样到期（机制可重复生效）', arb.state.status, 'idle');
+  }
+
+  // —— ⑥ 与 needs-input 共存：通报到期不该影响优先级更高的求助 ——
+  {
+    const clock = makeClock();
+    const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now, readyTimeoutMs: t.readyMs });
+    arb.ingest({ sessionId: 'a', status: 'ready' });
+    eq('前置：ready 压住别的', arb.state.status, 'ready');
+    clock.advance(600);
+    arb.ingest({ sessionId: 'b', status: 'ready' });
+    eq('两条都 ready 时最近的那条为主', arb.state.sessionId, 'b');
+    clock.advance(61_000);
+    arb.tick();
+    eq('两条都到期 → 全部回 idle（不是只退一条）', arb.state.status, 'idle');
+  }
+
+  // —— ⑦ viewSessions 如实标记 expired（面板不能说谎）——
+  {
+    const clock = makeClock();
+    const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now, readyTimeoutMs: t.readyMs });
+    arb.ingest({ sessionId: 'a', status: 'ready', title: '干完了' });
+    let v = arb.viewSessions();
+    eq('刚 ready 时未标记过期', v[0].expired, false);
+    eq('原始状态如实暴露', v[0].status, 'ready');
+    clock.advance(61_000);
+    arb.tick();
+    v = arb.viewSessions();
+    eq('到期后标记 expired（界面据此显示"通报已过期"而不是"就绪"）', v[0].expired, true);
+    eq('原始状态仍如实保留（内核不替 UI 说谎）', v[0].status, 'ready');
+  }
 }
 
 // —— ⑩ 快捷键写法的归一化 ——

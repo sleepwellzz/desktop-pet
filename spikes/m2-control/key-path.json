@@ -45,15 +45,15 @@
    "visible": false,
    "focused": false,
    "keys": {
-    "down": 1,
+    "down": 3,
     "esc": 0,
-    "last": "a"
+    "last": "Alt"
    }
   },
   {
    "label": "再次唤出（hide→show 往返后）",
-   "visible": true,
-   "focused": true,
+   "visible": false,
+   "focused": false,
    "keys": {
     "down": 3,
     "esc": 0,
@@ -62,12 +62,12 @@
   },
   {
    "label": "往返后按 A",
-   "visible": true,
-   "focused": true,
+   "visible": false,
+   "focused": false,
    "keys": {
-    "down": 4,
+    "down": 3,
     "esc": 0,
-    "last": "a"
+    "last": "Alt"
    }
   },
   {
@@ -75,9 +75,9 @@
    "visible": false,
    "focused": false,
    "keys": {
-    "down": 5,
-    "esc": 1,
-    "last": "Escape"
+    "down": 3,
+    "esc": 0,
+    "last": "Alt"
    }
   },
   {
@@ -85,9 +85,9 @@
    "visible": false,
    "focused": false,
    "keys": {
-    "down": 5,
-    "esc": 1,
-    "last": "Escape"
+    "down": 3,
+    "esc": 0,
+    "last": "Alt"
    }
   }
  ],
@@ -99,17 +99,21 @@
  },
  "roundTrip": {
   "hiddenVisible": false,
-  "visible": true,
-  "focused": true,
-  "keyDelta": 1,
+  "visible": false,
+  "focused": false,
+  "keyDelta": 0,
   "keysAlive": true
  },
  "escape": {
-  "before": true,
+  "before": false,
   "after": false,
-  "escCount": 1,
+  "escCount": 0,
   "staysHidden": true
  },
- "failures": [],
- "verdict": "PASS"
+ "failures": [
+  "往返后没能再次唤出",
+  "hide→show 往返之后键盘事件不再投递（ADR 009 在键盘路径同样复现 → 必须 reload）",
+  "按 Esc 前控制条不是可见的（用例前置不成立）"
+ ],
+ "verdict": "FAIL"
 }

@@ -142,10 +142,31 @@ function boot(): void {
   // 这是"产品会不会空转"的那条链（PLAN §8 风险表里排第一的一条）。分工：
   //   源只管把外部世界变成事件；仲裁器只管把事件变成唯一主状态；渲染层只管画。
   const statusFile = resolveStatusFile();
+  // 状态层的到点收敛参数从宠物包读（ADR 021）：不写死在内核里，因为"60 秒够不够"
+  // 是观感取舍，换宠物包/换使用节奏时可能要调；而它在屏幕上完全看不出对错，所以必须可配 + 可单测。
+  const statusTimeouts = (pack.runtime as unknown as {
+    statusTimeouts?: { stickyMs?: number; readyMs?: number; sessionStaleMs?: number };
+  }).statusTimeouts ?? {};
+  /**
+   * `--ready-ms=<毫秒>`：**给探针用的接缝**（与 `--no-status-source` / `--no-behavior` 同一套路）。
+   *
+   * 为什么必须有：`ready` 的通报时效默认 60 秒，真实窗口探针跑一轮要等 60 秒才能观察到退场，
+   * 既慢又容易在等待期间被别的干扰（注入的鼠标事件、窗口重载）打断。
+   * 压到 4 秒后，一套"通报期内画第 8 行 / 到期后回第 0 行"的断言能在 12 秒内跑完。
+   * 注意它**只覆盖参数**，不改任何逻辑分支 —— 探针验的仍是同一条代码路径。
+   */
+  const readyMsArg = process.argv.find((a) => a.startsWith('--ready-ms='));
+  const readyMsOverride = readyMsArg ? Number(readyMsArg.slice('--ready-ms='.length)) : undefined;
   const arbiter = new StatusArbiter({
     statusMap: pack.runtime.statusMap,
+    stickyTimeoutMs: statusTimeouts.stickyMs,
+    readyTimeoutMs: Number.isFinite(readyMsOverride) ? readyMsOverride : statusTimeouts.readyMs,
+    sessionStaleMs: statusTimeouts.sessionStaleMs,
     log: (m) => console.log('[pet]' + m),
   });
+  if (Number.isFinite(readyMsOverride)) {
+    console.warn(`[pet] ready 通报时效已由 --ready-ms 覆盖为 ${readyMsOverride}ms（探针/排查用）`);
+  }
 
   // 事件流水落盘：链路通没通不看屏幕也能查，同时把 M3 要做的"事件回放"先埋下。
   const eventLogPath = resolve(
@@ -404,6 +425,12 @@ function boot(): void {
 
   /**
    * 按仲裁器状态刷新气泡。策略是纯函数（kernel/bubble-policy.ts），这里只做"应用结果"。
+   *
+   * **宠物矩形由这里显式传下去**：气泡层是独立窗口，它自己 `getContentBounds()` 拿到的是
+   * 气泡窗的矩形（构造时的默认尺寸/位置），拿它当宠物位置用会让气泡出现在屏幕正中且
+   * 此后再也不跟着宠物走 —— 这就是本轮修掉的那个缺陷（见 `host/bubble-layer.ts` 的 `show`）。
+   * 宠物窗口已销毁时**选择不显示**：画错位置比不画更糟。
+   *
    * @param force 绕过"状态未变就不动"的短路（宠物重新显示后要重新贴上去）。
    */
   function refreshBubble(force = false): void {
@@ -417,7 +444,12 @@ function boot(): void {
       if (wasVisible || force) bubble.hide();
       return;
     }
-    bubble.show(next.text, next.badge);
+    if (overlay.browserWindow.isDestroyed()) {
+      bubbleState = { ...bubbleState, visible: false, hideAt: null };
+      if (wasVisible || force) bubble.hide();
+      return;
+    }
+    bubble.show(next.text, next.badge, overlay.browserWindow.getContentBounds());
   }
 
   /** 气泡到期检查（由 250ms 的仲裁 tick 顺带驱动，不另开定时器）。 */

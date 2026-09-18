@@ -20,14 +20,32 @@ export interface BubbleLayerOptions {
   height: number;
 }
 
+/** 窗口矩形（DIP，屏幕坐标）。 */
+export interface PetBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface BubbleLayer {
   readonly browserWindow: BrowserWindow;
-  /** 按当前文本/角标显示（尺寸按内容估算，位置贴宠物上方居中）。 */
-  show(text: string, badge: number): void;
+  /**
+   * 按当前文本/角标显示（尺寸按内容估算，位置贴宠物上方居中）。
+   *
+   * `petBounds` **必须由调用方传入宠物窗口的真实矩形**，且**不接受"我自己去猜"**：
+   * 本层是独立的透明窗口，`win.getContentBounds()` 拿到的是**气泡窗自己的**矩形
+   * （首次显示时它还在构造时的默认尺寸与默认位置上，与宠物毫无关系）。
+   * 曾把它当宠物矩形用，症状是气泡出现在屏幕正中、且往后再也不会跟着宠物走
+   * （`followPet` 之外的路径全被这一次错误赋值污染）。拿不到宠物矩形时**选择不显示** ——
+   * 气泡画错位置比不画更糟，且它会长时间停留在那个错误位置上误导用户。
+   * 兄弟模块 `host/control-bar.ts` 的 `place()` 用的是同一条纪律（`if (!pet) return;`）。
+   */
+  show(text: string, badge: number, petBounds: PetBounds): void;
   hide(): void;
   isVisible(): boolean;
   /** 宠物移动/缩放后用它的新矩形重新定位（不可见时什么都不做）。 */
-  followPet(petBounds: { x: number; y: number; width: number; height: number }): void;
+  followPet(petBounds: PetBounds): void;
   /** 宠物矩形变化且气泡可见时，重新定位并返回是否移动过。 */
   destroy(): void;
 }
@@ -91,9 +109,7 @@ export function createBubbleLayer(opts: BubbleLayerOptions): BubbleLayer {
     if (last && !win.isDestroyed()) win.webContents.send('pet:bubble', last);
   });
 
-  function boundsFor(text: string, badge: number, petBounds: { x: number; y: number; width: number; height: number }): {
-    x: number; y: number; width: number; height: number;
-  } {
+  function boundsFor(text: string, badge: number, petBounds: PetBounds): PetBounds {
     const w = estimateBubbleWidth(text, badge, opts.minWidth, opts.maxWidth);
     // 用**实测高度**做纵向定位：本机实测下发 32 DIP 会读回 38（多 6 DIP，出现在隐藏窗口
     // 首次显示时），若拿请求值算，气泡会比预期离宠物近 6 DIP。宽度不受影响，实测与请求一致。
@@ -108,17 +124,18 @@ export function createBubbleLayer(opts: BubbleLayerOptions): BubbleLayer {
     return { x, y, width: w, height: h };
   }
 
-  let lastPetBounds: { x: number; y: number; width: number; height: number } | null = null;
+  /** 最近一次由调用方告知的宠物矩形；**只由调用方写入**，本层不自行推断（见 `show` 的注释）。 */
+  let lastPetBounds: PetBounds | null = null;
 
   return {
     browserWindow: win,
-    show(text, badge) {
-      if (!lastPetBounds) lastPetBounds = win.getContentBounds();
+    show(text, badge, petBounds) {
+      lastPetBounds = petBounds;
       // 顺序照宠物窗口那套（`overlay-window.ts` 的 pinContentBounds）：**先显示再钉尺寸**。
       // 反过来（先钉再显示）实测读回来的高度会比请求值大 6 DIP —— 隐藏状态下下发尺寸
       // 会被系统的首次显示重新算一遍，多出来的透明带既不该存在也没人看得见。
       if (!win.isVisible()) win.showInactive();     // 绝不抢焦点
-      win.setContentBounds(boundsFor(text, badge, lastPetBounds));
+      win.setContentBounds(boundsFor(text, badge, petBounds));
       push(text, badge);
     },
     hide() {

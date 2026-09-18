@@ -89,6 +89,20 @@ export interface RuntimeManifest {
     sleepAfterIdleSec?: number;
     sleepState?: string;
   };
+  /**
+   * 状态层的到点收敛参数（`kernel/status.ts` 的仲裁器读它）。
+   *
+   * 这两条都是"某状态不该无限期占着画面"的落地，而它们**在屏幕上完全看不出对错**
+   * （早 30 秒晚 30 秒都只表现为"它还摆着那副样子"）—— 所以必须可配、可单测。
+   */
+  statusTimeouts?: {
+    /** `needs-input` 粘滞上限（ms），超过自动确认（默认 300000）。 */
+    stickyMs?: number;
+    /** `ready` 通报驻留上限（ms），超过按 idle 处理（默认 60000，ADR 021）。 */
+    readyMs?: number;
+    /** 会话静默兜底（ms），超过按 idle 处理（默认 900000）。 */
+    sessionStaleMs?: number;
+  };
   interaction?: Record<string, unknown>;
 }
 

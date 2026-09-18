@@ -5,15 +5,15 @@
    "visible": true,
    "text": "运行中",
    "badge": 0,
-   "hideAt": 1789687821367,
+   "hideAt": 1789728403481,
    "rendered": {
     "hidden": false,
     "text": "运行中",
     "badge": ""
    },
    "rect": {
-    "x": 809,
-    "y": 446,
+    "x": 1572,
+    "y": 809,
     "width": 88,
     "height": 38
    },
@@ -24,15 +24,15 @@
    "visible": true,
    "text": "运行中",
    "badge": 0,
-   "hideAt": 1789687821367,
+   "hideAt": 1789728403481,
    "rendered": {
     "hidden": false,
     "text": "运行中",
     "badge": ""
    },
    "rect": {
-    "x": 809,
-    "y": 446,
+    "x": 1572,
+    "y": 809,
     "width": 88,
     "height": 38
    },
@@ -61,8 +61,8 @@
     "badge": "+1"
    },
    "rect": {
-    "x": 798,
-    "y": 446,
+    "x": 1561,
+    "y": 809,
     "width": 110,
     "height": 38
    },
@@ -71,9 +71,9 @@
  ],
  "debugAvailable": true,
  "hotkey": {
-  "accelerator": "Super+Alt+P",
+  "accelerator": "Control+Alt+P",
   "visBefore": true,
-  "barOn1": true,
+  "barOn1": false,
   "barOn2": false,
   "visAfter": true
  },
@@ -112,8 +112,8 @@
  },
  "bubbleFollow": {
   "beforeFollow": {
-   "x": 798,
-   "y": 446,
+   "x": 1561,
+   "y": 809,
    "width": 110,
    "height": 38
   },
@@ -134,6 +134,8 @@
   "after": 4,
   "works": true
  },
- "failures": [],
- "verdict": "PASS"
+ "failures": [
+  "快捷键没有唤出/收起控制条"
+ ],
+ "verdict": "FAIL"
 }

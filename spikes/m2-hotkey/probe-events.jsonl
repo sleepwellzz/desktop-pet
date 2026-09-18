@@ -46,3 +46,15 @@
 {"sessionId":"a","status":"running","title":"a","ts":1789687819992,"origin":"file"}
 {"sessionId":"a","status":"running","title":"a","ts":1789687822041,"origin":"file"}
 {"sessionId":"b","status":"needs-input","title":"b","ts":1789687822041,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789728233959,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789728234727,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789728236780,"origin":"file"}
+{"sessionId":"b","status":"needs-input","title":"b","ts":1789728236780,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789728326495,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789728327249,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789728329306,"origin":"file"}
+{"sessionId":"b","status":"needs-input","title":"b","ts":1789728329306,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789728401345,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789728402097,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1789728404144,"origin":"file"}
+{"sessionId":"b","status":"needs-input","title":"b","ts":1789728404144,"origin":"file"}

@@ -76,10 +76,17 @@ export interface ArbiterState {
  */
 export interface SessionView {
   sessionId: string;
-  /** **原始**状态（不套 acknowledged 降级）。 */
+  /** **原始**状态（不套 acknowledged / ready 超时的降级）。 */
   status: PetStatus;
   /** 已被用户确认（needs-input 的粘滞已解除）。 */
   acknowledged: boolean;
+  /**
+   * 该会话的 `ready` 通报时效已过（超过 `readyTimeoutMs`），它已不参与仲裁。
+   *
+   * 与 `acknowledged` 同一个套路：**原始 `status` 不改**，另给一个标记让界面决定怎么显示。
+   * 面板若显示"就绪（未读）"而宠物其实已经回 idle，用户会以为面板坏了。
+   */
+  expired: boolean;
   title?: string;
   /** 最近一次事件时刻（epoch ms）。 */
   ts: number;
@@ -97,6 +104,21 @@ export interface ArbiterOptions {
   throttleMs?: number;
   /** needs-input 粘滞的上限，超过则自动解除（默认 5min）。 */
   stickyTimeoutMs?: number;
+  /**
+   * **`ready`（结果未读）的驻留上限，超过则按 idle 处理（默认 60s）。**
+   *
+   * 为什么 `ready` 也必须有一条到点退场的规则 —— 它与 `needs-input` 的形状**不同**：
+   *   - `needs-input` 是"它挡着路，非你不可"，所以有粘滞 + `stickyTimeoutMs` 安全阀；
+   *   - `ready` 是"干完了，结果给你看"，是一个**通报**而不是**求助**。通报没有出口的话，
+   *     一次 `Stop` 事件就能让宠物把那格姿态举到 15 分钟静默兜底为止 ——
+   *     用户视角就是"我什么都没让它干，它却一直摆着那副'有东西给你'的样子"
+   *     （2026-09-18 报告的"没有 agent 在跑，它还在炒菜"）。
+   *
+   * 取 60 秒：足够用户切回窗口时看见"它刚才干完了"（气泡 6 秒是**逐字阅读**用的，
+   * 姿态是**余温**，可以长得多），又不会久到变成噪音。
+   * 注意这条**不是**"结果被读掉了"—— 我们没有读回执；它只是"通报的时效到期"。
+   */
+  readyTimeoutMs?: number;
   /**
    * 会话静默多久视为失效（默认 15min）。
    * 这是"agent 崩溃后宠物永远停在 running"的唯一兜底：hook 正常会在结束时写 idle，
@@ -128,6 +150,7 @@ const DEFAULTS = {
   minDisplayMs: 400,
   throttleMs: 500,
   stickyTimeoutMs: 300_000,
+  readyTimeoutMs: 60_000,
   sessionStaleMs: 900_000,
   defaultState: 'idle',
 };
@@ -165,6 +188,16 @@ export class StatusArbiter {
    * 它之后若报 running/blocked，仍要正常参与仲裁，否则用户一确认宠物就"失明"了）。
    */
   private readonly acknowledged = new Set<string>();
+  /**
+   * `ready` 通报的计时起点（会话 id → 进入 ready 的时刻）。
+   *
+   * 为什么单独记一份而不复用 `SessionRecord.ts`：`ts` 是**事件时刻**，每次心跳都会刷新
+   * （`ingest` 无条件写入），而它同时又是"心跳保活"的判据 —— 两者是同一枚硬币的两面。
+   * 拿它算 ready 的驻留时长，会让"上游每分钟重报一次 ready"变成永久驻留，
+   * 也就是这条机制**在自己要防的那个场景下恰好失效**（与本文件里其它"兜底值取错东西"
+   * 的教训同源）。这里只在**状态真正变成 ready 的那一次**记时，重复推送不动它。
+   */
+  private readonly readySince = new Map<string, number>();
   private out: Output = { status: 'idle', sessionId: null };
   /** 被限流挡下的目标状态，等窗格过后由 tick 应用（不丢弃）。 */
   private pending: Output | null = null;
@@ -180,6 +213,7 @@ export class StatusArbiter {
       minDisplayMs: options.minDisplayMs ?? DEFAULTS.minDisplayMs,
       throttleMs: options.throttleMs ?? DEFAULTS.throttleMs,
       stickyTimeoutMs: options.stickyTimeoutMs ?? DEFAULTS.stickyTimeoutMs,
+      readyTimeoutMs: options.readyTimeoutMs ?? DEFAULTS.readyTimeoutMs,
       sessionStaleMs: options.sessionStaleMs ?? DEFAULTS.sessionStaleMs,
       now: options.now ?? (() => Date.now()),
       statusMap: options.statusMap,
@@ -197,6 +231,13 @@ export class StatusArbiter {
     if (e.status === 'needs-input' && prev?.status !== 'needs-input') {
       this.acknowledged.delete(e.sessionId);
     }
+    // `ready` 的驻留计时**只在状态真正变成 ready 的那一次**起算（见 readySince 的注释）。
+    // 从 ready 走到别的状态就清掉；重复报 ready 不动它 —— 否则超时会被心跳无限推后。
+    if (e.status === 'ready') {
+      if (prev?.status !== 'ready') this.readySince.set(e.sessionId, now);
+    } else {
+      this.readySince.delete(e.sessionId);
+    }
     this.sessions.set(e.sessionId, {
       sessionId: e.sessionId,
       status: e.status,
@@ -212,17 +253,37 @@ export class StatusArbiter {
   }
 
   /**
-   * 用户确认（打开会话 / 单击宠物）：解除 needs-input 粘滞，该会话不再参与仲裁。
-   * 返回输出是否变化。不传 sessionId 表示确认所有待输入会话（单击宠物即此语义）。
+   * 用户确认（打开会话 / 单击宠物 / 面板的就地「确认」）。
+   *
+   * 两种"要求注意"的信号都在这里被消解，因为它们对用户是**同一个动作**：
+   *   1. needs-input 的粘滞 —— 不再举着手；
+   *   2. ready 的通报 —— 不再摆着"有东西给你看"的姿态。
+   * 第二条是 2026-09-18 补的（ADR 021）：单击宠物一直是 ack 的调用点，
+   * 而"点它一下"在两种状态下都是"我看到了"的意思。少了这条，用户点完之后
+   * 宠物还要靠 60 秒超时才肯放下那副姿态，观感就是"点了没用"。
+   *
+   * 返回输出是否变化。不传 sessionId 表示确认所有待处理的会话（单击宠物即此语义）。
    */
   ack(sessionId?: string): boolean {
     const now = this.opts.now();
+    const want = (s: SessionRecord): boolean => s.status === 'needs-input' || s.status === 'ready';
     const targets = sessionId
-      ? [sessionId]
-      : [...this.sessions.values()].filter((s) => s.status === 'needs-input').map((s) => s.sessionId);
-    for (const id of targets) this.acknowledged.add(id);
+      ? [sessionId].filter((id) => {
+        const rec = this.sessions.get(id);
+        return rec !== undefined && want(rec);
+      })
+      : [...this.sessions.values()].filter(want).map((s) => s.sessionId);
+    for (const id of targets) {
+      this.acknowledged.add(id);
+      // ready 用"把计时推到已超时"来实现消解，而不是删掉计时 ——
+      // 删掉会让 `effectiveStatus` 退回 `rec.ts` 判定，而 `ts` 可能刚被心跳刷新过，
+      // 于是"确认"在下一秒被撤销（症状：点完宠物，姿态过一会儿又回来了）。
+      // 推到 now 则确定性地立即失效，且不需要给 ready 单开一份"已读"集合。
+      const rec = this.sessions.get(id);
+      if (rec?.status === 'ready') this.readySince.set(id, now - this.opts.readyTimeoutMs);
+    }
     if (this.sticky && (!sessionId || this.sticky.sessionId === sessionId)) this.sticky = null;
-    // 单击会频繁触发 ack，没有待确认会话时不要刷日志（否则真正的状态变化会被淹没）。
+    // 单击会频繁触发 ack，没有待处理会话时不要刷日志（否则真正的状态变化会被淹没）。
     if (targets.length > 0) {
       this.log(`用户确认：${targets.join('、')}`);
       // **用户的确认是低频且明确的动作，不该被状态变化限流挡住。**
@@ -252,6 +313,7 @@ export class StatusArbiter {
     const now = this.opts.now();
     this.sessions.clear();
     this.acknowledged.clear();
+    this.readySince.clear();
     this.pending = null;
     this.sticky = null;
     this.lastChangeAt = Number.NEGATIVE_INFINITY;
@@ -265,8 +327,9 @@ export class StatusArbiter {
     const animation = resolveAnimation(statusMap, this.out.status, this.opts.defaultState);
     const primary = this.out.sessionId;
     // 角标 = 除主状态之外、仍在要求注意的会话数（已确认的 needs-input 不算）。
+    const now = this.opts.now();
     const others = [...this.sessions.values()].filter(
-      (s) => s.sessionId !== primary && this.effectiveStatus(s) !== 'idle',
+      (s) => s.sessionId !== primary && this.effectiveStatus(s, now) !== 'idle',
     );
     return {
       status: this.out.status,
@@ -306,6 +369,8 @@ export class StatusArbiter {
         sessionId: r.sessionId,
         status: r.status,
         acknowledged: this.acknowledged.has(r.sessionId),
+        // "已过期"= 它不再参与仲裁（`effectiveStatus` 把它看成 idle），但原始 status 仍如实保留。
+        expired: r.status === 'ready' && this.effectiveStatus(r, now) !== 'ready',
         title: r.title,
         ts: r.ts,
         primary: r.sessionId === primary,
@@ -367,6 +432,7 @@ export class StatusArbiter {
       const minutes = Math.round(this.opts.sessionStaleMs / 60_000);
       this.sessions.delete(id);
       this.acknowledged.delete(id);
+      this.readySince.delete(id);
       this.log(`会话 ${id} 静默超过 ${minutes} 分钟，按 idle 处理（疑似 agent 崩溃或未收尾）`);
     }
   }
@@ -424,12 +490,13 @@ export class StatusArbiter {
    * 已确认的会话在这里被按 idle 参与排序（只影响它的 needs-input）。
    */
   private pickPrimary(): Output | null {
+    const now = this.opts.now();
     let best: Output | null = null;
     let bestPriority = Number.POSITIVE_INFINITY;
     let bestIdle = 1;
     let bestTs = Number.NEGATIVE_INFINITY;
     for (const rec of this.sessions.values()) {
-      const status = this.effectiveStatus(rec);
+      const status = this.effectiveStatus(rec, now);
       const priority = priorityOf(this.opts.statusMap, status);
       const idle = status === 'idle' ? 1 : 0;
       const better =
@@ -445,9 +512,23 @@ export class StatusArbiter {
     return best;
   }
 
-  /** 已确认的 needs-input 降级为 idle；其余状态原样参与仲裁。 */
-  private effectiveStatus(rec: SessionRecord): PetStatus {
-    return rec.status === 'needs-input' && this.acknowledged.has(rec.sessionId) ? 'idle' : rec.status;
+  /**
+   * 参与仲裁时用的**有效**状态。两条降级，都是"某状态不该无限期占着画面"的落地：
+   *   1. 已确认的 needs-input → idle（用户已经知道了，别再举着手）；
+   *   2. 超时的 ready → idle（通报的时效过了，别一直摆着"有东西给你"的姿态）。
+   * 除这两种之外一律原样返回 —— 降级范围必须窄，否则用户一确认/一超时宠物就"失明"。
+   */
+  private effectiveStatus(rec: SessionRecord, now: number): PetStatus {
+    if (rec.status === 'needs-input' && this.acknowledged.has(rec.sessionId)) return 'idle';
+    if (rec.status === 'ready') {
+      const since = this.readySince.get(rec.sessionId);
+      // 没有计时起点（例如进程重启后从快照读回的 ready）**不能**当成"刚到"：
+      // 那等于给一条陈旧快照再续 60 秒，与本文件 ⑧b 那条"不知道 ≠ 刚刚"同源。
+      // 起点缺失时用事件时刻（`ts`，读取侧已按 mtime 兜底）来判定，仍不新鲜就按 idle。
+      const start = since ?? rec.ts;
+      if (now - start >= this.opts.readyTimeoutMs) return 'idle';
+    }
+    return rec.status;
   }
 
   private sameAs(a: Output, b: Output): boolean {
