@@ -11,3 +11,13 @@ Thumbs.db
 # WorkBuddy 工作区数据：只保留跨会话记忆，其余运行时文件不入库
 .workbuddy/*
 !.workbuddy/memory/
+
+# 本机 hook 配置：命令里含本机绝对路径（node 可执行文件），因人而异，不入库。
+# 生成方式：node tools/install-codebuddy-hooks.mjs --apply
+# 想入库的共享版请用 --shared（写 .codebuddy/settings.json），届时需先确认命令是路径无关的。
+.codebuddy/settings.local.json
+.codebuddy/*.bak-*
+
+# 探针的运行产物（原始 payload/时序），可重跑生成
+spikes/**/hook-payloads.jsonl
+spikes/**/live-sample.jsonl
