@@ -61,6 +61,14 @@
     }
     #actions button:hover { background: rgba(255, 255, 255, 0.14); }
     #actions button:disabled { opacity: 0.4; cursor: default; }
+    /* 「全部已确认」：唯一被强调的动作排按钮 —— 它是"把错误状态消掉"的出口，
+       用户报告的核心诉求就是能一键消干净（2026-09-18）。暖色描边与行内「确认」同一套语义色。 */
+    #actions #clear-all {
+      border-color: rgba(226, 134, 60, 0.55);
+      color: #e2863c;
+    }
+    #actions #clear-all:hover { background: rgba(226, 134, 60, 0.16); }
+    #actions #clear-all[hidden] { display: none; }
     /* 宠物名：面板的身份标识。不抢注意力（比状态行弱），但比"只读的百分比"有意义 */
     #actions #pet-name {
       min-width: 34px; max-width: 120px; text-align: center;
@@ -104,6 +112,11 @@
            大小操作统一走「⋯ 更多」/ 托盘 / 右键菜单里的档位。 -->
       <span id="pet-name"></span>
       <span class="sp"></span>
+      <!-- 「全部已确认」：把"在等你看"的会话一次标为已读，宠物立刻回待机。
+           有多条待确认时才出现（只有一条时行内那个「确认」已经够了），
+           所以默认 hidden —— 由渲染层按 ackableCount 切换（2026-09-18 用户要求）。
+           必须放在 ⋯ 左边：它是"消掉错误状态"的出口，比"打开更多菜单"更该被先看到。 -->
+      <button id="clear-all" data-cmd="ack-all" hidden>已确认</button>
       <button data-cmd="popup-menu" title="全部菜单动作（宠物大小 / 开机自启 / 清空状态会话 / 退出）">⋯</button>
     </div>
   </div>

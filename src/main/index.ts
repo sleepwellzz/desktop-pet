@@ -69,10 +69,24 @@ function toDataUrl(path: string, format: 'webp' | 'png'): string {
   return `data:${mime};base64,${readFileSync(path).toString('base64')}`;
 }
 
+/**
+ * 启动打戳（`--trace-boot`）。生产路径零开销 —— 不加这个开关时 `bootMark` 是个空函数。
+ *
+ * 为什么需要它：启动耗时是**加总效应**，十几处几十毫秒的同步调用叠起来才是用户感知的
+ * "数秒"，单看任何一处都"看起来没问题"。要定位只能让每一处自己报数。
+ */
+const TRACE_BOOT = process.argv.includes('--trace-boot');
+const BOOT_T0 = Date.now();
+const bootMark = TRACE_BOOT
+  ? (label: string): void => { console.log(`[boot] ${Date.now() - BOOT_T0} ms ${label}`); }
+  : (): void => { /* 未开启打戳 */ };
+
 function boot(): void {
+  bootMark('boot() 进入');
   const packDir = resolvePackDir();
   console.log('[pet] 加载宠物包：' + packDir);
   const pack = loadPack(packDir);
+  bootMark('宠物包已解析（含精灵图 stat / 魔数 / 尺寸校验）');
   for (const w of pack.warnings) console.warn('[pet][warn] ' + w);
   console.log(`[pet] ${pack.manifest.displayName ?? pack.manifest.id} · ${pack.sheet.width}x${pack.sheet.height} ` +
     `· ${pack.grid.columns}x${pack.grid.rows} @ ${pack.cell.width}x${pack.cell.height} · ${Object.keys(pack.states).length} 个状态`);
@@ -97,6 +111,7 @@ function boot(): void {
     htmlPath: join(__dirname, '..', 'renderer', 'index.html'),
     preloadPath: join(__dirname, 'preload.js'),
   });
+  bootMark('宠物覆盖窗口已创建');
 
   // init 载荷要等渲染层脚本就绪后再下发：ready-to-show 时页面脚本往往还没执行，
   // 过早 send 会丢消息（表现为宠物不显示、渲染层无任何日志）。
@@ -116,10 +131,12 @@ function boot(): void {
 
   overlay.browserWindow.once('ready-to-show', () => {
     overlay.showInactive();
+    bootMark('窗口已显示（ready-to-show）');
     console.log('[pet] 窗口已显示，位置', JSON.stringify(overlay.position()));
   });
 
   overlay.browserWindow.loadFile(join(__dirname, '..', 'renderer', 'index.html'));
+  bootMark('loadFile 已调用');
 
   // 渲染层的 console 与加载错误转发到主进程日志，否则页面里的异常完全看不见
   type ConsoleMessageParams = { level: number; message: string; lineNumber: number; sourceId: string };
@@ -145,7 +162,7 @@ function boot(): void {
   // 状态层的到点收敛参数从宠物包读（ADR 021）：不写死在内核里，因为"60 秒够不够"
   // 是观感取舍，换宠物包/换使用节奏时可能要调；而它在屏幕上完全看不出对错，所以必须可配 + 可单测。
   const statusTimeouts = (pack.runtime as unknown as {
-    statusTimeouts?: { stickyMs?: number; readyMs?: number; sessionStaleMs?: number };
+    statusTimeouts?: { stickyMs?: number; readyMs?: number; reAskMinIntervalMs?: number; sessionStaleMs?: number };
   }).statusTimeouts ?? {};
   /**
    * `--ready-ms=<毫秒>`：**给探针用的接缝**（与 `--no-status-source` / `--no-behavior` 同一套路）。
@@ -161,6 +178,7 @@ function boot(): void {
     statusMap: pack.runtime.statusMap,
     stickyTimeoutMs: statusTimeouts.stickyMs,
     readyTimeoutMs: Number.isFinite(readyMsOverride) ? readyMsOverride : statusTimeouts.readyMs,
+    reAskMinIntervalMs: statusTimeouts.reAskMinIntervalMs,
     sessionStaleMs: statusTimeouts.sessionStaleMs,
     log: (m) => console.log('[pet]' + m),
   });
@@ -404,6 +422,7 @@ function boot(): void {
   } catch (e) {
     console.error('[pet] 托盘创建失败（宠物本体不受影响，但隐藏后将无入口可恢复）：' + String(e));
   }
+  bootMark('托盘已创建');
 
   // —— 气泡层：状态文案与多会话角标（独立窗口，见 host/bubble-layer.ts 顶部注释）——
   const bubblePolicy = parseBubblePolicy((pack.runtime as unknown as Record<string, unknown>)['bubble']);
@@ -422,6 +441,7 @@ function boot(): void {
   } catch (e) {
     console.error('[pet] 气泡层创建失败（状态仍可从托盘菜单查看）：' + String(e));
   }
+  bootMark('气泡层已创建');
 
   /**
    * 按仲裁器状态刷新气泡。策略是纯函数（kernel/bubble-policy.ts），这里只做"应用结果"。
@@ -513,6 +533,7 @@ function boot(): void {
   } catch (e) {
     console.error('[pet] 控制条创建失败（宠物本体不受影响）：' + String(e));
   }
+  bootMark('控制条已创建');
 
   /** 控制条视图：状态全部现读，面板自己不持有一份（延续 ADR 010 的唯一真值约定）。 */
   function barView(): BarView {
@@ -617,6 +638,21 @@ function boot(): void {
       }
       if (arbiter.ack(arg)) pushStatus();
       else refreshBar();
+    },
+    /**
+     * 「全部已确认」：一次清掉所有在等用户处理的会话（`needs-input` + 未过期的 `ready`）。
+     *
+     * 与"单击宠物"走**同一条**内核路径（`arbiter.ack()` 不带参），因此不需要新机制、
+     * 也不会两处各写一份"什么算待确认"的判断。`ack()` 返回 true 表示仲裁输出变了
+     * （宠物换了动作）就需要推状态；没变也要刷新面板，否则按钮点了没反馈。
+     */
+    'ack-all'() {
+      if (arbiter.ack()) {
+        pushStatus();
+        console.log('[pet] 控制条：全部会话已确认');
+      } else {
+        refreshBar();
+      }
     },
     'popup-menu'() {
       if (!bar) return;
@@ -992,9 +1028,13 @@ function boot(): void {
     }
     overlay.browserWindow.webContents.send(CH.fullscreen, { hidden: status.coversMonitor, fgTitle: status.fgTitle });
   }, 600);
+  bootMark('boot() 返回（全屏监听已启动）');
 }
 
-app.whenReady().then(boot).catch((e) => {
+app.whenReady().then(() => {
+  bootMark('app ready（Electron 自身初始化完成）');
+  boot();
+}).catch((e) => {
   console.error('[pet] 启动失败：', e);
   app.quit();
 });

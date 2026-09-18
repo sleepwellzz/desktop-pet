@@ -21,3 +21,5 @@ Thumbs.db
 # 探针的运行产物（原始 payload/时序），可重跑生成
 spikes/**/hook-payloads.jsonl
 spikes/**/live-sample.jsonl
+spikes/**/startup-timing.json
+spikes/**/startup-cost.json

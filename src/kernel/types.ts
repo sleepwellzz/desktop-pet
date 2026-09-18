@@ -100,6 +100,13 @@ export interface RuntimeManifest {
     stickyMs?: number;
     /** `ready` 通报驻留上限（ms），超过按 idle 处理（默认 60000，ADR 021）。 */
     readyMs?: number;
+    /**
+     * 同一会话 `needs-input` **重新举手**的最小间隔（ms，默认 60000）。
+     *
+     * 迟滞窗口内的重报算"同一次求助的续报"，不动用户的确认位 ——
+     * 挡住双通道交替（hook↔文件源）把确认反复冲掉那条路径（ADR 021 补充）。
+     */
+    reAskMinIntervalMs?: number;
     /** 会话静默兜底（ms），超过按 idle 处理（默认 900000）。 */
     sessionStaleMs?: number;
   };

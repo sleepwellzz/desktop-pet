@@ -120,6 +120,19 @@ export interface ArbiterOptions {
    */
   readyTimeoutMs?: number;
   /**
+   * 同一会话的 `needs-input` **重新举手**的最小间隔（默认 60s）。
+   *
+   * 为什么需要它（2026-09-18 实测，`spikes/m3-ready-ack/probe-ack-revival.mjs`）：
+   * 上游会把同一个 `needs-input` 每隔十几秒重报一次（`ts` 每次都变），而同一个 agent
+   * 若同时被 hook 与被动文件源盯着（ADR 020 明令禁止、但生产里确实发生了），
+   * 状态会在 `needs-input ↔ running` 之间来回跳 —— **每次跳回来都清一次用户的确认位**，
+   * 表现为"点了宠物，过十几秒它又把手举起来"。
+   *
+   * 迟滞窗口内的重报被当作**同一次求助的续报**：不动确认位。
+   * 取 60 秒：足够盖住实测的 15–60 秒重报节奏，又短于用户"这是新问题"的直觉尺度。
+   */
+  reAskMinIntervalMs?: number;
+  /**
    * 会话静默多久视为失效（默认 15min）。
    * 这是"agent 崩溃后宠物永远停在 running"的唯一兜底：hook 正常会在结束时写 idle，
    * 但崩溃/拔电时不会，所以需要一条与业务无关的到期规则。
@@ -151,6 +164,7 @@ const DEFAULTS = {
   throttleMs: 500,
   stickyTimeoutMs: 300_000,
   readyTimeoutMs: 60_000,
+  reAskMinIntervalMs: 60_000,
   sessionStaleMs: 900_000,
   defaultState: 'idle',
 };
@@ -198,6 +212,16 @@ export class StatusArbiter {
    * 的教训同源）。这里只在**状态真正变成 ready 的那一次**记时，重复推送不动它。
    */
   private readonly readySince = new Map<string, number>();
+  /**
+   * 每个会话**上一次"开始求助"的时刻**（会话 id → epoch ms），用于 `reAskMinIntervalMs`
+   * 的迟滞判断。与 `readySince` 同一套路：单独记一份，不复用 `SessionRecord.ts`
+   * （`ts` 每次心跳都刷新，拿它算间隔会让迟滞窗口**永远不成立**，机制恰好失效）。
+   *
+   * 关键细节：**离开 `needs-input` 不清除它** —— 双通道交替（hook↔文件源）正是靠
+   * "保留上一次求助时刻"才被挡住；清掉会让每次切回 running 再切回来都算一次新求助。
+   * 只有会话被清空/静默过期时才删。
+   */
+  private readonly needsInputSince = new Map<string, number>();
   private out: Output = { status: 'idle', sessionId: null };
   /** 被限流挡下的目标状态，等窗格过后由 tick 应用（不丢弃）。 */
   private pending: Output | null = null;
@@ -214,6 +238,7 @@ export class StatusArbiter {
       throttleMs: options.throttleMs ?? DEFAULTS.throttleMs,
       stickyTimeoutMs: options.stickyTimeoutMs ?? DEFAULTS.stickyTimeoutMs,
       readyTimeoutMs: options.readyTimeoutMs ?? DEFAULTS.readyTimeoutMs,
+      reAskMinIntervalMs: options.reAskMinIntervalMs ?? DEFAULTS.reAskMinIntervalMs,
       sessionStaleMs: options.sessionStaleMs ?? DEFAULTS.sessionStaleMs,
       now: options.now ?? (() => Date.now()),
       statusMap: options.statusMap,
@@ -226,10 +251,32 @@ export class StatusArbiter {
     const now = this.opts.now();
     const ts = typeof e.ts === 'number' && Number.isFinite(e.ts) ? e.ts : now;
     const prev = this.sessions.get(e.sessionId);
-    // 会话重新提出新问题（非 needs-input → needs-input）时清掉旧的确认记录，
+    // 会话**重新**提出新问题（非 needs-input → needs-input）时清掉旧的确认记录，
     // 否则第二次求助会被静默地当成"已读"。
+    //
+    // ⚠️ 2026-09-18 修正（用户报告"单击宠物后状态又自己回来了"）：这里原本只按
+    // "状态发生了迁移"清确认位，看起来足够保守，实测却会被**双通道交替**击穿 ——
+    // 同一个 agent 同时被 hook（写 running/ready）与被动文件源（反复重报 needs-input）
+    // 盯着时，状态在两者之间来回跳，**每一次跳回 needs-input 都清一次确认位**，
+    // 于是用户点完之后十几秒，宠物又把手举起来（探针 spikes/m3-ready-ack 已复刻）。
+    //
+    // 修法：把"确认"锚定在**求助的实例**上，而不是"状态字符串"上。
+    // 迟滞窗口内（`reAskMinIntervalMs`）的重报一律视为同一次求助的续报，不动确认位；
+    // 只有间隔足够久的"重新举手"才值得再打扰用户一次。
+    // 这同时挡住了一个更隐蔽的路径：hook 与文件源交替时，running 的出现**不该**
+    // 把刚被确认的求助重新激活 —— 那正是"点了没用"的直接机制。
     if (e.status === 'needs-input' && prev?.status !== 'needs-input') {
-      this.acknowledged.delete(e.sessionId);
+      const since = this.needsInputSince.get(e.sessionId);
+      const withinEpisode =
+        since !== undefined && now - since < this.opts.reAskMinIntervalMs;
+      if (!withinEpisode) {
+        this.acknowledged.delete(e.sessionId);
+        this.needsInputSince.set(e.sessionId, now);
+      }
+      // 窗口内：保持确认位不动（同一次求助的续报）
+    } else if (e.status !== 'needs-input') {
+      // 离开 needs-input **不清** needsInputSince：双通道交替正是靠这一点被挡住的。
+      // 清掉它会让"每次切回 running 再切回来"都变成一次新的求助。
     }
     // `ready` 的驻留计时**只在状态真正变成 ready 的那一次**起算（见 readySince 的注释）。
     // 从 ready 走到别的状态就清掉；重复报 ready 不动它 —— 否则超时会被心跳无限推后。
@@ -314,6 +361,7 @@ export class StatusArbiter {
     this.sessions.clear();
     this.acknowledged.clear();
     this.readySince.clear();
+    this.needsInputSince.clear();
     this.pending = null;
     this.sticky = null;
     this.lastChangeAt = Number.NEGATIVE_INFINITY;
@@ -433,6 +481,7 @@ export class StatusArbiter {
       this.sessions.delete(id);
       this.acknowledged.delete(id);
       this.readySince.delete(id);
+      this.needsInputSince.delete(id);
       this.log(`会话 ${id} 静默超过 ${minutes} 分钟，按 idle 处理（疑似 agent 崩溃或未收尾）`);
     }
   }

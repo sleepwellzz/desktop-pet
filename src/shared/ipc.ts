@@ -139,8 +139,16 @@ export interface FullscreenNotice { hidden: boolean; fgTitle: string }
 export type BarCommandId =
   /** 隐藏宠物（控制条随之收起）。 */
   | 'hide-pet'
-  /** 确认某条会话（解除 needs-input 粘滞），需要 `arg` = sessionId。 */
+  /** 确认某条会话（解除 needs-input 粘滞 / ready 通报），需要 `arg` = sessionId。 */
   | 'ack-session'
+  /**
+   * 确认**所有**在等用户处理的会话（`needs-input` + 未过期的 `ready`），无需 `arg`。
+   *
+   * 2026-09-18 补（用户要求）：面板行内的「确认」只能一条一条点，而用户报的场景是
+   * "我已经看到结果了，想把这类状态一次清干净、宠物回到待机"。
+   * 语义与"单击宠物"完全一致（都调 `arbiter.ack()` 不带参），因此不引入新机制。
+   */
+  | 'ack-all'
   /**
    * 弹出与托盘/右键**同一份**原生菜单 —— 缩放、重置大小、开机自启、退出都在里面。
    *

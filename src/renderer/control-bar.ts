@@ -10,10 +10,11 @@ const dotEl = document.getElementById('dot') as HTMLSpanElement;
 const summaryEl = document.getElementById('summary') as HTMLSpanElement;
 const sessionsEl = document.getElementById('sessions') as HTMLDivElement;
 const petNameEl = document.getElementById('pet-name') as HTMLSpanElement;
+const clearAllEl = document.getElementById('clear-all') as HTMLButtonElement;
 
 /** 白名单的镜像，仅用于"发之前再确认一次"。真正的白名单在主进程。 */
 const KNOWN_IDS: readonly BarCommandId[] = [
-  'hide-pet', 'ack-session', 'popup-menu', 'close-bar',
+  'hide-pet', 'ack-session', 'ack-all', 'popup-menu', 'close-bar',
 ];
 
 /**
@@ -69,6 +70,25 @@ function dot(status: string, primary: boolean): HTMLSpanElement {
   return el;
 }
 
+/**
+ * 这条会话是否**在等用户处理**（即内核 `ack()` 能消解它的那两类）。
+ *
+ * ⚠️ 2026-09-18 修正（用户报告）：这里此前只认 `needs-input`，于是
+ * `ready`（"就绪但结果待确认"）在面板上**既没有「确认」按钮、行也不可点** ——
+ * 用户看到状态一直挂着却没有任何手段清掉它。
+ *
+ * 两类的语义对用户是同一个动作（"我看到了"），内核侧 `ack()` 也早已同时覆盖两者
+ * （见 `kernel/status.ts` 的 `want()`）；**只有这层面板漏了一类**，属于两处各写一份
+ * 判断条件的典型失配。所以这个谓词必须与内核的 `want()` 保持一致。
+ *
+ * `expired` 的 ready 不算：它已经不再参与仲裁，宠物早就回 idle 了，
+ * 再给一个「确认」按钮会让人以为"点了才会生效"（其实是内核已经自动到期）。
+ */
+function needsAck(s: { status: string; acknowledged: boolean; expired: boolean }): boolean {
+  if (s.acknowledged || s.expired) return false;
+  return s.status === 'needs-input' || s.status === 'ready';
+}
+
 function render(v: BarView): void {
   lastView = v;
   const label = (s: string): string => v.statusLabels?.[s as keyof typeof v.statusLabels] ?? s;
@@ -82,11 +102,13 @@ function render(v: BarView): void {
   sessionsEl.textContent = '';
   liveTimes = [];
   const shown = v.sessions.slice(0, v.maxRows);
+  let ackableCount = 0;                    // 有几条在等确认（决定动作排要不要放「全部已确认」）
   for (const s of shown) {
     const row = document.createElement('div');
     row.className = 'row';
-    const needsAck = s.status === 'needs-input' && !s.acknowledged;
-    if (needsAck) {
+    const needs = needsAck(s);
+    if (needs) {
+      ackableCount += 1;
       row.classList.add('ackable');
       row.dataset['cmd'] = 'ack-session';
       row.dataset['sid'] = s.sessionId;
@@ -102,9 +124,17 @@ function render(v: BarView): void {
 
     const st = document.createElement('span');
     st.className = 'st';
-    // 如实显示"需要输入（已确认）"而不是显示成"空闲" —— 内核把 original status 与
-    // acknowledged 分开暴露，就是为了让界面不说谎（见 kernel/status.ts 的 SessionView 注释）。
-    st.textContent = needsAck ? label(s.status) : s.acknowledged ? `${label(s.status)}（已确认）` : label(s.status);
+    if (needs) {
+      st.textContent = label(s.status);
+    } else if (s.acknowledged) {
+      st.textContent = `${label(s.status)}（已确认）`;
+    } else if (s.expired) {
+      // 内核已按到期把它降级为 idle（宠物不再摆那副姿态）。如实说明，
+      // 否则用户会以为"面板坏了"或"还得再点一下"。
+      st.textContent = `${label(s.status)}（已过期）`;
+    } else {
+      st.textContent = label(s.status);
+    }
     row.appendChild(st);
 
     const t = document.createElement('span');
@@ -118,7 +148,7 @@ function render(v: BarView): void {
     row.appendChild(t);
     liveTimes.push({ el: t, ts: s.ts });
 
-    if (needsAck) {
+    if (needs) {
       const ack = document.createElement('button');
       ack.className = 'ack';
       ack.textContent = '确认';
@@ -141,6 +171,15 @@ function render(v: BarView): void {
   // 也不是用户关心的事，而"这块面板是谁的"才是它该回答的（ADR 016）。
   petNameEl.textContent = v.petName;
   petNameEl.title = `宠物包：${v.petName}（大小在托盘 / 右键菜单的「宠物大小」里改）`;
+
+  // 「全部已确认」：有多条在等确认时才出现（只有一条时行内那个「确认」已经够了）。
+  // 用户要求的就是"一个能把这种状态消干净的按钮"（2026-09-18）——
+  // 行内按钮解决"这一条"，这里解决"一次清完"，两者配合才不必逐行点。
+  clearAllEl.hidden = ackableCount === 0;
+  if (ackableCount > 0) {
+    clearAllEl.textContent = ackableCount > 1 ? `全部已确认（${ackableCount}）` : '已确认';
+    clearAllEl.title = '把「在等你看」的会话一次性标为已读，宠物立刻回到待机';
+  }
 }
 
 /** 相对时间每秒刷新。只改文本节点，不重建 DOM —— 否则按钮的 hover 状态会每秒闪一次。 */
