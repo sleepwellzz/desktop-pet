@@ -159,6 +159,29 @@ interface Output {
   title?: string;
 }
 
+/**
+ * 这条会话是否**在等用户处理** —— 也就是 `ack()` 能不能消解它。
+ *
+ * 为什么要把它做成内核导出的唯一谓词（2026-09-18 之前这里没有它，判据散在三处）：
+ * `ack()` 的 `want()`、控制条渲染层的 `needsAck`、`viewSessions()` 的展示判断
+ * 其实在回答同一个问题，各写一份就一定会漂移 —— 本轮实测已经漂移过一次：
+ * `ready` 在面板上连「确认」按钮都没有（渲染层只认 `needs-input`），
+ * 而内核早就同时覆盖两者。判据只留这一份，其它地方一律调它。
+ *
+ * 两个排除项都是"不该再打扰用户"的意思，不是状态变了：
+ *   - `acknowledged`：用户已经点过了；
+ *   - `expired`：`ready` 的通报时效已过，宠物早就回 idle，再给按钮会让人以为
+ *     "点了才生效"（其实是内核自动到期的）。
+ */
+export function isAckable(s: {
+  status: PetStatus;
+  acknowledged?: boolean;
+  expired?: boolean;
+}): boolean {
+  if (s.acknowledged || s.expired) return false;
+  return s.status === 'needs-input' || s.status === 'ready';
+}
+
 const DEFAULTS = {
   minDisplayMs: 400,
   throttleMs: 500,
@@ -168,6 +191,20 @@ const DEFAULTS = {
   sessionStaleMs: 900_000,
   defaultState: 'idle',
 };
+
+/**
+ * 双通道告警的两个时间常数。
+ *
+ * `DUAL_CHANNEL_WINDOW_MS`（10s）：同一会话先后被两个不同 `origin` 上报，且间隔在
+ * **10 秒之内**才算"被两条通道同时盯"。隔了几分钟才换 origin 是"换了一次挂载方式"
+ * （例如卸载 hook 改用被动源），那是正常的，不该告警。
+ *
+ * `DUAL_CHANNEL_WARN_COOLDOWN_MS`（60s）：同一对通道冲突的告警重复间隔。
+ * 双通道一旦成立就是**每次轮询都打一次**，不冷却的话这条告警会把真正的状态变化
+ * 从日志里淹没 —— 那恰好是它自己要诊断的东西。
+ */
+const DUAL_CHANNEL_WINDOW_MS = 10_000;
+const DUAL_CHANNEL_WARN_COOLDOWN_MS = 60_000;
 
 /**
  * 把业务状态解析成动画意图。缺映射时回落到 defaultState 并只告警一次 ——
@@ -222,6 +259,19 @@ export class StatusArbiter {
    * 只有会话被清空/静默过期时才删。
    */
   private readonly needsInputSince = new Map<string, number>();
+  /**
+   * 每个会话**上一次事件的来源**（会话 id → `origin` + 时刻），用于双通道互斥的
+   * 运行期告警。
+   *
+   * 为什么要有它（ADR 023）：ADR 020 规定"一个 agent 只由一条通道负责"，
+   * 但那份约束此前**只写在文档里** —— 同一个 agent 被 hook 与被动文件源同时盯着时，
+   * 状态在两条通道之间来回跳，**且没有任何报错**；用户只能看到"点了宠物它又举手"
+   * （2026-09-18 的真实缺陷，症状级修法见 `reAskMinIntervalMs`）。
+   * 这里只**告警**不逐出：该信谁属于产品决策，留给机制级互斥方案。
+   */
+  private readonly lastOrigin = new Map<string, { origin: string; at: number }>();
+  /** 同一对"通道冲突"上一次告警的时刻，用于冷却（key = 会话 id + 归一化后的来源对）。 */
+  private readonly dualChannelWarnedAt = new Map<string, number>();
   private out: Output = { status: 'idle', sessionId: null };
   /** 被限流挡下的目标状态，等窗格过后由 tick 应用（不丢弃）。 */
   private pending: Output | null = null;
@@ -285,6 +335,7 @@ export class StatusArbiter {
     } else {
       this.readySince.delete(e.sessionId);
     }
+    this.detectDualChannel(e.sessionId, e.origin, now);
     this.sessions.set(e.sessionId, {
       sessionId: e.sessionId,
       status: e.status,
@@ -313,7 +364,11 @@ export class StatusArbiter {
    */
   ack(sessionId?: string): boolean {
     const now = this.opts.now();
-    const want = (s: SessionRecord): boolean => s.status === 'needs-input' || s.status === 'ready';
+    // 判据只留 `isAckable` 一份 —— 渲染层「确认」按钮用的是同一个函数，两处不会再漂移。
+    // 带上 `acknowledged`：已经确认过的会话不该被重复"确认"（否则每次单击都重复记账、
+    // 重复打一条"用户确认"日志，还会把状态变化限流的窗格重置掉）。
+    const want = (s: SessionRecord): boolean =>
+      isAckable({ status: s.status, acknowledged: this.acknowledged.has(s.sessionId) });
     const targets = sessionId
       ? [sessionId].filter((id) => {
         const rec = this.sessions.get(id);
@@ -362,6 +417,8 @@ export class StatusArbiter {
     this.acknowledged.clear();
     this.readySince.clear();
     this.needsInputSince.clear();
+    this.lastOrigin.clear();
+    this.dualChannelWarnedAt.clear();
     this.pending = null;
     this.sticky = null;
     this.lastChangeAt = Number.NEGATIVE_INFINITY;
@@ -427,6 +484,32 @@ export class StatusArbiter {
 
   // —— 内部 ——
 
+  /**
+   * 双通道互斥的运行期告警：**同一会话**在 `DUAL_CHANNEL_WINDOW_MS` 内被两个不同
+   * `origin` 上报 ⇒ 打一条告警（带冷却）。
+   *
+   * 只告警、不改状态 —— 逐出哪一条是产品决策（ADR 020 说"被动源是降级来源"），
+   * 但**先让这件事在日志里可见**：这类冲突此前唯一的症状是"宠物行为怪"，
+   * 排查成本全花在猜上。
+   */
+  private detectDualChannel(sessionId: string, origin: string | undefined, now: number): void {
+    if (!origin) return;                       // 没标来源的事件无从判断（例如人工喂状态）
+    const prev = this.lastOrigin.get(sessionId);
+    this.lastOrigin.set(sessionId, { origin, at: now });
+    if (!prev || prev.origin === origin) return;
+    if (now - prev.at > DUAL_CHANNEL_WINDOW_MS) return;
+    const pair = [prev.origin, origin].sort().join('↔');
+    const key = `${sessionId}|${pair}`;
+    const lastWarn = this.dualChannelWarnedAt.get(key) ?? Number.NEGATIVE_INFINITY;
+    if (now - lastWarn < DUAL_CHANNEL_WARN_COOLDOWN_MS) return;
+    this.dualChannelWarnedAt.set(key, now);
+    this.log(
+      `⚠️ 双通道冲突：会话 ${sessionId} 在 ${now - prev.at}ms 内被「${prev.origin}」与` +
+        `「${origin}」两条通道同时上报。ADR 020 要求一个 agent 只由一条通道负责；` +
+        `请只保留其一（症状：状态来回跳、用户的确认被反复撤销）。`,
+    );
+  }
+
   private warnMissing(status: PetStatus): void {
     if (this.warnedMissing.has(status)) return;
     this.warnedMissing.add(status);
@@ -482,6 +565,7 @@ export class StatusArbiter {
       this.acknowledged.delete(id);
       this.readySince.delete(id);
       this.needsInputSince.delete(id);
+      this.lastOrigin.delete(id);
       this.log(`会话 ${id} 静默超过 ${minutes} 分钟，按 idle 处理（疑似 agent 崩溃或未收尾）`);
     }
   }

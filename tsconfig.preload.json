@@ -1,0 +1,16 @@
+// preload 的**只做类型检查**配置（不产出）。
+//
+// 为什么需要单独一份：`tsconfig.json` 把三个 preload 排除了（它们由 esbuild 打包，
+// tsc 产出的那份是永不加载的诱饵文件），但"排除"不等于"放弃类型检查" ——
+// preload 是渲染层与主进程之间唯一的那道门，写错一个通道名只有在运行时才会暴露。
+// 这份配置不 emit，`npm run typecheck` 会跑它。
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src/main/preload.ts", "src/main/preload-bar.ts", "src/main/preload-bubble.ts"],
+  // 必须显式清空：`exclude` 会被 `extends` 一起继承，而主配置正是靠它把这三个文件排除掉的，
+  // 不清空就会出现"include 与 exclude 互相抵消 ⇒ TS18003 找不到输入"。
+  "exclude": []
+}

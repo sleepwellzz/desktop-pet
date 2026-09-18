@@ -6,14 +6,14 @@
 //
 // 跑法：node tools/status-arbiter.test.mjs   （需先 npm run build，测的是 dist 产物）
 import { createRequire } from 'node:module';
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
-const { StatusArbiter, resolveAnimation } = require(join(root, 'dist/kernel/status.js'));
+const { StatusArbiter, resolveAnimation, isAckable, PET_STATUSES } = require(join(root, 'dist/kernel/status.js'));
 const { PetPlayer } = require(join(root, 'dist/kernel/player.js'));
 const { createStatusFileSource } = require(join(root, 'dist/source/status-file.js'));
 // 用真实运行参数做断言，而不是测试里另写一份映射表 —— 否则测的是测试自己的假设。
@@ -1048,6 +1048,166 @@ section('⑭ 行为层策略');
     eq('总开关关掉后不动', r.trail.length, 0);
     eq('总开关关掉后不播任何覆盖', r.plays.length, 0);
   }
+}
+
+// —— ⑮ 双通道互斥：运行期告警（ADR 020 的约束第一次在代码里有落点）——
+// ADR 020 规定"一个 agent 只由一条通道负责"，但此前**只写在文档里** —— 同一个 agent
+// 被 hook 与被动文件源同时盯着时，状态在两条通道之间来回跳且没有任何报错，
+// 用户只能看到"点了宠物它又举手"（2026-09-18 的真实缺陷）。
+// 这里只钉**告警**（不逐出：该信谁是产品决策），四条边界各一条断言。
+section('⑮ 双通道冲突告警（只告警，不改状态）');
+{
+  const CONFLICT = '双通道冲突';
+  const boot = () => {
+    const clock = makeClock(5_000_000);
+    const logs = [];
+    const arb = new StatusArbiter({
+      statusMap: runtimeManifest.statusMap, now: clock.now, log: (m) => logs.push(m),
+    });
+    return { clock, logs, arb, conflicts: () => logs.filter((l) => l.includes(CONFLICT)).length };
+  };
+
+  // ① 同一会话 10 秒内被两个不同 origin 上报 ⇒ 告警（这就是"被两条通道同时盯"）
+  {
+    const { clock, arb, conflicts } = boot();
+    arb.ingest({ sessionId: 'wb:1', status: 'running', origin: 'file' });
+    clock.advance(1_000);
+    arb.ingest({ sessionId: 'wb:1', status: 'needs-input', origin: 'hook' });
+    eq('同一会话 10 秒内换通道 ⇒ 告警', conflicts(), 1);
+  }
+
+  // ② 同一通道反复上报 ⇒ 不告警（正常心跳）
+  {
+    const { clock, arb, conflicts } = boot();
+    for (let i = 0; i < 5; i++) {
+      arb.ingest({ sessionId: 'wb:1', status: 'running', origin: 'file' });
+      clock.advance(1_000);
+    }
+    eq('同一通道反复上报 ⇒ 不告警', conflicts(), 0);
+  }
+
+  // ③ 隔了很久才换通道 = 换了一次挂载方式（例如卸载 hook 后改用被动源），不是"同时被盯"
+  {
+    const { clock, arb, conflicts } = boot();
+    arb.ingest({ sessionId: 'wb:1', status: 'running', origin: 'hook' });
+    clock.advance(120_000);
+    arb.ingest({ sessionId: 'wb:1', status: 'running', origin: 'file' });
+    eq('隔 2 分钟才换通道 ⇒ 不告警（是换挂载，不是同时被盯）', conflicts(), 0);
+  }
+
+  // ④ 两个**不同**会话走不同通道 ⇒ 不告警（多 agent 并存是设计内的形状）
+  {
+    const { clock, arb, conflicts } = boot();
+    arb.ingest({ sessionId: 'wb:1', status: 'running', origin: 'hook' });
+    clock.advance(1_000);
+    arb.ingest({ sessionId: 'proma:9', status: 'blocked', origin: 'file' });
+    eq('两个不同会话各走一条通道 ⇒ 不告警', conflicts(), 0);
+  }
+
+  // ⑤ 冷却：一旦成立就是每次轮询都打一次，不冷却会把真正的状态变化从日志里淹没
+  {
+    const { clock, arb, conflicts } = boot();
+    const origins = ['file', 'hook', 'file', 'hook', 'file', 'hook'];
+    for (const o of origins) {
+      arb.ingest({ sessionId: 'wb:1', status: 'running', origin: o });
+      clock.advance(1_000);
+    }
+    eq('60 秒内反复交替只告警一次（有冷却）', conflicts(), 1);
+    clock.advance(61_000);
+    arb.ingest({ sessionId: 'wb:1', status: 'running', origin: 'file' });
+    arb.ingest({ sessionId: 'wb:1', status: 'running', origin: 'hook' });
+    eq('冷却过后再次冲突会重新告警', conflicts(), 2);
+  }
+
+  // ⑥ 没标来源的事件不参与判断（人工喂状态没有通道概念）
+  {
+    const { clock, arb, conflicts } = boot();
+    arb.ingest({ sessionId: 'default', status: 'running' });
+    clock.advance(1_000);
+    arb.ingest({ sessionId: 'default', status: 'needs-input', origin: 'hook' });
+    eq('无来源的事件不参与双通道判断', conflicts(), 0);
+  }
+}
+
+// —— ⑮b 状态文件：`origin` 通道标签的透传与校验（投毒点纪律）——
+section('⑮b 状态文件的 origin 透传');
+{
+  const d = mkdtempSync(join(tmpdir(), 'pet-origin-'));
+  const f = join(d, 'status.json');
+  const got = [];
+  const src = createStatusFileSource({ path: f, pollMs: 40, log: () => {} });
+  try {
+    src.start((e) => got.push(e));
+    await sleep(150);
+    writeFileSync(f, JSON.stringify({
+      schema: 'desktop-pet/status/v1',
+      sessions: { 'wb:1': { status: 'running', ts: Date.now(), origin: 'hook' } },
+    }), 'utf8');
+    await sleep(400);
+    eq('写侧自称的通道被透传', got.at(-1)?.origin, 'hook');
+
+    writeFileSync(f, JSON.stringify({
+      schema: 'desktop-pet/status/v1',
+      sessions: { 'wb:2': { status: 'running', ts: Date.now() } },
+    }), 'utf8');
+    await sleep(400);
+    eq('没写 origin 的条目由适配器标为 file', got.at(-1)?.origin, 'file');
+
+    // 状态文件是谁都能写的投毒点：来源只是诊断用的短标签，不认识的取值丢弃（回落到 file），
+    // 而不是原样透传去污染日志与将来的 UI。
+    writeFileSync(f, JSON.stringify({
+      schema: 'desktop-pet/status/v1',
+      sessions: { 'wb:3': { status: 'running', ts: Date.now(), origin: '<script>alert(1)</script>' } },
+    }), 'utf8');
+    await sleep(400);
+    eq('非法来源取值被丢弃（不原样透传）', got.at(-1)?.origin, 'file');
+  } finally {
+    src.stop();
+    rmSync(d, { recursive: true, force: true });
+  }
+}
+
+// —— ⑯ isAckable：**唯一**的"这条在等用户处理"判据（真值表）——
+// 2026-09-18 的真实失配：内核 `ack()` 早已同时覆盖 needs-input 与 ready，而控制条渲染层
+// 自己那份只认 needs-input ⇒ `ready` 在面板上连「确认」按钮都没有、行也不可点。
+// 修法是把判据下沉到内核并让两边共用；这里钉住三件事：真值表本身、它与 `ack()` 的行为一致、
+// 以及渲染层**不再**自带一份判据（否则漂移还会再来一次）。
+section('⑯ isAckable 真值表（五种状态 × 已确认 × 已过期）');
+{
+  eq('状态集合取自内核（加状态会自己进真值表）', PET_STATUSES.length, 5);
+
+  // ① 纯函数真值表：20 组全量断言
+  let trueCount = 0;
+  for (const status of PET_STATUSES) {
+    for (const acknowledged of [false, true]) {
+      for (const expired of [false, true]) {
+        const got = isAckable({ status, acknowledged, expired });
+        const want = !acknowledged && !expired && (status === 'needs-input' || status === 'ready');
+        if (got) trueCount += 1;
+        eq(`${status} / 已确认=${acknowledged} / 已过期=${expired} ⇒ ${want}`, got, want);
+      }
+    }
+  }
+  // 2 = needs-input 与 ready 各一组，且必须"未确认、未过期"；
+  // 换句话说：五种状态里只有两类需要用户处理，而它们各自只有一个"真的在等"的组合。
+  eq('20 组里恰好 2 组为真（needs-input 与 ready，且未确认、未过期）', trueCount, 2);
+
+  // ② 与内核 `ack()` 的行为对齐：谓词说"能消解"的，`ack()` 必须真的消解（反之亦然）。
+  // 这条才是防失配的关键 —— 只测纯函数的话，两边各改一处仍然对不上。
+  for (const status of PET_STATUSES) {
+    const clock = makeClock(7_000_000);
+    const arb = new StatusArbiter({ statusMap: runtimeManifest.statusMap, now: clock.now });
+    arb.ingest({ sessionId: 's', status });
+    clock.advance(600);
+    arb.ack();
+    const row = arb.viewSessions().find((x) => x.sessionId === 's');
+    eq(`ack() 对 ${status} 的记账与谓词一致`, row.acknowledged, isAckable({ status }));
+  }
+
+  // ③ 结构性：渲染层不许再自带一份判据（它只能 import 内核那一份）
+  const barSrc = readFileSync(join(root, 'src/renderer/control-bar.ts'), 'utf8');
+  check('控制条渲染层从内核取判据', barSrc.includes("from '../kernel/status'"), '缺少 import');
+  check('控制条渲染层不再自己写状态判据', !barSrc.includes("s.status === 'needs-input'"), '又抄了一份');
 }
 
 // —— 汇总 ——

@@ -4,6 +4,9 @@
 // （与气泡层同一个纪律，见 shared/ipc.ts 的 BarView 注释）。
 // 用 DOM 而不是 canvas：文字排版、省略号、按钮交互交给浏览器最省事，也不需要关心 DPR。
 import type { BarCommand, BarCommandId, BarView } from '../shared/ipc';
+// 判据从内核取，不在这层另写一份 —— 见 kernel/status.ts 的 `isAckable` 注释：
+// 两处各写一份已经失配过一次（`ready` 在面板上连「确认」按钮都没有）。
+import { isAckable } from '../kernel/status';
 
 const barEl = document.getElementById('bar') as HTMLDivElement;
 const dotEl = document.getElementById('dot') as HTMLSpanElement;
@@ -71,23 +74,15 @@ function dot(status: string, primary: boolean): HTMLSpanElement {
 }
 
 /**
- * 这条会话是否**在等用户处理**（即内核 `ack()` 能消解它的那两类）。
+ * 这条会话是否**在等用户处理**（要不要给「确认」按钮、行要不要可点）。
  *
- * ⚠️ 2026-09-18 修正（用户报告）：这里此前只认 `needs-input`，于是
- * `ready`（"就绪但结果待确认"）在面板上**既没有「确认」按钮、行也不可点** ——
- * 用户看到状态一直挂着却没有任何手段清掉它。
+ * ⚠️ 2026-09-18 的教训：这里此前自己写了一份判据（只认 `needs-input`），
+ * 于是 `ready` 在面板上**既没有「确认」按钮、行也不可点** —— 用户看到状态一直挂着，
+ * 却没有任何手段清掉它。而内核 `ack()` 早就同时覆盖两类。
  *
- * 两类的语义对用户是同一个动作（"我看到了"），内核侧 `ack()` 也早已同时覆盖两者
- * （见 `kernel/status.ts` 的 `want()`）；**只有这层面板漏了一类**，属于两处各写一份
- * 判断条件的典型失配。所以这个谓词必须与内核的 `want()` 保持一致。
- *
- * `expired` 的 ready 不算：它已经不再参与仲裁，宠物早就回 idle 了，
- * 再给一个「确认」按钮会让人以为"点了才会生效"（其实是内核已经自动到期）。
+ * 现在两边都调内核的 `isAckable`，结构上不可能再漂移。语义留在内核的那份注释里。
  */
-function needsAck(s: { status: string; acknowledged: boolean; expired: boolean }): boolean {
-  if (s.acknowledged || s.expired) return false;
-  return s.status === 'needs-input' || s.status === 'ready';
-}
+const needsAck = isAckable;
 
 function render(v: BarView): void {
   lastView = v;

@@ -373,6 +373,9 @@ function boot(): void {
     },
     quit() {
       console.log('[pet] 用户从菜单退出');
+      // 先停定时器再拆窗口：否则拆完到进程真正退出之间还会有一两次 tick 落在
+      // 已销毁的窗口上（`Object has been destroyed`，探针日志里那行噪音就是它）。
+      stopTimers();
       void statusSource?.stop();
       tray?.destroy();
       bubble?.destroy();
@@ -815,10 +818,42 @@ function boot(): void {
     expireBubble();
   }, 250);
 
+  /**
+   * 两个高频定时器的启停（33ms 行为层 + 16ms 光标轮询）。
+   *
+   * 为什么要有它：宠物隐藏（用户手动隐藏 / 全屏让位）期间，既没有光标要跟随、
+   * 也没有动作要走，这两个定时器却照常每 16/33 毫秒醒来一次 —— 纯粹白烧 CPU
+   * （挂机时宠物常常一藏就是几小时）。**250ms 那条刻意不停**：它推进仲裁器的
+   * 粘滞超时与静默兜底，也是气泡到期与托盘状态行的时间来源 —— 藏起来的宠物
+   * 不再画东西，但托盘那行"需要输入"仍然必须如实变化。
+   *
+   * 为什么挂在窗口的 show/hide **事件**上而不是在各处手动配对：`hide()` 有三条路径
+   * （托盘菜单 / 宠物右键 / 全屏让位），手动配对迟早会漏一条，而漏掉的那条只表现为
+   * "恢复之后宠物不动了"，没有任何报错可循。
+   * 另外**不要用 `isVisible()` 判断要不要启停** —— `show()` 之后同一 tick 内它仍可能
+   * 返回 false（ADR 014 负面结论 1，本文件 `syncBar` 那处已因此修过一次）。
+   */
+  const timers: { behavior: NodeJS.Timeout | null; pointer: NodeJS.Timeout | null } = {
+    behavior: null, pointer: null,
+  };
+  function startTimers(): void {
+    if (timers.behavior || timers.pointer) return;      // 幂等：`show` 事件会重复来
+    timers.behavior = setInterval(tickBehaviorLayer, 33);
+    timers.pointer = setInterval(pollPointer, 16);
+  }
+  function stopTimers(): void {
+    if (timers.behavior) { clearInterval(timers.behavior); timers.behavior = null; }
+    if (timers.pointer) { clearInterval(timers.pointer); timers.pointer = null; }
+  }
+
   // 行为层的时间推进（漫游到点、微动作播完、打盹计时都靠它）。**放在这里才安全**：
   // 上面那条 TDZ 教训同样适用于它 —— 它要读 `barState` / `arbiter` / `overlay`，
   // 必须等所有窗口与状态层都装配完再启动。
-  setInterval(tickBehaviorLayer, 33);
+  // 光标轮询（16ms）也在这里一起起：它俩同时起、同时停，见 `startTimers` 的注释。
+  startTimers();
+  // 首次显示要显式起一次：`show` 事件只在**之后**的隐藏/恢复往返里才来。
+  overlay.browserWindow.on('show', startTimers);
+  overlay.browserWindow.on('hide', stopTimers);
 
   refreshMenu();   // 快捷键已定，菜单里那行"快捷键：…"要跟上
 
@@ -848,6 +883,8 @@ function boot(): void {
       behaviorState: () => behaviorState,
       behaviorPolicy: () => behaviorPolicy,
       behaviorTicks: () => behaviorTicks,
+      /** 两个高频定时器（33ms 行为层 / 16ms 光标轮询）当前是否在跑。隐藏时应为 false。 */
+      timersRunning: () => Boolean(timers.behavior || timers.pointer),
       behaviorMoves: () => behaviorMoves,
       behaviorSuppressed: () => behaviorSuppressed(),
       draggingPet: () => draggingPet,
@@ -856,6 +893,7 @@ function boot(): void {
   }
 
   app.on('will-quit', () => {
+    stopTimers();
     void statusSource?.stop();
     unregisterHotkeys();
     bubble?.destroy();
@@ -934,9 +972,11 @@ function boot(): void {
       pushPointerHint();
     }
   }
-  setInterval(pollPointer, 16);
-
-  // —— 拖动：渲染层只上报增量，窗口移动由宿主完成 ——
+  // 由 `startTimers()` 统一启动（宠物隐藏时一起停掉）—— 见它那处注释。
+  //
+  // 停掉它会不会让控制条的"到点收起"卡住（`tickBar` 挂在它最前面）？不会：
+  // 三条隐藏路径（托盘 / 宠物右键 / 全屏让位）都先调 `hideBar()`，面板在宠物隐藏之前
+  // 就已经收了，不存在"宠物藏着、面板还开着"的状态。  // —— 拖动：渲染层只上报增量，窗口移动由宿主完成 ——
   // —— 自检：--screenshot=<前缀> 抓两帧存盘后退出，用于验证"动画确实在播" ——
   async function scheduleSelfCheck(): Promise<void> {
     const arg = process.argv.find((a) => a.startsWith('--screenshot='));

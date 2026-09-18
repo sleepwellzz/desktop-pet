@@ -1,0 +1,29 @@
+{
+ "steps": [],
+ "visible": {
+  "from": 60,
+  "to": 77,
+  "delta": 17,
+  "ms": 800,
+  "runningWhenVisible": true,
+  "petVisible": true
+ },
+ "hidden": {
+  "from": 77,
+  "to": 77,
+  "delta": 0,
+  "ms": 1000,
+  "runningWhenHidden": false,
+  "petVisible": false
+ },
+ "resumed": {
+  "from": 131,
+  "to": 148,
+  "delta": 17,
+  "ms": 800,
+  "runningWhenResumed": true,
+  "petVisible": true
+ },
+ "failures": [],
+ "verdict": "PASS"
+}

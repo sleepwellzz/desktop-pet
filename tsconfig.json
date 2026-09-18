@@ -14,5 +14,11 @@
     "sourceMap": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "spikes"]
+  // 三个 preload 由 **esbuild** 打包（`dist/main/preload.js` / `bubble-preload.js` /
+  // `bar-preload.js`），tsc 不参与它们的产出。让 tsc 也编译一遍会产出同名的诱饵文件
+  // —— `dist/main/preload-bar.js` / `preload-bubble.js` **全仓无任何引用、永不被加载**，
+  // 却会随源码同步更新，制造"只跑 tsc 也已生效"的假象（真实加载的那份纹丝未动）。
+  // 类型检查没有因此丢掉：见 `tsconfig.preload.json`（`npm run typecheck` 会跑它）。
+  "exclude": ["node_modules", "dist", "spikes",
+    "src/main/preload.ts", "src/main/preload-bar.ts", "src/main/preload-bubble.ts"]
 }

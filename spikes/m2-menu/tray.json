@@ -13,7 +13,7 @@
    "dragEvents": {
     "down": 1,
     "up": 1,
-    "move": 21,
+    "move": 23,
     "cancel": 0
    },
    "transparentAtStart": false,
@@ -75,7 +75,7 @@
    }
   }
  ],
- "pid": 219564,
+ "pid": 234604,
  "actionsAvailable": true,
  "trayCreated": true,
  "cursorBeforeQuit": {

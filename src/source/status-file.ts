@@ -26,6 +26,15 @@ export interface StatusFileSourceOptions {
 interface Entry {
   status: PetStatus;
   title?: string;
+  /**
+   * 写侧自称的**通道来源**（`'hook'` = 挂在 agent hook 上的客户端；缺省时本适配器标 `'file'`）。
+   *
+   * 为什么需要它：ADR 020 规定"一个 agent 只由一条通道负责"，而内核判断这件事
+   * 只能靠 `origin`（`StatusArbiter` 的告警见 `kernel/status.ts`）。没有它，
+   * 所有事件都长一个样，"同一个 agent 被两条通道同时盯"就永远是个只写在文档里的约束。
+   * 取值按投毒点的同一套纪律校验：长度与字符白名单，不认识的丢弃（而不是原样透传）。
+   */
+  origin?: string;
   /** 事件时刻（epoch ms）。缺省表示写侧不提供心跳，此时"存活时间"只能靠状态变化刷新。 */
   ts?: number;
   /**
@@ -62,8 +71,11 @@ function toEntry(
   // 于是轮询本身变成了假心跳，静默兜底会永远不触发（等于悄悄关掉了一道保险）。
   const ts = typeof o['ts'] === 'number' && Number.isFinite(o['ts']) ? o['ts'] : undefined;
   const title = typeof o['title'] === 'string' ? o['title'].slice(0, 120) : undefined;
+  const origin = typeof o['origin'] === 'string' ? o['origin'].slice(0, 32) : undefined;
   const entry: Entry = { status: o['status'] };
   if (title !== undefined) entry.title = title;
+  // 只认 `[A-Za-z0-9_-]`：来源是诊断用的短标签，不是自由文本，也不该进 UI。
+  if (origin !== undefined && /^[A-Za-z0-9_-]+$/.test(origin)) entry.origin = origin;
   if (ts !== undefined) {
     entry.ts = ts;
   } else if (fileTime !== null) {
@@ -197,7 +209,7 @@ export function createStatusFileSource(opts: StatusFileSourceOptions): StatusSou
       const old = prev?.get(id);
       const changed = !old || old.status !== e.status || old.title !== e.title;
       if (changed) {
-        send({ sessionId: id, status: e.status, title: e.title, ts: e.ts, origin: 'file' });
+        send({ sessionId: id, status: e.status, title: e.title, ts: e.ts, origin: e.origin ?? 'file' });
         log(`文件状态：${id} → ${e.status}${e.title ? `（${e.title}）` : ''}`);
       } else if (old.ts !== e.ts && !e.tsFromFile) {
         // 心跳：同一状态被重新写入，只刷新时间戳，不产生状态切换。
@@ -205,7 +217,7 @@ export function createStatusFileSource(opts: StatusFileSourceOptions): StatusSou
         // `tsFromFile` 的条目**刻意排除在外**：它的时间戳来自快照的 mtime，而同一份文件
         // 里的所有会话共享一个 mtime —— 不排除的话，只要**任何一条**会话被写入，
         // 其它无 ts 的陈旧会话都会被续命 15 分钟（ADR 016 实测过这条路径）。
-        send({ sessionId: id, status: e.status, title: e.title, ts: e.ts, origin: 'file' });
+        send({ sessionId: id, status: e.status, title: e.title, ts: e.ts, origin: e.origin ?? 'file' });
       }
     }
     // 从文件里消失的会话 = 写侧主动收尾（比如 --clear）。补一条 idle，

@@ -103,7 +103,11 @@ if (ev.clear) {
   delete doc.sessions[ev.sessionId];
 } else {
   const prev = doc.sessions[ev.sessionId] ?? {};
-  const entry = { status: ev.status, ts: Date.now() };
+  // `origin` 是给内核的**通道标签**（ADR 020 的"一个 agent 只由一条通道负责"靠它落地）：
+  // 本文件是通道 A（事件驱动 hook）；被动会话源与人工喂状态都不带它，于是被读侧标成 'file'。
+  // 同一个会话 id 若被两类写者交替更新，内核会打一条"双通道冲突"告警 —— 这正是此前
+  // 只能靠猜的那个缺陷的探测手段。
+  const entry = { status: ev.status, ts: Date.now(), origin: 'hook' };
   const title = ev.title ?? (typeof prev.title === 'string' ? prev.title : undefined);
   if (title) entry.title = title;
   doc.sessions[ev.sessionId] = entry;
