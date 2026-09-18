@@ -431,7 +431,9 @@ export class StatusArbiter {
     if (statusMap && !entry) this.warnMissing(this.out.status);
     const animation = resolveAnimation(statusMap, this.out.status, this.opts.defaultState);
     const primary = this.out.sessionId;
-    // 角标 = 除主状态之外、仍在要求注意的会话数（已确认的 needs-input 不算）。
+    // 角标 = 除主状态之外**仍在活动**的会话数（判据是 `effectiveStatus !== 'idle'`）。
+    // 它**不限于**「要求注意」那两类 —— running / blocked / ready 都算在内；
+    // 已确认的 needs-input 与已过期的 ready 因为 `effectiveStatus` 已是 idle，不计入。
     const now = this.opts.now();
     const others = [...this.sessions.values()].filter(
       (s) => s.sessionId !== primary && this.effectiveStatus(s, now) !== 'idle',

@@ -35,14 +35,19 @@ import {
   type PointerHint, type ReadyInfo, type RendererInit, type StatusPush,
 } from '../shared/ipc';
 
-/** 菜单里的状态行文案。用业务状态而不是动画状态名（用户看到的应该是"在干什么"）。 */
-const STATUS_TEXT: Record<PetStatus, string> = {
+/**
+ * 菜单里的状态行文案。用业务状态而不是动画状态名（用户看到的应该是"在干什么"）。
+ *
+ * `satisfies` 而不是 `: Record<...>` 的注解，是为了让**漏写一种状态**变成编译错误，
+ * 同时保留字面量类型（`statusLabels` 传给渲染层时键名仍然精确）。
+ */
+const STATUS_TEXT = {
   idle: '空闲',
   running: '运行中',
   'needs-input': '需要输入',
   blocked: '已受阻',
   ready: '就绪（未读）',
-};
+} satisfies Record<PetStatus, string>;
 
 /** 宠物包目录：默认工程根目录，可用 --pet=绝对路径 覆盖。 */
 function resolvePackDir(): string {
@@ -196,9 +201,17 @@ function boot(): void {
   } catch (e) {
     console.warn('[pet] 事件日志目录创建失败（不影响运行）：' + String(e));
   }
+  /**
+   * 落事件流水（`~/.desktop-pet/events.jsonl`），供离线查证。
+   *
+   * **额外写 `recvAt`（宠物收到的时刻）**：事件里的 `ts` 是**写侧**（hook 进程）产生时刻，
+   * 拿它算端到端延迟会**严重低估** —— ADR 020 实测两者只差 2ms，那只是 hook 进程内
+   * "落 payload → 写状态文件"的间隔，根本没算上"文件监听 → 主进程读到"这一段。
+   * **端到端延迟 = `recvAt - ts`（判据 6）**，这是目前唯一可用的时间基准。
+   */
   function recordEvent(e: StatusEvent): void {
     try {
-      appendFileSync(eventLogPath, JSON.stringify(e) + '\n', 'utf8');
+      appendFileSync(eventLogPath, JSON.stringify({ ...e, recvAt: Date.now() }) + '\n', 'utf8');
     } catch (e) {
       console.warn('[pet] 事件日志写入失败（不影响运行）：' + String(e));
     }

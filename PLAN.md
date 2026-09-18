@@ -69,10 +69,10 @@
 | M3 差异化 | 🔄 进行中 | 行为层 ✅（ADR 018/019）｜状态↔动作复核 ✅（ADR 021）｜缺陷修复与审查 ✅（ADR 022）｜挂起清账 ✅（ADR 023）｜#14 修复 ✅（ADR 024）｜**状态源生态 🔄 剩判据 9 与判据 6** |
 
 **下一块（也是当前唯一在做的）**：**WorkBuddy 通道成品化** ——
-① 判据 9：用户跑一次真实回合，回答"会不会拖慢你正常的活"；
-② 判据 6：端到端延迟（需在主进程 `recordEvent()` 加 `recvAt`，因为 `events.jsonl` 的 `ts` 是
-**写侧**时刻、不是宠物收到的时刻，拿它算延迟会严重低估，ADR 020 已实测）。
-两条都需要**真实回合**，我做不了，需要你配合。
+① **判据 6 已完成**（ADR 026）：`recordEvent()` 加了 `recvAt`，端到端延迟 = `recvAt - ts`
+= **中位 110ms**（实测 105–113ms）。对照：此前用两个 `ts` 之差算出来只有 2ms，**低估约 55 倍**。
+取数：`node tools/measure-latency.mjs --since=60`。
+② **判据 9 待做**：用户跑一次真实回合，回答"会不会拖慢你正常的活"。**这条我做不了，需要你配合。**
 
 **最近三轮的一句话版**（详见 `docs/status/m3.md`）：
 ① 启动耗时 ≈32 秒，**93% 花在每次无条件全量构建**（`boot()` 只 322ms）—— 优化待你拍板；
@@ -94,10 +94,10 @@ M2 ⑤ 多宠物切换（ADR 015，缺素材与规格）｜行为层的"忙碌�
 | 5 | **`ready`/`stale` 时间边界无探针** | 🟡 Minor | ✅ 已完成（ADR 023） | `probe-ready-stale-boundary.mjs` 27/27 |
 | 6 | **隐藏时 16ms/33ms 定时器仍空转** | 🟡 Minor | ✅ 已完成（ADR 023） | `spikes/m3-hidden-timers/` PASS |
 | 7 | **preload 双产物诱饵文件** | 🟡 Minor | ✅ 已完成（ADR 023） | tsconfig 排除 + `tsconfig.preload.json` |
-| 8 | **`badgeCount` 语义与注释轻微错位** | 🔵 Nit | 未开始 | 可直接做 |
-| 9 | **`STATUS_TEXT` 缺 `satisfies Record<PetStatus,string>`** | 🔵 Nit | 未开始 | 可直接做 |
+| 8 | **`badgeCount` 语义与注释轻微错位**（`running` 也计入） | 🔵 Nit | ✅ 已完成（ADR 026） | 实现是对的，改的是注释：它不限于"要求注意"那两类 |
+| 9 | **`STATUS_TEXT` 缺 `satisfies Record<PetStatus,string>`** | 🔵 Nit | ✅ 已完成（ADR 026） | 漏写一种状态从此变成编译错误 |
 | 10 | **`ready` 落点口径**（第 7 行生日 vs 第 8 行小厨师） | — | **待用户确认** | ADR 021 §口径差异；改 `statusMap.ready.then` 一行 |
-| 11 | **M3 第二块收尾**：判据 9 / 判据 6 / Proma 适配器 | — | **Proma 已冻结**；剩判据 9/6 | 用户拍板先完成 WorkBuddy 成品；Proma 占位卡见 `docs/design/m3-proma-passive-source.md` |
+| 11 | **M3 第二块收尾**：判据 9 / 判据 6 / Proma 适配器 | — | **判据 6 已拿到数字；剩判据 9** | Proma 已冻结。判据 6 = **中位 110ms**（ADR 026，`node tools/measure-latency.mjs`）。判据 9 需用户跑真实回合 |
 | 12 | **HTTP 状态源未实现**（接口已就位） | — | 长期搁置 | 无需求驱动 |
 | 13 | **打包那轮**：注册表值名复核 + 托盘图标随包分发 | — | 长期搁置 | 仅打包时相关（ADR 011 遗留） |
 | 14 | **「（已过期）」行长期驻留** | 🟡 Minor | ✅ 已修复（ADR 024） | 判为 bug：出口只改了仲裁输出、没改面板视图 |
@@ -141,6 +141,10 @@ desktop-pet/
 
 ## 7. 变更日志（最近三条 · 全文见 `docs/changelog.md`）
 
+- **2026-09-18**：**判据 6 的时间基准落地（ADR 026）**：`recordEvent()` 加 `recvAt`，
+  端到端延迟 = `recvAt - ts` = **中位 110ms**（此前用 `ts` 之差只有 2ms，低估约 55 倍）。
+  新增 `tools/measure-latency.mjs`（取数）与 `spikes/m3-latency/run.mjs`（真实窗口验证，PASS）。
+  顺带清掉挂起 #8（`badgeCount` 注释）与 #9（`STATUS_TEXT` 改 `satisfies`）。
 - **2026-09-18**：**#14 修复（ADR 024）**：过期的 `ready` 通报不再占面板。
   判定为 bug —— ADR 021 的"出口"原则只落地了一半（改了仲裁输出、没改面板视图），
   而留下的那一行 `isAckable=false` ⇒ 用户没有任何手段消掉它。
