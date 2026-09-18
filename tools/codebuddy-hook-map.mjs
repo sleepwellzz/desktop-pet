@@ -64,6 +64,25 @@ export const VERBOSE_EVENTS = Object.freeze([
   'Interrupt',
 ]);
 
+/**
+ * `Notification` 的 `notification_type` 白名单：**这些是良性的，不给 `needs-input`**。
+ *
+ * 为什么需要它（2026-09-18 **真实回合实测**发现的缺陷）：
+ *   我最初把 `Notification` 一律映射成 `needs-input`。真实回合里拿到的
+ *   `notification_type` 是 **`idle_prompt`**，内容是
+ *   `"CodeBuddy is waiting for your input"`（"干完了、在等你说话"）——
+ *   而 `Stop` 已经在回合结束时给了 `ready`。两条一起作用的结果是
+ *   **每次干完活约一分钟，宠物都会举手要你确认**。
+ *   那会让 `needs-input` 这个最宝贵的状态**贬值**（用户开始习惯性忽略它），
+ *   是典型的假阳性 —— 而这个项目里假阳性比漏报更不可接受。
+ *
+ * 取值方向：**只把已知良性的一种排除掉**，未知类型仍按"要你注意"处理。
+ *   理由：`PermissionRequest` 已经精确覆盖了"要授权"，`Notification` 是冗余通道；
+ *   宁可对未知类型保守（给 needs-input），也不要把良性类型当成"没关系"而漏掉真正的求助。
+ *   随着真实回合积累，把新的良性取值加进这里。
+ */
+export const BENIGN_NOTIFICATION_TYPES = Object.freeze(['idle_prompt']);
+
 const STATUS_VALUES = new Set(['idle', 'running', 'needs-input', 'blocked', 'ready']);
 const MAX_SESSION_ID = 64;
 const MAX_TITLE = 120;
@@ -118,10 +137,25 @@ export function parseHookPayload(text) {
 }
 
 /**
+ * 事件 + payload → 最终状态。**这是唯一需要看 payload 内容而不是只看事件名的地方。**
+ *
+ * @returns {string|null} 可写进状态文件的状态；`null` 表示"这个事件不改变状态"。
+ */
+export function resolveStatus(event, payload) {
+  const base = HOOK_EVENT_STATUS[event];
+  if (base === null || base === undefined) return base ?? null;
+  if (event === 'Notification') {
+    const type = cleanText(payload?.['notification_type'], 40);
+    if (type && BENIGN_NOTIFICATION_TYPES.includes(type)) return null;
+  }
+  return base;
+}
+
+/**
  * 把一份 hook payload 归一化成"要写进状态文件的那一行"。
  *
  * @returns {null | { sessionId: string, status: string, title?: string, clear: boolean, event: string }}
- *   `null` 表示这份输入不产生任何状态变化（未知事件 / 非法取值 / 读不懂）。
+ *   `null` 表示这份输入不产生任何状态变化（未知事件 / 良性通知 / 非法取值 / 读不懂）。
  *   调用方必须把 `null` 当作"什么都不做"，而不是"写 idle"——那会在两个 agent 同时跑时
  *   把别人的状态踩掉。
  */
@@ -133,7 +167,11 @@ export function normalizeHookEvent(raw, opts = {}) {
   if (!event) return null;
   if (!(event in HOOK_EVENT_STATUS)) return null; // 未知事件：忽略
 
-  const status = HOOK_EVENT_STATUS[event];
+  const status = resolveStatus(event, payload);
+  if (status === null) {
+    // SessionEnd 走收尾；良性 Notification 既不写状态也不收尾 —— 两者都表达为 clear=false 的"无操作"。
+    if (event !== 'SessionEnd') return null;
+  }
   if (status !== null && !STATUS_VALUES.has(status)) return null;
 
   const source = cleanText(opts.source, 16) ?? 'agent';
@@ -142,6 +180,6 @@ export function normalizeHookEvent(raw, opts = {}) {
     sessionId: sessionIdFor(source, payload['session_id']),
     status,
     title: titleFor(payload, opts.label),
-    clear: status === null,
+    clear: event === 'SessionEnd',
   };
 }

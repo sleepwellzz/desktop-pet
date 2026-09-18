@@ -305,10 +305,11 @@ DEFAULT_SCOPES = [SettingsScope.USER, SettingsScope.PROJECT, SettingsScope.PROJE
 | # | 判据 | 做法 | 通过标准 |
 |---|---|---|---|
 | **0** | ~~闸门：桌面是否执行 hooks~~ ✅ **已完成 = YES**（2026-09-18，证据见 §1.1）：桌面把 agent 跑在内嵌 `cli/bin/codebuddy --serve` 上，且默认作用域含 PROJECT ⇒ 工程级 `.codebuddy/settings.json` 会被读 | 进程树 + `DEFAULT_SCOPES` 定义 | 已给出明确结论与证据 |
-| 1 | **hook 触发与 payload 实测**（含空格路径） | 工程级配置只挂 `SessionStart`+`Stop`，命令把 stdin 原样落盘 | payload 里 `session_id`/`cwd`/`hook_event_name` 齐全；**工程路径含空格仍能执行** |
-| 2 | **状态序列对账（通道 A）** | 同一次真实回合，宠物侧 `events.jsonl` × agent 侧事件流按时间轴对齐 | 顺序 `running → … → ready`；**不允许卡在 running 不回 ready**；不允许出现映射表外的状态 |
+| 1 | ~~hook 触发与 payload 实测~~ ✅ **已通过（2026-09-18 真实回合）**：5 条事件实测到位，**含空格路径正常**；`session_id` 与进程树、`sessions/*.json` **三处一致**；payload 比文档更丰富（详见 ADR 020） | 工程级配置 + 真实回合 | 已给出结论与证据 |
+| 2 | **状态序列对账（通道 A）** | 同一次真实回合，宠物侧 `events.jsonl` × agent 侧事件流按时间轴对齐 | 顺序 `running → … → ready`；**不允许卡在 running 不回 ready**；不允许出现映射表外的状态。**⚠️ 需开着桌宠**（首次验证时桌宠没运行，做不了） |
 | 3 | **`needs-input` 端到端** | 触发一次真实授权等待 | 宠物进 `needs-input` 且粘滞、确认后解除。**触发不了就如实记"未验证"，不许用模拟顶替** |
-| 3a | **判据 3 的前置（2026-09-18 新增）** | 先确认能不能在本机造出审批 | **实测：当前会话带 `--permission-mode fullAccess` ⇒ 不会弹审批 ⇒ 判据 3 在本机当前配置下无法执行。** 需先找到一个会弹审批的配置（如把 permission-mode 调回默认/plan），**或如实把它记为"未验证"** |
+| 3a | ~~判据 3 的前置~~ ✅ **已通过（2026-09-18）**：我此前据 `--permission-mode fullAccess` 预测"不弹审批"，**被实测推翻** —— 真实回合里 `permission_mode` 是 `"default"`，`PermissionRequest` 弹了两次（`tool_name: "Read"`） | 真实回合 payload | **判据 3 可做**，信号已在手 |
+| 3b | **`Notification` 按类型分流** ✅ **已修（真实回合抓到的缺陷）**：`idle_prompt`（"干完了在等你"）原本被映射成 `needs-input`，会在 `Stop` 后约一分钟必然触发一次 ⇒ 每次干完活宠物都举手，让 `needs-input` **贬值**。改为良性类型白名单，命中的不写状态 | `tools/codebuddy-hook-map.mjs` + 8 项新单测 | 已修并钉住 |
 | 4 | **被动源对账（通道 B）** | 你正常用 WorkBuddy / Proma 干活时后台采样，事后与真实时间轴比对 | `running`/`ready`/`idle` 的**判定准确率与假阳性率各出一个数字**；标题正确 |
 | 5 | **不污染你的环境** | 探针全程 | `~/.workbuddy`、`~/.proma`、`~/.codex` 内容 hash 不变；探针状态文件用 `--file=` 指向临时路径 |
 | 6 | **性能预算** | 计一次典型回合的额外耗时 | 出**数字**（事件数 × 0.377 s），据此定事件集 |

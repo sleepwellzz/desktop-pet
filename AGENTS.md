@@ -78,9 +78,14 @@
   **B 被动会话源**（Proma）。两个**不同** agent 同时跑天然不冲突（仲裁器本来就是多会话形状）；
   会打架的是**同一个 agent 被两条通道同时盯**（hook 说 running、被动源说 idle，来回刷且无报错）
   —— 被动源是**降级来源，是切换不是叠加**。`sessionId` 必须带来源前缀（`wb:` / `proma:`）。
-- **改了 hook 映射层或客户端必跑** `node tools/codebuddy-hook.test.mjs`（离线、秒级、**62 项**）。
+- **改了 hook 映射层或客户端必跑** `node tools/codebuddy-hook.test.mjs`（离线、秒级、**70 项**）。
   **hook 客户端不许有能力影响 agent**：退出码恒 0（Claude 系约定里 2 = 阻断）、有超时、
   任何异常都吞掉；映射层未知事件**忽略而不是报错**。
+- **`Notification` 必须按 `notification_type` 分流，不能一律给 `needs-input`**（ADR 020 真实回合实测）：
+  `idle_prompt`（"干完了、在等你说话"）在 `Stop` 之后**约一分钟必然出现**，
+  一律给 `needs-input` 会变成**每次干完活宠物都举手**，让这个最宝贵的状态**贬值**。
+  良性类型走白名单；`PermissionRequest` 才是"要授权"的精确通道。
+  **这条只有跑真实回合才能发现**（单测写不出来 —— 当时不知道有这个取值）。
 - **hook 配置只写工程级**（用户级会作用于用户**正在用的所有**会话），且默认写
   `.codebuddy/settings.local.json`（命令含本机绝对路径，已 gitignore）。
   安装器 `node tools/install-codebuddy-hooks.mjs` **默认 dry-run**、幂等、可卸载、带备份；

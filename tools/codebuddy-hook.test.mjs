@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  BENIGN_NOTIFICATION_TYPES,
   DEFAULT_CONFIGURED_EVENTS,
   HOOK_EVENT_STATUS,
   VERBOSE_EVENTS,
@@ -36,7 +37,11 @@ function section(t) { process.stdout.write(`\n${t}\n`); }
 
 const tmp = mkdtempSync(join(tmpdir(), 'pet-hook-cb-'));
 const statusFile = join(tmp, 'status.json');
+/** ③b 段专用文件：它会在 ④ 段之前写状态，共用一份会把 ④ 的"会话数"断言搅乱。 */
+const statusFile2 = join(tmp, 'status-2.json');
 const dumpFile = join(tmp, 'stdin-dump.jsonl');
+/** 客户端调用的返回值容器。声明在最前 —— ③b 段就要用它，别在 ④ 段才 `let`（会撞 TDZ）。 */
+let r;
 
 /** 跑一次真实客户端进程。env 里删掉 ELECTRON_RUN_AS_NODE（宿主是 Electron，子进程会继承它）。 */
 function runClient(args, stdin) {
@@ -102,9 +107,49 @@ try {
   const end = normalizeHookEvent(mkPayload('SessionEnd'), { source: 'wb' });
   eq('SessionEnd → clear 为 true', end?.clear, true);
 
+  // —— ③b Notification 按类型分流（真实回合实测发现的缺陷，2026-09-18） ——
+  section('③b Notification 按 notification_type 分流：idle_prompt 不得给 needs-input');
+  // 实测到的原样取值：{"notification_type":"idle_prompt","message":"CodeBuddy is waiting for your input"}
+  eq(
+    'idle_prompt → null（Stop 已经给过 ready，再来一次就是假阳性）',
+    normalizeHookEvent(mkPayload('Notification', { notification_type: 'idle_prompt' }), { source: 'wb' }),
+    null,
+  );
+  eq(
+    '未知类型仍按"要你注意"处理',
+    normalizeHookEvent(mkPayload('Notification', { notification_type: 'some_new_thing' }), { source: 'wb' })?.status,
+    'needs-input',
+  );
+  eq(
+    '缺 notification_type 时保守处理（宁可多一次，不漏真求助）',
+    normalizeHookEvent(mkPayload('Notification'), { source: 'wb' })?.status,
+    'needs-input',
+  );
+  eq(
+    'permission_prompt 若出现要能识别',
+    normalizeHookEvent(mkPayload('Notification', { notification_type: 'permission_prompt' }), { source: 'wb' })?.status,
+    'needs-input',
+  );
+  check(
+    '良性类型名单是白名单而不是黑名单（新增类型默认仍会提醒）',
+    BENIGN_NOTIFICATION_TYPES.includes('idle_prompt'),
+  );
+  // PermissionRequest 不受该分流影响 —— 它才是"要授权"的精确通道。
+  eq(
+    'PermissionRequest 给 needs-input',
+    normalizeHookEvent(mkPayload('PermissionRequest', { tool_name: 'Read' }), { source: 'wb' })?.status,
+    'needs-input',
+  );
+  // 客户端行为：良性通知**不得改动状态文件**。
+  writeFileSync(statusFile2, JSON.stringify({ schema: 'desktop-pet/status/v1', sessions: { 'wb:x': { status: 'running', ts: 1 } } }), 'utf8');
+  const snapBefore = readFileSync(statusFile2, 'utf8');
+  r = runClient([`--file=${statusFile2}`], mkPayload('Notification', { notification_type: 'idle_prompt' }));
+  eq('良性通知退出码 0', r.status, 0);
+  eq('良性通知不改动状态文件', readFileSync(statusFile2, 'utf8'), snapBefore);
+
   // —— ④ 客户端端到端（真实进程 + 真实文件） ——
   section('④ 客户端端到端：真实 spawn + 真实状态文件');
-  let r = runClient([`--file=${statusFile}`, `--dump=${dumpFile}`], mkPayload('UserPromptSubmit'));
+  r = runClient([`--file=${statusFile}`, `--dump=${dumpFile}`], mkPayload('UserPromptSubmit'));
   eq('退出码为 0', r.status, 0);
   let doc = readStatus();
   eq('写入了 running', doc?.sessions?.['wb:abcdef12-3456']?.status, 'running');
