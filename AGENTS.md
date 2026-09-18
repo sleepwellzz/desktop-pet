@@ -1,171 +1,49 @@
 # AGENTS.md
 
-任何 agent 在本目录开工前，**先读 `PLAN.md`**（单一事实来源：文件地图、锁定决策、当前进度、下一步）。
+任何 agent 在本目录开工前，**先读 `PLAN.md`**（当前状态、下一步、挂起清单）。
 
-## 知识与文档在哪
+**本文件是路由表，不是约束全集。** 硬约束已按主题分到 `docs/constraints/` ——
+按下面这张表**只读与本次任务相关的那一两份**（此前 40 条全量堆在这里，每次开工都要读 17 KB）。
 
-- 规格知识：用户级技能 `codex-pet-pack`（`~/.workbuddy/skills/codex-pet-pack/SKILL.md`）——权威来源，不要重新调研。
-- 完整设计：`Windows桌面宠物开发方案.html`（13 章：资产盘点、功能基线、技术选型、架构、数据契约、状态机、分阶段计划、风险表、验收清单）。
-- 渲染逻辑参考：`动画映射验证器.html` 已验证帧率、锚点与状态映射，M1 渲染层可直接移植其逻辑。
+## 改了什么 → 读哪份 + 跑哪些判据
 
-## 硬性约束
+| 你要动的东西 | 读哪份约束 | 必跑的判据 |
+|---|---|---|
+| `pet.json` / `behavior-map.json` / 精灵图 / 行语义 / 动作外观 | `docs/constraints/pet-pack.md` | — |
+| 窗口创建·显示·隐藏·移动·缩放、命中判定、控制条、定时器、指针事件 | `docs/constraints/window.md` | `spikes/m2-hittest`（**第二参数不能省**）/ `spikes/m2-menu/run-tray.mjs` / `spikes/m2-control/run.mjs` |
+| `src/kernel/status.ts` / `src/source/*` / 确认与消解 / `ready`·`needs-input` | `docs/constraints/status.md` | `node tools/status-arbiter.test.mjs` + `spikes/m3-ready-ack/probe-ack-revival.mjs`；动了出口再跑 `spikes/m3-ready-exit/run.mjs` |
+| `tools/pet-hook*.mjs` / hook 映射层与安装器 / 状态源接线 | `docs/constraints/sources-hooks.md` | `node tools/codebuddy-hook.test.mjs`（70 项） |
+| `src/kernel/behavior.ts` / `desktop-pet.json → behavior` | `docs/constraints/behavior.md` | `node tools/status-arbiter.test.mjs` + `node spikes/m3-behavior/run.mjs`（**不带** `--no-behavior`） |
+| renderer / preload / 构建链 / 新写探针 / 量渲染结果 / `喂状态.bat` | `docs/constraints/build-probe.md` | **完整 `npm run build`**（只跑 `tsc` 不够） |
 
-- `pet.json` 严格保持 Codex 原生格式，**不得写入任何自研字段**。扩展参数一律走 sidecar：`behavior-map.json`（行→状态→帧列）与 `desktop-pet.json`（运行时参数）。
-- 锚点采用行级固定锚点（`groundY = 202` + 各状态 `offsetY`）。**禁止逐帧基线锁定**。
-- 宿主适配层收窄为四个接口，宠物内核不 import 任何 Electron API。
-- **状态层的唯一真值来源是主进程的 `StatusArbiter`**（`src/kernel/status.ts`）。托盘/控制条/角标将来都从
-  `arbiter.state` 取，不允许下游各算一份；渲染层不得自行判断业务状态。
-- 帧率与锚点由脚本自动生成，不要手写。
-- **点击命中由渲染层按当前帧精灵 alpha 判定**，窗口常态整窗穿透；不要回退到"让系统按窗口矩形命中的做法"，也不要再用 `setIgnoreMouseEvents(..., { forward: true })`（ADR 008）。
-- **凡是改了窗口创建/显示/隐藏/移动/缩放相关代码，必须跑三个回归探针**：
-  - `node spikes/m2-hittest/run.mjs probe-fs-verify.js fs-verify.json`（全屏让位与恢复后的点击/拖动，ADR 009。
-    **第二个参数不能省** —— 探针按产出名写日志与报告，省了它驱动会一直等 `report.json` 直到超时）；
-  - `node spikes/m2-menu/run-tray.mjs`（隐藏→显示往返、缩放尺寸与锚点、自启回读、退出后进程消失，ADR 011）；
-  - `node spikes/m2-control/run.mjs`（控制条位置/跟随/翻转/命令白名单/焦点与键盘路径，ADR 014）。
-- **行为层分两套模式**（ADR 018 + ADR 019）：主状态 = `idle` → 空闲模式（漫游 / 微动作 / 打盹）；
-  非 `idle` → **踱步模式**（每 60–180 秒走 60–300px，**锚在进入任务状态时的位置附近**，方向朝工作区中心侧）。
-  规则全在**纯函数** `kernel/behavior.ts` 里（时钟与随机数可注入），
-  主进程只负责攒输入与落命令，渲染层只接 `CH.behavior` 的动画覆盖（覆盖期间**不收敛回主状态**）。
-  **四条不许动的地方**：
-  ① **打盹计时只由"状态离开 idle"与"用户碰它"重置** —— 漫游/微动作重置它会让宠物**永远睡不着**
-  （屏幕上只表现为"它就是不打盹"，没有任何报错）；有任务时压根不计（`idleSinceAt` 恒为 null）；
-  ② **用户拖动的开始/结束是渲染层显式上报的**（`CH.dragState`），不许改成"多久没收到拖动增量就当松手"
-  —— 用户手停一下是常态，猜错就是宠物**在他手里自己走**；
-  ③ **`CH.behavior` 的命令是三态**（缺省 = 不变 / `null` = 交回仲裁器 / 对象 = 按它演），
-  合并成两态会让渲染层每 tick 被重置一次（走路会被每秒压回去 30 次）；
-  ④ **踱步目标必须由"锚点"算，不能由"当前位置"算**（`pickPaceTarget`）—— 后者会越踱越远，
-  让用户要求的"不超过几百像素"在几分钟后**悄悄失效**，屏幕上只表现为"它怎么跑那么远"。
-  锚点在进入任务状态时、以及**每次抑制结束后**重记（后者就是"拖到哪块屏就在哪块屏活动"的落地机制）。
-- **不跨屏是锁定范围**（ADR 019）：只在宠物所在显示器的工作区内活动。
-  真要做跨屏，先定义"穿越时窗口矩形算哪一屏"与"多屏工作区并集"。
-- **改行为参数（`desktop-pet.json → behavior`）后必跑**：`node tools/status-arbiter.test.mjs`（秒级）
-  + `node spikes/m3-behavior/run.mjs`（真实窗口、约 1.5 分钟）。**这个探针不要带 `--no-behavior`**。
-- **跑既有回归探针时要带 `--no-behavior`**：宠物会自己走，位置类断言（命中图、控制条贴边、
-  托盘点击坐标）全都是"读一次窗口位置、再按它算点击坐标" —— 中间宠物走掉了就点空。
-  探针里已经默认带上（与 `--no-status-source` 同一套路的接缝），**新写探针别忘了加**。
-- **改 renderer/preload 只跑 `tsc` 不够 —— 而且 `dist/` 里有诱饵文件**。三个 preload 源码被两条工具链
-  编译成**两个文件名**：`tsc`（`outDir` 直接映射）产出 `dist/main/preload-bar.js` / `preload-bubble.js`，
-  esbuild 产出 `dist/main/bar-preload.js` / `bubble-preload.js`（**后者才是实际加载的**，见 `main/index.ts:434/515`）。
-  **`tsc` 那两个名字全仓无任何引用、永不被加载**，但它们会随源码同步更新 —— 只跑 `tsc` 会看到
-  "产物时间戳变了、内容也对了"的假象，而真正加载的那份没动。**认准 `bar-preload.js` / `bubble-preload.js`。**
-- **写探针时，两次「输入」之间必须显式推进时钟 / 改变前置状态**，否则量到的是别的机制。
-  本项目已两次栽在这上面：本轮 `probe-ack-revival` 情形 2b 在同一次钟值上连发两条 `ingest`，
-  量到的是 500ms **限流窗格**而不是被测的 **迟滞窗口**（断言假失败）；
-  M2 ④ 第一版探针没先把宠物从默认右下角挪到屏幕中间就测"贴宠物下方 8 DIP"，
-  量到的是"翻到上方 + 夹进工作区"。**判据必须只让被测的那条规则生效。**
-- **控制条的唤出只有三条显式路径：右键宠物 / `Win+Alt+P` / 托盘菜单「控制条」，一律抢焦点；
-  不要加回悬停唤出**（2026-09-17 用户拍板删除，ADR 016）——桌宠常驻角落、光标是顺便掠过的，
-  自动弹出必然变成"我没叫它它自己冒出来"，而且会与"左键单击播动作"争夺同一个瞄准动作的语义。
-  **两处右键分工不同**：宠物右键 = 控制条；托盘右键 = 完整菜单（面板「⋯」也是这份）。
-  面板动作排里显示的是**宠物名**（`pet.json` 的 `displayName`），没有缩放控件（那在菜单里）。
-- **改了 `source/status-file.ts` 的时间语义，或动了「清空状态会话」那条路径，必须跑**
-  `node spikes/m2-status/probe-stale-sessions.mjs`（离线、约 15 秒、真实文件 + 真实适配器）。
-  两条规则在这儿是**跨层**的、界面上只表现为"一启动就显示某某在运行中"或"清完还有残留"，
-  不跑这条根本看不出对错：
-  ① 无 `ts` 的条目按**快照 mtime** 兜底，且不参与"ts 变了算心跳"；② 清空要清**文件 + 适配器记忆
-  （`StatusSource.reset?()`）+ 仲裁器记录（`clearSessions()`）** 三处 —— 少清一处，刚清掉的会话
-  会以 idle 的形式回到面板上（ADR 017）。
-- **新增或修改可聚焦窗口时记住两条**（ADR 014 负面结论）：
-  ① 不要用 `win.isVisible()` 判断"要不要 show"—— `show()` 后同一 tick 内它可能仍返回 false，
-  会导致抢焦点的路径重复 `show()` 一次（第二次是 `showInactive`，正好把焦点让出去）；用 `show`/`hide` 事件记账。
-  ② 要排除出 Alt+Tab 必须**显式设 `WS_EX_TOOLWINDOW`** —— `skipTaskbar: true` 不加这个样式位。
-- **`hide()` 之后要重新显示，宠物窗口只能走 `resumePet()`**（show + reload 渲染层）。任何地方单独写
-  `win.show()` 都会留下"看着正常但点不动"的窗口（ADR 009）。
-  **注意适用范围**：实测该现象**只影响鼠标按钮事件、不影响键盘**，且只对"会接收按钮事件"的窗口成立 ——
-  气泡层与控制条都不需要 reload（ADR 014 负面结论 1）。
-- **新增周期性定时器必须挂进 `main/index.ts` 的 `timers` 记账**（ADR 023）：33ms 行为 tick 与 16ms
-  光标轮询由 `show`/`hide` 事件驱动 `startTimers()`/`stopTimers()` —— 宠物隐藏时它们会真的停下。
-  **裸写 `setInterval` 就等于"宠物藏起来还在空转"**，而且退出时会撞上 `Object has been destroyed`。
-  **250ms 的仲裁器 tick 是例外，故意常开** —— 隐藏期间托盘状态与面板仍要更新。
-  若要加"隐藏时不该跑"的定时器，登记进去；若要加"隐藏时也要跑"的，在注释里写清理由。
-- **渲染层的指针事件别按 `e.button === 0` 过滤 `pointermove`**：`pointermove` 的 `button` 是 **−1**，
-  这样写会静默吃掉整段拖动（计数正常、窗口不动，ADR 011 负面结论）。
-- **凡是"位置类参数"都要显式传入，不许让下游自己猜**（ADR 021）：
-  `bubble-layer.ts` 的 `show()` 曾在从未 `followPet()` 过时执行
-  `if (!lastPetBounds) lastPetBounds = win.getContentBounds()` ——
-  **把气泡窗口自己的矩形当成了宠物矩形**，于是气泡跑到屏幕正中。
-  **与 ADR 017 那条"没有 `ts` 不等于刚刚"是同一类错误：兜底值取了一个"看起来像但不等于"的东西。**
-  纪律：**拿不到就"不显示"，而不是显示在错的地方**。
-- **凡是改了「确认 / 消解」语义必须加跑**：`node spikes/m3-ready-ack/probe-ack-revival.mjs`
-  （离线、秒级、**13/13**）。它钉的是**用户报告的那个真实缺陷**：双通道交替（hook 报 running /
-  文件源反复重报 needs-input）**不该**撤销用户的确认位（情形 2），以及反向用例 —— 迟滞窗口**之外**
-  的新求助**仍应**重新举手（情形 2b，防误杀）。碰 `ingest()` 里的 `acknowledged` / `needsInputSince`
-  记账、或 `renderer/control-bar.ts` 的 `needsAck` 谓词，都会经过这两条。
-  **两处还要保持一致**：内核 `ack()` 的 `want()` 与渲染层 `needsAck` 都在回答"什么算待确认"，
-  本轮已因只改了一处而失配一次（`ready` 在面板上连按钮都没有）。改任一侧时同时看另一侧。
-- **凡是改了状态层（`kernel/status.ts`、`source/*`、仲裁与映射、`pet-hook.mjs`），必须跑**：
-  `node tools/status-arbiter.test.mjs`（离线、秒级、虚拟时钟）；
-  动了主进程/渲染层接线再补 `node spikes/m2-status/run-status-e2e.mjs`（端到端、约 45 秒、会弹窗）。
-  这两条不是"有空再跑"——状态层的行为（粘滞、限流、超时）肉眼看宠物根本分辨不出对错。
-  **另加一条**：动了快照的时间语义或「清空状态会话」，跑 `node spikes/m2-status/probe-stale-sessions.mjs`
-  （离线、约 15 秒；见上方硬性约束那一节）。
-- 状态文件与宠物包一样是**投毒点**：取值白名单、文本限长、解析失败保留上次好值、绝不清零。
-- **「要求注意」类状态必须有出口，且出口只能用"独立于心跳的计时器"**（ADR 021）：
-  `needs-input` = 求助（粘滞 + `stickyTimeoutMs` 5 分钟安全阀）；
-  `ready` = 通报（`statusTimeouts.readyMs` 默认 60 秒，到点回 `idle`）；
-  两者都能被 `ack()` 消解（单击宠物 = 已读）。
-  **计时字段绝不能用 `SessionRecord.ts`** —— 它每次心跳都刷新，拿它计时会让机制
-  **在自己要防的场景下失效**（"agent 又发了一次心跳 ⇒ 宠物又得重新等 60 秒"）；
-  要用独立的 `readySince`。**改了这条必跑** `node spikes/m3-ready-exit/run.mjs`
-  （真实窗口、约 30 秒）—— 这条规则在屏幕上只表现为"它就是一直在炒菜"，不跑探针看不出对错。
-- **改了 renderer 或 preload 之后，只跑 `tsc` 不够** —— preload 是 **esbuild** 打包的。
-  症状很隐蔽：探针拿到 **0 个采样点**，日志里 `Unable to load preload script ... module not found`
-  + 渲染层 `exports is not defined`。**必须跑完整 `npm run build`**（ADR 021 踩坑）。
-- **状态源是两条通道，且一个 agent 只由一条通道负责**（ADR 020）：
-  **A 事件驱动 hook**（WorkBuddy / Codex / 将来的 Claude Code —— **同一套事件名与 stdin 契约**）｜
-  **B 被动会话源**（Proma）。两个**不同** agent 同时跑天然不冲突（仲裁器本来就是多会话形状）；
-  会打架的是**同一个 agent 被两条通道同时盯**（hook 说 running、被动源说 idle，来回刷且无报错）
-  —— 被动源是**降级来源，是切换不是叠加**。`sessionId` 必须带来源前缀（`wb:` / `proma:`）。
-- **改了 hook 映射层或客户端必跑** `node tools/codebuddy-hook.test.mjs`（离线、秒级、**70 项**）。
-  **hook 客户端不许有能力影响 agent**：退出码恒 0（Claude 系约定里 2 = 阻断）、有超时、
-  任何异常都吞掉；映射层未知事件**忽略而不是报错**。
-- **`Notification` 必须按 `notification_type` 分流，不能一律给 `needs-input`**（ADR 020 真实回合实测）：
-  `idle_prompt`（"干完了、在等你说话"）在 `Stop` 之后**约一分钟必然出现**，
-  一律给 `needs-input` 会变成**每次干完活宠物都举手**，让这个最宝贵的状态**贬值**。
-  良性类型走白名单；`PermissionRequest` 才是"要授权"的精确通道。
-  **这条只有跑真实回合才能发现**（单测写不出来 —— 当时不知道有这个取值）。
-- **hook 配置只写工程级**（用户级会作用于用户**正在用的所有**会话），且默认写
-  `.codebuddy/settings.local.json`（命令含本机绝对路径，已 gitignore）。
-  安装器 `node tools/install-codebuddy-hooks.mjs` **默认 dry-run**、幂等、可卸载、带备份；
-  **不要手写这个文件**，改动走安装器（它会先摘后装，保证幂等）。
-- **判断一个信号的时间分辨率，要看它的更新频率，不是看它当前的年龄**（ADR 020 负面结论 1）：
-  "心跳文件看起来很新"推不出"它一直在写"。同源纪律：**被动源给的"存在"不等于"在干活"**——
-  把它当 running 判据会制造**假阳性**，而假阳性是最不能接受的失败模式。
-- **描述动作外观时必须引用 `docs/status-reference.png`，不要凭业务状态名猜**。
-  `running`（运行中）落在第 7 行，而这行的画面由宠物包作者决定 —— 淘淘 New 在这里画的是**生日姿态**。
-  第一版验收说明把它写成"原地跑动"，被用户当场发现。换宠物包后重新生成该图。
-- **平台行为一律用探针实测，不要推断**。本项目已有**五次**"推断出来的结论被实测推翻"
-  （逐像素穿透、补丁式 nudge、探针读到残留日志、canvas 字体度量 ≠ Chromium 排版度量、
-  `skipTaskbar: true` 不加 `WS_EX_TOOLWINDOW`）。
-  拿不准就写个最小探针跑一遍，并区分报告里的"实测"与"推测"。
-  另一条同源的纪律：**判据必须只让被测的那条规则生效** —— 测"贴宠物下方 8 DIP"之前先把宠物
-  从默认的右下角挪到屏幕中间，否则量到的是"翻到上方 + 夹进工作区"的结果（M2 ④ 第一版探针
-  就是这样报了两条假失败）。
-- **`~/.desktop-pet/events.jsonl` 里的 `ts` 是"写侧产生时刻"，不是"宠物收到的时刻"**（ADR 020 实测）：
-  拿它算端到端延迟会**严重低估**（实测两者只差 2ms，那只是 hook 进程内"落 payload → 写状态文件"的间隔）。
-  要算真实延迟得另找时间基准（主进程日志，或探针自己加戳）。
-- **要量渲染结果，就量渲染本身**（截屏差分 / DOM 盒子几何），不要用另一套引擎算出的近似值当判据
-  （ADR 013：用 canvas 的 `fontBoundingBox*` 反推"文字被裁了多少"，实测给出假阴性 —— 算出 0，
-  而像素证据显示字下缘被切）。**改了气泡外观（`renderer/bubble.html` / `bubble.ts`）必须跑**
-  `node spikes/m2-hotkey/run.mjs` —— 其中的差分截屏会把"被裁了几像素、左右余量差多少"直接量出来。
-- **改了 `喂状态.bat` 必须跑** `node spikes/m2-hotkey/check-feed-bat.mjs`；
-  测这类交互菜单不能用 `spawnSync(..., {input})`（写完就关 stdin，等价于立刻 EOF），
-  要 `spawn` + 延时逐行写 stdin 且先不关。
+**两条跨主题的通用纪律**（不看上面也该记住）：
+
+1. **平台行为一律用探针实测，不要推断** —— 本项目已有六次推断被实测推翻。
+   报告里要区分"实测"与"推测"。
+2. **凡是"位置类/兜底类"参数都要显式传入，不许让下游自己猜** ——
+   拿不到就选择"不显示"，而不是显示在错的地方（ADR 021）。
+
+## 知识与文档在哪（不要再重新调研）
+
+- 宠物包规格：用户级技能 `codex-pet-pack`（权威来源）。
+- 完整设计：`Windows桌面宠物开发方案.html`（13 章）。
+- 详细内容路由表：`PLAN.md` §0（先查那里，再决定读哪份）。
+- 已经拍过的板：`docs/decisions/INDEX.md`（一行一条）→ 对应 ADR 全文。**已决策的事不要再讨论。**
+- 渲染逻辑参考：`动画映射验证器.html`（帧率、锚点、状态映射已验证）。
 
 ## 会话协议
 
 **开工**
-1. 读 `PLAN.md`（当前状态 + 下一步）与本文件。
-2. 需要规格细节时读技能 `codex-pet-pack`，不要重新调研。
-3. 不确定工程结构时读 `docs/decisions/`，已决策的事不要再讨论。
-4. 改代码前先看 `PLAN.md` §6 锁定决策摘要——那几条都是踩过坑换来的。
+1. 读 `PLAN.md`（§3 状态表 + §4 挂起清单）与本文件。
+2. 按上面的路由表读对应的 `docs/constraints/*.md`。
+3. 需要规格细节时读技能 `codex-pet-pack`；不确定工程结构时读 `docs/decisions/`。
 
 **收工**（缺一不可）
-1. 更新 `PLAN.md` §3 状态表与 §9 变更日志。
-2. 本轮的"为什么这么决定"落一份 ADR 到 `docs/decisions/`。
+1. 更新 `PLAN.md` §3 状态表与 §4 挂起清单（§7 只留最近三条变更，**完整叙述追加到 `docs/changelog.md`**）。
+2. 本轮的"为什么这么决定"落一份 ADR 到 `docs/decisions/`（只增不改）。
 3. 在 `journal/` 追加当日记录。
 4. `git add -A && git commit -m "..."`（里程碑结束至少提交一次）。
 
 ## 离开前
 
-把本轮的决策与进度写回 `PLAN.md`（见上方"收工"）。会话自身的记忆换会话即不可见，未落盘等于没发生。
+把本轮的决策与进度写回 `PLAN.md`（见上方"收工"）。会话自身的记忆换会话即不可见，**未落盘等于没发生**。
