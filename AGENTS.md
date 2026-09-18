@@ -66,6 +66,12 @@
   气泡层与控制条都不需要 reload（ADR 014 负面结论 1）。
 - **渲染层的指针事件别按 `e.button === 0` 过滤 `pointermove`**：`pointermove` 的 `button` 是 **−1**，
   这样写会静默吃掉整段拖动（计数正常、窗口不动，ADR 011 负面结论）。
+- **凡是"位置类参数"都要显式传入，不许让下游自己猜**（ADR 021）：
+  `bubble-layer.ts` 的 `show()` 曾在从未 `followPet()` 过时执行
+  `if (!lastPetBounds) lastPetBounds = win.getContentBounds()` ——
+  **把气泡窗口自己的矩形当成了宠物矩形**，于是气泡跑到屏幕正中。
+  **与 ADR 017 那条"没有 `ts` 不等于刚刚"是同一类错误：兜底值取了一个"看起来像但不等于"的东西。**
+  纪律：**拿不到就"不显示"，而不是显示在错的地方**。
 - **凡是改了状态层（`kernel/status.ts`、`source/*`、仲裁与映射、`pet-hook.mjs`），必须跑**：
   `node tools/status-arbiter.test.mjs`（离线、秒级、虚拟时钟）；
   动了主进程/渲染层接线再补 `node spikes/m2-status/run-status-e2e.mjs`（端到端、约 45 秒、会弹窗）。
@@ -73,6 +79,17 @@
   **另加一条**：动了快照的时间语义或「清空状态会话」，跑 `node spikes/m2-status/probe-stale-sessions.mjs`
   （离线、约 15 秒；见上方硬性约束那一节）。
 - 状态文件与宠物包一样是**投毒点**：取值白名单、文本限长、解析失败保留上次好值、绝不清零。
+- **「要求注意」类状态必须有出口，且出口只能用"独立于心跳的计时器"**（ADR 021）：
+  `needs-input` = 求助（粘滞 + `stickyTimeoutMs` 5 分钟安全阀）；
+  `ready` = 通报（`statusTimeouts.readyMs` 默认 60 秒，到点回 `idle`）；
+  两者都能被 `ack()` 消解（单击宠物 = 已读）。
+  **计时字段绝不能用 `SessionRecord.ts`** —— 它每次心跳都刷新，拿它计时会让机制
+  **在自己要防的场景下失效**（"agent 又发了一次心跳 ⇒ 宠物又得重新等 60 秒"）；
+  要用独立的 `readySince`。**改了这条必跑** `node spikes/m3-ready-exit/run.mjs`
+  （真实窗口、约 30 秒）—— 这条规则在屏幕上只表现为"它就是一直在炒菜"，不跑探针看不出对错。
+- **改了 renderer 或 preload 之后，只跑 `tsc` 不够** —— preload 是 **esbuild** 打包的。
+  症状很隐蔽：探针拿到 **0 个采样点**，日志里 `Unable to load preload script ... module not found`
+  + 渲染层 `exports is not defined`。**必须跑完整 `npm run build`**（ADR 021 踩坑）。
 - **状态源是两条通道，且一个 agent 只由一条通道负责**（ADR 020）：
   **A 事件驱动 hook**（WorkBuddy / Codex / 将来的 Claude Code —— **同一套事件名与 stdin 契约**）｜
   **B 被动会话源**（Proma）。两个**不同** agent 同时跑天然不冲突（仲裁器本来就是多会话形状）；
