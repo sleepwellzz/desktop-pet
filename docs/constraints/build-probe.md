@@ -15,6 +15,10 @@
 - **改了 renderer 或 preload 之后必须跑完整 `npm run build`** —— preload 是 **esbuild** 打包的。
   症状很隐蔽：探针拿到 **0 个采样点**，日志里 `Unable to load preload script ... module not found`
   + 渲染层 `exports is not defined`（ADR 021 踩坑）。
+- **`.bat` 必须纯 ASCII，而且"只改注释"也算改**：cmd 按 **GBK** 读 `.bat`，中文注释会被
+  解析成命令执行（2026-09-18 实测：`'控制台' 不是内部或外部命令`，脚本 exit 1）。
+  改完任何 `.bat` 都跑一次校验，别靠眼睛看：
+  `node -e "const b=require('fs').readFileSync('<file>.bat');console.log([...b].filter(c=>c>127).length)"` ⇒ 必须是 **0**。
 - **在 `dist/` 里 grep 中文会假失败**：esbuild 默认 `charset=ascii`，会把非 ASCII 字符转义成
   `\u5168...` 的形式。所以在产物里搜"全部已确认"要**先反转义再找**，否则会得出
   "这个功能没进产物"的错误结论（2026-09-18 就这么误判过一次）。

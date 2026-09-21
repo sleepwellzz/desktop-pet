@@ -150,6 +150,13 @@ desktop-pet/
 
 ## 7. 变更日志（最近三条 · 全文见 `docs/changelog.md`）
 
+- **2026-09-18**：**无控制台启动（ADR 028）**：新增 `启动桌宠-后台.bat` + 日志落盘
+  `~/.desktop-pet/pet.log`。根因实测：`electron.exe` 是 **GUI 子系统**（不隐藏窗口启动，
+  `conhost.exe` 14→14 不变），旧脚本的黑窗口是 `npm start → node.exe`（console 子系统）带来的，
+  而它正是宠物的父进程 ⇒ 关窗即退出。现在直接 `start electron.exe .`，**无任何常驻窗口**，
+  宠物驻留托盘。开机自启同理天然无控制台。
+  踩坑：我在 `.bat` 注释里写中文导致脚本 exit 1（cmd 按 GBK 解析）—— 已把"改 .bat 必须校验
+  非 ASCII 字节数为 0"写进构建约束。
 - **2026-09-18**：**判据 6 的时间基准落地（ADR 026）**：`recordEvent()` 加 `recvAt`，
   端到端延迟 = `recvAt - ts` = **中位 110ms**（此前用 `ts` 之差只有 2ms，低估约 55 倍）。
   新增 `tools/measure-latency.mjs`（取数）与 `spikes/m3-latency/run.mjs`（真实窗口验证，PASS）。

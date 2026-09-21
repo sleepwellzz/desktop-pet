@@ -82,9 +82,38 @@ function toDataUrl(path: string, format: 'webp' | 'png'): string {
  */
 const TRACE_BOOT = process.argv.includes('--trace-boot');
 const BOOT_T0 = Date.now();
+const LOG_PATH = join(homedir(), '.desktop-pet', 'pet.log');
 const bootMark = TRACE_BOOT
   ? (label: string): void => { console.log(`[boot] ${Date.now() - BOOT_T0} ms ${label}`); }
   : (): void => { /* 未开启打戳 */ };
+
+/**
+ * 把 `console` 同时写一份到 `~/.desktop-pet/pet.log`。
+ *
+ * 为什么需要它：以前日志只打到 stdout，于是**必须挂着一个控制台窗口**才看得到 ——
+ * 关掉窗口宠物就退出（控制台是它的父进程）。有了无控制台的启动方式（`启动桌宠-后台.bat`）
+ * 之后，日志必须有别的地方可去，否则排查类问题会变成"两眼一抹黑"。
+ *
+ * 每次启动**截断**（只留本次运行的日志）：它是排查工具，不是审计台账；
+ * 真正需要留痕的事件流水在 `events.jsonl`（只增不删）。
+ */
+function setupFileLog(): void {
+  try {
+    mkdirSync(dirname(LOG_PATH), { recursive: true });
+    writeFileSync(LOG_PATH, `[pet] ==== 启动 ${new Date().toISOString()} ====\n`, 'utf8');
+    for (const level of ['log', 'warn', 'error'] as const) {
+      const orig = console[level].bind(console);
+      console[level] = (...args: unknown[]): void => {
+        orig(...(args as []));
+        try {
+          appendFileSync(LOG_PATH, args.map((a) => (typeof a === 'string' ? a : String(a))).join(' ') + '\n', 'utf8');
+        } catch { /* 日志写失败绝不能影响运行 */ }
+      };
+    }
+  } catch (e) {
+    console.warn('[pet] 日志文件初始化失败（不影响运行）：' + String(e));
+  }
+}
 
 /**
  * 启动装配。**线性执行、不改顺序**，下面的索引就是执行顺序（搜 `═══` 可跳段）。
@@ -97,6 +126,7 @@ const bootMark = TRACE_BOOT
  * 权衡下来：**先让它可导航**（索引 + 分节），等真出现"某一段要被复用"的需求再拆。
  */
 function boot(): void {
+  setupFileLog();
   bootMark('boot() 进入');
   // ══════════════════════════════════════════════════════════════════════
   // 装配索引（按执行顺序）
