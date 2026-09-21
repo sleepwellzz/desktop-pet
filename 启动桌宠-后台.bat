@@ -29,8 +29,12 @@ rem with taskkill (no /F, same as clicking X):
 rem   start "" electron.exe            -> ALL KILLED  (the pet dies with the window)
 rem   powershell Start-Process         -> ALL SURVIVE <-- this is what we use
 rem   node detached:true (DETACHED_PROCESS) -> ALL SURVIVE
-rem The old script needed a black window only because it went through
-rem `npm start` -> node.exe.
+rem
+rem WHY -ArgumentList '.' and NOT '%CD%': this project lives under a path WITH SPACES
+rem ("...\Agent Base\..."). PowerShell splits -ArgumentList on whitespace, so the app
+rem path arrives truncated ("<工程目录>") and Electron dies with
+rem "Unable to find Electron app". Passing '.' and letting -WorkingDirectory resolve it
+rem avoids the whole class of quoting problems.
 rem
 rem NOTE: this file must stay ASCII-only. cmd reads .bat as GBK and Chinese
 rem comment text gets parsed as commands (this actually broke the script once).
@@ -39,7 +43,7 @@ echo [2/2] starting the pet (no console window, lives in the tray).
 echo       This window closes itself in 3 seconds.
 echo       Log: %USERPROFILE%\.desktop-pet\pet.log
 echo.
-powershell -NoProfile -Command "Start-Process -FilePath '%~dp0node_modules\electron\dist\electron.exe' -ArgumentList '%CD%' -WorkingDirectory '%CD%'"
+powershell -NoProfile -Command "Start-Process -FilePath '%~dp0node_modules\electron\dist\electron.exe' -ArgumentList '.' -WorkingDirectory '%CD%'"
 if errorlevel 1 goto :fail2
 
 timeout /t 3 /nobreak >nul
