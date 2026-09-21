@@ -221,7 +221,11 @@ function boot(): void {
   // 状态层的到点收敛参数从宠物包读（ADR 021）：不写死在内核里，因为"60 秒够不够"
   // 是观感取舍，换宠物包/换使用节奏时可能要调；而它在屏幕上完全看不出对错，所以必须可配 + 可单测。
   const statusTimeouts = (pack.runtime as unknown as {
-    statusTimeouts?: { stickyMs?: number; readyMs?: number; reAskMinIntervalMs?: number; sessionStaleMs?: number };
+    statusTimeouts?: {
+      stickyMs?: number; readyMs?: number; reAskMinIntervalMs?: number; sessionStaleMs?: number;
+      /** 双通道逐出（ADR 027）：hook 优先于被动源，低优先级上报被丢弃。 */
+      dominance?: { enabled?: boolean; holdMs?: number };
+    };
   }).statusTimeouts ?? {};
   /**
    * `--ready-ms=<毫秒>`：**给探针用的接缝**（与 `--no-status-source` / `--no-behavior` 同一套路）。
@@ -239,6 +243,7 @@ function boot(): void {
     readyTimeoutMs: Number.isFinite(readyMsOverride) ? readyMsOverride : statusTimeouts.readyMs,
     reAskMinIntervalMs: statusTimeouts.reAskMinIntervalMs,
     sessionStaleMs: statusTimeouts.sessionStaleMs,
+    dominance: statusTimeouts.dominance,
     log: (m) => console.log('[pet]' + m),
   });
   if (Number.isFinite(readyMsOverride)) {

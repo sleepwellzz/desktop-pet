@@ -24,11 +24,13 @@ echo [1/2] building TypeScript (about 30s)...
 call npm.cmd run build
 if errorlevel 1 goto :fail
 
-rem Measured 2026-09-18: electron.exe is a GUI-subsystem binary, so launching it
-rem directly brings NO console (started without hiding, conhost.exe count 14->14).
+rem Measured 2026-09-18/21, three launch methods, 3 processes each, window closed
+rem with taskkill (no /F, same as clicking X):
+rem   start "" electron.exe            -> ALL KILLED  (the pet dies with the window)
+rem   powershell Start-Process         -> ALL SURVIVE <-- this is what we use
+rem   node detached:true (DETACHED_PROCESS) -> ALL SURVIVE
 rem The old script needed a black window only because it went through
-rem `npm start` -> node.exe, which IS a console-subsystem binary.
-rem So: plain `start` here, no PowerShell required.
+rem `npm start` -> node.exe.
 rem
 rem NOTE: this file must stay ASCII-only. cmd reads .bat as GBK and Chinese
 rem comment text gets parsed as commands (this actually broke the script once).
@@ -37,7 +39,7 @@ echo [2/2] starting the pet (no console window, lives in the tray).
 echo       This window closes itself in 3 seconds.
 echo       Log: %USERPROFILE%\.desktop-pet\pet.log
 echo.
-start "" "%~dp0node_modules\electron\dist\electron.exe" "."
+powershell -NoProfile -Command "Start-Process -FilePath '%~dp0node_modules\electron\dist\electron.exe' -ArgumentList '%CD%' -WorkingDirectory '%CD%'"
 if errorlevel 1 goto :fail2
 
 timeout /t 3 /nobreak >nul

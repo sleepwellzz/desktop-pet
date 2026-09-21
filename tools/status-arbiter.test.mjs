@@ -1175,6 +1175,114 @@ section('⑮ 双通道冲突告警（只告警，不改状态）');
   }
 }
 
+// —— ⑮c 双通道**逐出**：hook 优先于被动源（ADR 027，此前只告警不处置）——
+// 要钉住的核心命题：**按通道优先级，不按到达顺序**。
+// 否决"后到者胜"是因为那正是状态来回刷的机制本身；否决"先到者锁定"是因为桌宠启动时
+// 往往先读到快照（被动源），会把 hook 永久锁在外面 —— 与"被动源是降级来源"正好相反。
+section('⑮c 双通道逐出（hook 优先，不按到达顺序）');
+{
+  const make = (dominance) => {
+    const clock = makeClock(1_000_000);
+    const logs = [];
+    const arb = new StatusArbiter({
+      statusMap: runtimeManifest.statusMap,
+      now: clock.now,
+      dominance,
+      log: (m) => logs.push(m),
+    });
+    return { clock, arb, logs };
+  };
+
+  // ① hook 主导后，被动源的上报被丢弃（这才是"逐出"，此前只打告警）
+  {
+    const { clock, arb, logs } = make({ enabled: true, holdMs: 600_000 });
+    arb.ingest({ sessionId: 's', status: 'running', origin: 'hook' });
+    eq('前置：hook 主导下宠物在跑', arb.state.status, 'running');
+    clock.advance(600);
+    arb.ingest({ sessionId: 's', status: 'idle', origin: 'file' });
+    eq('被动源的「干完了」被丢弃（宠物不会被打回 idle）', arb.state.status, 'running');
+    eq('丢弃留了日志（可诊断，不是静默消失）', logs.some((m) => m.includes('丢弃')), true);
+  }
+
+  // ② 反向：被动源先到，hook 随后**接管**（优先级更高，不是先到者锁定）
+  {
+    const { clock, arb } = make({ enabled: true, holdMs: 600_000 });
+    arb.ingest({ sessionId: 's', status: 'idle', origin: 'file' });
+    clock.advance(600);
+    arb.ingest({ sessionId: 's', status: 'running', origin: 'hook' });
+    eq('hook 随后到达即接管（不会被被动源锁在门外）', arb.state.status, 'running');
+  }
+
+  // ③ 主导通道沉默超时后释放 —— 安全底线：hook 卸载/崩溃时被动源必须能接管
+  {
+    const { clock, arb } = make({ enabled: true, holdMs: 30_000 });
+    arb.ingest({ sessionId: 's', status: 'running', origin: 'hook' });
+    clock.advance(600);
+    arb.ingest({ sessionId: 's', status: 'idle', origin: 'file' });
+    eq('未到 holdMs：被动源仍被丢弃', arb.state.status, 'running');
+    clock.advance(31_000);
+    arb.ingest({ sessionId: 's', status: 'idle', origin: 'file' });
+    eq('超过 holdMs：被动源接管生效（宠物不会永久失明）', arb.state.status, 'idle');
+  }
+
+  // ④ 不同会话各管各的
+  {
+    const { clock, arb } = make({ enabled: true, holdMs: 600_000 });
+    arb.ingest({ sessionId: 'a', status: 'running', origin: 'hook' });
+    clock.advance(600);
+    arb.ingest({ sessionId: 'b', status: 'blocked', origin: 'file' });
+    eq('b 走被动源不受 a 的 hook 影响', arb.state.status, 'blocked');
+  }
+
+  // ⑤ 开关关掉 ⇒ 退回"只告警不逐出"的旧行为
+  {
+    const { clock, arb } = make({ enabled: false });
+    arb.ingest({ sessionId: 's', status: 'running', origin: 'hook' });
+    clock.advance(600);
+    arb.ingest({ sessionId: 's', status: 'blocked', origin: 'file' });
+    eq('enabled=false：被动源照样生效（退回旧行为）', arb.state.status, 'blocked');
+  }
+
+  // ⑥ 没有通道标签的上报（人工喂状态）永远放行，且不改变主导通道
+  {
+    const { clock, arb } = make({ enabled: true, holdMs: 600_000 });
+    arb.ingest({ sessionId: 's', status: 'running', origin: 'hook' });
+    clock.advance(600);
+    arb.ingest({ sessionId: 's', status: 'blocked' });          // 人工喂，无 origin
+    eq('人工喂状态不被逐出（否则手动干预会静默失效）', arb.state.status, 'blocked');
+    clock.advance(600);
+    arb.ingest({ sessionId: 's', status: 'idle', origin: 'file' });
+    eq('但人工喂状态不改变主导通道：hook 仍然把被动源挡在外面', arb.state.status, 'blocked');
+  }
+
+  // ⑦ 被丢弃的上报**不许**碰任何记账 —— 否则等于没逐出
+  {
+    const { clock, arb } = make({ enabled: true, holdMs: 600_000 });
+    // hook 报 ready（开始通报计时），随后被动源谎报 running
+    arb.ingest({ sessionId: 's', status: 'ready', origin: 'hook' });
+    clock.advance(600);
+    arb.ingest({ sessionId: 's', status: 'running', origin: 'file' });   // 应被丢弃
+    eq('被丢弃的上报不会顶掉 hook 的 ready', arb.state.status, 'ready');
+    arb.ingest({ sessionId: 's', status: 'ready', origin: 'hook' });
+    clock.advance(61_000);
+    arb.tick();
+    eq('ready 的通报时效照常到期（丢弃者没干扰它的计时）', arb.state.status, 'idle');
+  }
+
+  // ⑧ 真实现场：hook 的 needs-input 被确认后，被动源重报**不该**复活它
+  {
+    const { clock, arb } = make({ enabled: true, holdMs: 600_000 });
+    arb.ingest({ sessionId: 's', status: 'needs-input', origin: 'hook' });
+    eq('前置：举手', arb.state.status, 'needs-input');
+    arb.ack();
+    eq('用户确认后松手', arb.state.status, 'idle');
+    clock.advance(600);
+    arb.ingest({ sessionId: 's', status: 'needs-input', origin: 'file' });   // 被动源重报
+    eq('被动源重报被丢弃：宠物不会"点完又举手"（ADR 022 那个缺陷的机制被切断）',
+      arb.state.status, 'idle');
+  }
+}
+
 // —— ⑮b 状态文件：`origin` 通道标签的透传与校验（投毒点纪律）——
 section('⑮b 状态文件的 origin 透传');
 {

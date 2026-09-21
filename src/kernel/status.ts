@@ -144,6 +144,30 @@ export interface ArbiterOptions {
   now?: () => number;
   /** 诊断输出，默认静默。 */
   log?: (message: string) => void;
+  /**
+   * 双通道互斥的**逐出**策略（ADR 027）。默认开启。
+   *
+   * 背景：ADR 020 规定"一个 agent 只由一条通道负责"，但此前只有文档约束 + 运行期告警
+   * （ADR 023），**违反时仍会真的打架** —— hook 说 running、被动源说 idle，来回刷，
+   * 并且每次跳回来都撤销用户的确认位（这就是 ADR 022 修的那个缺陷的机制）。
+   *
+   * 规则：**按通道优先级，不按到达顺序**。
+   *   - 事件驱动 hook（`origin: 'hook'`）**高于**被动源（`file` / `proma` / 无标签）；
+   *   - 低优先级的上报被**丢弃**（不进仲裁器，只打日志），直到主导通道沉默超过 `holdMs`；
+   *   - 没有主导通道时，谁先到谁主导。
+   *
+   * 为什么否决另外两种：
+   *   - "后到者胜"正是当前来回刷的机制本身；
+   *   - "先到者锁定"在桌宠启动时往往先读到**快照**（被动源），会把 hook 永久锁在外面 ——
+   *     与"被动源是降级来源"的意图正好相反。
+   * `holdMs` 是安全底线：hook 挂了也不会让宠物永久失明（到期后被动源恢复生效）。
+   */
+  dominance?: { enabled?: boolean; holdMs?: number };
+}
+
+/** 通道优先级：hook 是精确来源，被动源是降级来源（ADR 020）。 */
+function channelRank(origin: string | undefined): number {
+  return origin === 'hook' ? 2 : 1;
 }
 
 interface SessionRecord {
@@ -190,6 +214,8 @@ const DEFAULTS = {
   reAskMinIntervalMs: 60_000,
   sessionStaleMs: 900_000,
   defaultState: 'idle',
+  /** 主导通道沉默多久后释放（ADR 027）。10 分钟：够盖住一次长任务里的合法空档。 */
+  dominanceHoldMs: 600_000,
 };
 
 /**
@@ -226,9 +252,12 @@ function priorityOf(statusMap: StatusMap | undefined, status: PetStatus): number
 }
 
 export class StatusArbiter {
-  private readonly opts: Required<Omit<ArbiterOptions, 'statusMap' | 'log'>> & {
+  private readonly opts: Required<Omit<ArbiterOptions, 'statusMap' | 'log' | 'dominance'>> & {
     statusMap?: StatusMap;
     log?: (m: string) => void;
+    /** 摊平后的逐出策略（ADR 027）—— 免得每次判断都写 `this.opts.dominance?.enabled`。 */
+    dominanceEnabled: boolean;
+    dominanceHoldMs: number;
   };
   private readonly sessions = new Map<string, SessionRecord>();
   /**
@@ -272,6 +301,14 @@ export class StatusArbiter {
   private readonly lastOrigin = new Map<string, { origin: string; at: number }>();
   /** 同一对"通道冲突"上一次告警的时刻，用于冷却（key = 会话 id + 归一化后的来源对）。 */
   private readonly dualChannelWarnedAt = new Map<string, number>();
+  /**
+   * 每个会话当前的**主导通道**（会话 id → 通道 + 最近一次上报时刻）—— 逐出策略的记账
+   * （ADR 027，与上面的 `lastOrigin` 不同：那个只管告警，这个是**真的丢弃低优先级上报**）。
+   *
+   * 沉默了 `dominanceHoldMs` 就视为释放：主导通道消失时（hook 卸载 / agent 崩溃），
+   * 被动源必须能接管，否则宠物会永久失明。
+   */
+  private readonly dominant = new Map<string, { origin: string; at: number }>();
   private out: Output = { status: 'idle', sessionId: null };
   /** 被限流挡下的目标状态，等窗格过后由 tick 应用（不丢弃）。 */
   private pending: Output | null = null;
@@ -290,15 +327,66 @@ export class StatusArbiter {
       readyTimeoutMs: options.readyTimeoutMs ?? DEFAULTS.readyTimeoutMs,
       reAskMinIntervalMs: options.reAskMinIntervalMs ?? DEFAULTS.reAskMinIntervalMs,
       sessionStaleMs: options.sessionStaleMs ?? DEFAULTS.sessionStaleMs,
+      dominanceEnabled: options.dominance?.enabled ?? true,
+      dominanceHoldMs: options.dominance?.holdMs ?? DEFAULTS.dominanceHoldMs,
       now: options.now ?? (() => Date.now()),
       statusMap: options.statusMap,
       log: options.log,
     };
   }
 
+  /**
+   * 这条事件是否**获准进入仲裁器**（双通道逐出，ADR 027）。
+   *
+   * 返回 false 表示"丢弃"：该会话当前由更高优先级的通道主导，而这条来自降级通道。
+   * 丢弃是**静默的**（只打日志）—— 上游是观测者，不该因为我们不收就改变自己的行为。
+   */
+  private admits(sessionId: string, origin: string | undefined, now: number): boolean {
+    if (!this.opts.dominanceEnabled) return true;
+    // **没有通道标签的上报一律放行**（人工用 pet-hook.mjs 喂状态、旧版客户端）。
+    // 逐出它会让"我想手动把宠物掰回某个状态"静默失效 —— 那比偶尔漏一次互斥更糟。
+    // 它也不改变主导通道：一次手工喂状态不该把 hook 挤下场。
+    if (!origin) return true;
+    const key = origin;
+    const cur = this.dominant.get(sessionId);
+    // 没有主导通道，或主导通道已经沉默超时 ⇒ 这条事件接管。
+    if (!cur || now - cur.at > this.opts.dominanceHoldMs) {
+      if (cur) {
+        this.log(`[status] 主导通道「${cur.origin}」沉默 ${Math.round((now - cur.at) / 1000)}s 超时，`
+          + `交由「${key}」接管（会话 ${sessionId}）`);
+      }
+      this.dominant.set(sessionId, { origin: key, at: now });
+      return true;
+    }
+    if (cur.origin === key) {              // 同一条通道：续报，只刷新时刻
+      cur.at = now;
+      return true;
+    }
+    if (channelRank(key) > channelRank(cur.origin)) {
+      // 高优先级通道接管（典型：被动源先到，hook 随后到）。
+      this.log(`[status] 会话 ${sessionId} 的通道由「${cur.origin}」切换为「${key}」`
+        + `（优先级更高，ADR 027）`);
+      this.dominant.set(sessionId, { origin: key, at: now });
+      return true;
+    }
+    this.log(`[status] 丢弃来自降级通道「${key}」的上报（会话 ${sessionId} 当前由`
+      + `「${cur.origin}」主导；ADR 020 要求一个 agent 只由一条通道负责）`);
+    return false;
+  }
+
   /** 摄入一条状态事件。返回仲裁输出是否因此发生变化（变化才需要推送渲染层）。 */
   ingest(e: StatusEvent): boolean {
     const now = this.opts.now();
+    // **先诊断、再决定收不收** —— 这两件事相互独立，顺序不能反：
+    //   告警（ADR 023）负责"让冲突可见"，是诊断；
+    //   逐出（ADR 027）负责"按优先级处置"，是动作。
+    // 若把告警放在逐出之后，一旦逐出生效，低优先级事件根本走不到这里 ——
+    // 于是"有两条通道在盯同一个会话"这件事就再也不报警了，而它恰恰是用户需要知道的。
+    this.detectDualChannel(e.sessionId, e.origin, now);
+    // 逐出必须**在记账之前**：被丢弃的上报连记账都不该碰 —— 否则它仍会刷新 `ts`
+    // （让静默兜底永不触发）、仍会写 `readySince` / `needsInputSince`
+    // （就仍会撤销用户的确认位），等于没逐出。
+    if (!this.admits(e.sessionId, e.origin, now)) return false;
     const ts = typeof e.ts === 'number' && Number.isFinite(e.ts) ? e.ts : now;
     const prev = this.sessions.get(e.sessionId);
     // 会话**重新**提出新问题（非 needs-input → needs-input）时清掉旧的确认记录，
@@ -335,7 +423,6 @@ export class StatusArbiter {
     } else {
       this.readySince.delete(e.sessionId);
     }
-    this.detectDualChannel(e.sessionId, e.origin, now);
     this.sessions.set(e.sessionId, {
       sessionId: e.sessionId,
       status: e.status,
@@ -419,6 +506,7 @@ export class StatusArbiter {
     this.needsInputSince.clear();
     this.lastOrigin.clear();
     this.dualChannelWarnedAt.clear();
+    this.dominant.clear();
     this.pending = null;
     this.sticky = null;
     this.lastChangeAt = Number.NEGATIVE_INFINITY;
@@ -577,6 +665,9 @@ export class StatusArbiter {
       this.readySince.delete(id);
       this.needsInputSince.delete(id);
       this.lastOrigin.delete(id);
+      // 主导通道也一并清掉：会话都没了，留着"谁主导"没有意义，
+      // 而且同一 sessionId 再次出现时应当重新按到达顺序决定通道。
+      this.dominant.delete(id);
       this.log(`会话 ${id} 静默超过 ${minutes} 分钟，按 idle 处理（疑似 agent 崩溃或未收尾）`);
     }
   }
