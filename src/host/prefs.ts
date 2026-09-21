@@ -10,12 +10,8 @@ import { dirname, join } from 'node:path';
 export interface Prefs {
   /** 用户选定的缩放。缺省表示"跟随宠物包的 defaultScale"。 */
   scale?: number;
-  /**
-   * 用户自定义的全局快捷键（Electron accelerator 语法，Windows 键写作 `Super`）。
-   * 缺省表示"跟随宠物包 interaction.hideShortcut.default"。本轮没有按键捕获界面，
-   * 想改就直接编这个文件（路径见 prefsPath()）。
-   */
-  hotkey?: string;
+  // （原 `hotkey?: string` 随全局快捷键功能一起删除，ADR 032。
+  //  旧 prefs.json 里若还留着这个字段，loadPrefs 会直接忽略它 —— 不报错、不迁移。）
 }
 
 export function prefsPath(): string {
@@ -29,8 +25,8 @@ export function loadPrefs(): Prefs {
     const p: Prefs = {};
     const scale = raw['scale'];
     if (typeof scale === 'number' && Number.isFinite(scale) && scale > 0) p.scale = scale;
-    const hotkey = raw['hotkey'];
-    if (typeof hotkey === 'string' && hotkey.trim()) p.hotkey = hotkey.trim();
+    // 旧版本写过的 `hotkey` 字段在这里被自然忽略（ADR 032）—— 不需要迁移逻辑，
+    // 读不到就当没有，写回时也不会再带上它。
     return p;
   } catch {
     return {};

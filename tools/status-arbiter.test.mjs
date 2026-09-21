@@ -571,20 +571,10 @@ section('⑨b ready 的通报时效');
   }
 }
 
-// —— ⑩ 快捷键写法的归一化 ——
-section('⑩ 快捷键人话 → Electron accelerator');
-{
-  const { normalizeAccelerator } = require(join(root, 'dist/host/hotkey.js'));
-  eq('Win+Alt+P → Super+Alt+P（Windows 键在 Electron 里叫 Super）',
-    normalizeAccelerator('Win+Alt+P'), 'Super+Alt+P');
-  eq('小写 ctrl 归一化', normalizeAccelerator('ctrl+alt+p'), 'Control+Alt+P');
-  eq('裸单字符键名大写', normalizeAccelerator('Super+Alt+space'), 'Super+Alt+space');
-  eq('已是 Electron 写法则不变', normalizeAccelerator('CommandOrControl+Shift+Alt+P'), 'CommandOrControl+Shift+Alt+P');
-  eq('windows 别名', normalizeAccelerator('windows+shift+p'), 'Super+Shift+P');
-  eq('多字符键名保留', normalizeAccelerator('Ctrl+Alt+F5'), 'Control+Alt+F5');
-  // 关键：宠物包里写的就是人话（Win+...），不归一化会注册成功但永不触发
-  eq('宠物包里的默认值归一化后可用', normalizeAccelerator(runtimeManifest.interaction.hideShortcut.default), 'Super+Alt+P');
-}
+// —— ⑩ 快捷键写法的归一化 —— **整段删除（ADR 032，2026-09-21）**：
+// 全局快捷键功能被用户拍板移除（不用、且从未被真实按过一次），`src/host/hotkey.ts` 一并删除。
+// 那段 7 条断言测的是 `normalizeAccelerator()` —— 随被测代码一起消失，不是"被跳过的测试"。
+// 编号留空不重排：后面 ⑪–⑯ 共 9 节的编号一旦改动，只会让历史日志与这里的引用对不上。
 
 // —— ⑪ 控制条显示策略（纯函数 + 虚拟时钟）——
 // **2026-09-17 起这份状态机只剩五条规则**：悬停唤出被移除，连"悬停计时 / armed 位 /
@@ -604,7 +594,8 @@ section('⑪ 控制条显示策略');
   const clock = makeClock();
   const ev = (s, e) => nextBarState(s, e, policy, clock.now());
 
-  // —— 唤出 / 收起：三条唤出路径（右键宠物 / 快捷键 / 托盘菜单）共用 toggle ——
+  // —— 唤出 / 收起：两条唤出路径（右键宠物 / 托盘菜单「控制条」）共用 toggle ——
+  // （第三条「全局快捷键」已于 ADR 032 删除；状态机本身不变，仍是一个 toggle 事件。）
   let st = ev({ ...BAR_HIDDEN }, { kind: 'toggle' });
   eq('toggle → 唤出', st.visible, true);
   eq('状态机不替谁记焦点（焦点由窗口的真实 focus 事件送来）', st.hasFocus, false);

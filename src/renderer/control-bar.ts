@@ -190,7 +190,7 @@ setInterval(() => {
 
 window.petBar.onView(render);
 
-// 快捷键唤出时主进程会下令聚焦。本轮面板没有输入框，把焦点交给面板本身即可 ——
+// 唤出时主进程会下令聚焦（右键宠物 / 托盘菜单「控制条」）。本轮面板没有输入框，把焦点交给面板本身即可 ——
 // 这样 Esc 一定收得到（M3 加输入框后，这里改成聚焦输入框，别的地方都不用动）。
 barEl.tabIndex = -1;
 window.petBar.onFocus(() => barEl.focus());

@@ -45,22 +45,15 @@ const mouse_event = user32.func('void mouse_event(uint flags, uint dx, uint dy, 
 const GetSystemMetrics = user32.func('int GetSystemMetrics(int index)');
 const MOVE = 0x0001, ABSOLUTE = 0x8000, KEYUP = 0x0002;
 const RIGHT_DOWN = 0x0008, RIGHT_UP = 0x0010;
-const VK_LWIN = 0x5B, VK_MENU = 0x12, VK_P = 0x50, VK_A = 0x41, VK_ESCAPE = 0x1B;
+// （原 VK_LWIN / VK_MENU / VK_P 与 pressHotkey() 随全局快捷键删除，ADR 032。
+//   现在收起面板走右键宠物，只留 A 与 Esc 两个键用于"键盘还进不进得来"的判定。）
+const VK_A = 0x41, VK_ESCAPE = 0x1B;
 const VX = GetSystemMetrics(76), VY = GetSystemMetrics(77), VW = GetSystemMetrics(78), VH = GetSystemMetrics(79);
 const moveTo = (x, y) => mouse_event(MOVE | ABSOLUTE,
   Math.round(((x - VX) * 65535) / Math.max(1, VW - 1)),
   Math.round(((y - VY) * 65535) / Math.max(1, VH - 1)), 0, 0);
 
 const tap = (vk) => { keybd_event(vk, 0, 0, 0); keybd_event(vk, 0, KEYUP, 0); };
-async function pressHotkey() {
-  keybd_event(VK_LWIN, 0, 0, 0);
-  keybd_event(VK_MENU, 0, 0, 0);
-  keybd_event(VK_P, 0, 0, 0);
-  await sleep(70);
-  keybd_event(VK_P, 0, KEYUP, 0);
-  keybd_event(VK_MENU, 0, KEYUP, 0);
-  keybd_event(VK_LWIN, 0, KEYUP, 0);
-}
 
 try { fs.rmSync(STATUS_FILE, { force: true }); } catch (_) { /* ignore */ }
 // 关掉自主行为层：宠物自己走动会把位置类断言搅乱（行为层有自己的探针 spikes/m3-behavior）。
@@ -101,7 +94,8 @@ app.whenReady().then(async () => {
 
     const dbg = globalThis.__petDebug;
     if (!dbg) throw new Error('拿不到 __petDebug（--expose-actions 没生效？）');
-    log(`[probe] 宠物窗=${!!pet} 控制条窗=${!!bar} 快捷键=${dbg.hotkey()} DPR=${dpr}`);
+    // （原日志里的 `快捷键=${dbg.hotkey()}` 已随全局快捷键一并删除，ADR 032。）
+    log(`[probe] 宠物窗=${!!pet} 控制条窗=${!!bar} DPR=${dpr}`);
 
     const keys = async () => bar.webContents.executeJavaScript('JSON.stringify(window.__keys)')
       .then((s) => JSON.parse(s)).catch(() => null);
@@ -154,10 +148,13 @@ app.whenReady().then(async () => {
 
     // —— ③ 关键：hide → show 往返之后，键盘还进不进得来 ——
     // 这就是 ADR 009 那个坑在**键盘路径**上的复现实验。
-    await pressHotkey();          // 收起
+    // 收起 / 再唤出改用**右键宠物**（它本来就是 toggle）。
+    // 2026-09-21 之前这里按的是 Win+Alt+P，那颗全局快捷键已删除（ADR 032）；
+    // 本探针要验的是"hide→show 往返后键盘还进不进得来"，换哪条路径都不改变命题。
+    await rightClickPet();        // 收起
     await sleep(1200);
-    const hidden = await step('按快捷键收起');
-    await pressHotkey();          // 再唤出
+    const hidden = await step('右键再次点击收起');
+    await rightClickPet();        // 再唤出
     await sleep(1500);
     const k2 = (await keys())?.down ?? 0;
     const reshown = await step('再次唤出（hide→show 往返后）');
@@ -190,7 +187,7 @@ app.whenReady().then(async () => {
     if (!report.rightClickShow.visible) fails.push('右键宠物没能唤出控制条');
     if (!report.rightClickShow.focused) fails.push('右键唤出后没有拿到焦点（键盘将永远进不来）');
     if (report.rightClickShow.keyDelta < 1) fails.push('右键唤出后键盘事件收不到（焦点拿到了但消息不通）');
-    if (report.roundTrip.hiddenVisible !== false) fails.push('快捷键没能收起控制条（往返用例前置不成立）');
+    if (report.roundTrip.hiddenVisible !== false) fails.push('右键没能收起控制条（往返用例前置不成立）');
     if (!report.roundTrip.keysAlive) fails.push('往返后页面里的计数器丢了（说明渲染层被 reload，注入失效）');
     if (!report.roundTrip.visible) fails.push('往返后没能再次唤出');
     if (report.roundTrip.keyDelta < 1) fails.push('hide→show 往返之后键盘事件不再投递（ADR 009 在键盘路径同样复现 → 必须 reload）');

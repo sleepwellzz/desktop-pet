@@ -274,6 +274,7 @@
     "click": "单击 = 播一次「拜一下」（第 3 行 waving，见 docs/status-reference.png），同时充当对 needs-input 的确认（ADR 010）。**不唤出任何面板** —— 左键只做'陪一下'。",
     "doubleClick": "唤起主窗口（未实现，M3+）",
     "rightClick": "宠物上右键 = 唤出/收起控制条（ADR 016）。不再弹原生菜单 —— 完整菜单在托盘右键与面板的「⋯」里，两条路径都能到达全部动作。",
+    "trayClick": "托盘左键单击 = 显示/隐藏宠物（tray.ts 默认行为）。**2026-09-21 起这是隐藏后唯一的快捷入口**：全局快捷键已整块删除（ADR 032）。",
     "rightClickMenu": [
       "隐藏宠物",
       "控制条",
@@ -283,16 +284,8 @@
       "开机自启",
       "退出"
     ],
-    "hideShortcut": {
-      "default": "Win+Alt+P",
-      "fallbacks": [
-        "Ctrl+Alt+P",
-        "Win+Alt+Space",
-        "Ctrl+Shift+Alt+P"
-      ],
-      "action": "唤出/收起控制条（M2 ④ 起；此前是切换宠物显示/隐藏，见 ADR 014）",
-      "conflictRisk": "Win+Alt+P 在 Windows 上可能与部分显卡/AI 工具快捷键冲突。注意：这里是**人话**写法，代码注册前会归一化成 Electron 的 accelerator（Windows 键在 Electron 里叫 Super）—— 直接拿 Win+Alt+P 去注册会返回成功但永不触发，见 spikes/m2-hotkey/。"
-    },
+    "hideShortcut": null,
+    "hideShortcutNote": "**2026-09-21 删除（ADR 032）。** 原默认值 `Win+Alt+P`（唤出/收起控制条）。删除理由：用户不用这个键，且它**从未被真实按过一次** —— 误触率与功能可用性双双未验证；而它又是静默失败面（`Win` 在 Electron 里必须写成 `Super`，直接注册会返回 true 但永不触发）与「被误判为流氓软件」风险表的一项。保留 null 而不是直接删键：让「这里曾经有过一个开关」留在契约里，将来真要加回时看得见曾经的默认值与降级链（见 ADR 012）。控制条现在只剩两条唤出路径：右键宠物 / 托盘菜单「控制条」。",
     "tray": [
       "显示/隐藏",
       "宠物管理",

@@ -17,7 +17,6 @@ import { detectFullscreen, startFullscreenWatch, fullscreenUnavailableReason } f
 import { createTray } from '../host/tray';
 import { buildPetMenuTemplate, type PetMenuActions, type PetMenuView } from '../host/pet-menu';
 import { isAutoStartEnabled, writeAutoStart } from '../host/autostart';
-import { registerHotkey, unregisterHotkeys } from '../host/hotkey';
 import { createBubbleLayer, type BubbleLayer } from '../host/bubble-layer';
 import { createControlBar, type ControlBar } from '../host/control-bar';
 import { loadPrefs, savePrefs } from '../host/prefs';
@@ -120,7 +119,7 @@ function setupFileLog(): void {
  *
  * 为什么它这么长却**没有**拆成几个独立的装配函数：
  * 这些段落共享同一批对象（`overlay` / `arbiter` / `bubble` / `bar` / `prefs` …），
- * 而且彼此有明确先后（例如快捷键必须早于托盘菜单注册，否则读 `activeHotkey` 会踩 TDZ）。
+ * 而且彼此有明确先后（托盘菜单要在动作表之后建）。
  * 拆成模块级函数就得把这一批对象打包成一个 ctx 传来传去 —— 隐式耦合变成显式但更啰嗦，
  * 而启动路径的**任何**改动都要跑全屏/托盘/控制条/行为层/状态五套真实窗口回归。
  * 权衡下来：**先让它可导航**（索引 + 分节），等真出现"某一段要被复用"的需求再拆。
@@ -131,16 +130,18 @@ function boot(): void {
   // ══════════════════════════════════════════════════════════════════════
   // 装配索引（按执行顺序）
   //   ①  缩放与宠物覆盖窗口      pack 的默认值 + 用户 prefs，夹进包声明的可用区间
-  //   ②  状态源 → 仲裁器 → 渲染层   仲裁器是全应用唯一真值；状态源**最后**才启动（见 ⑧）
-  //   ③  托盘 / 右键菜单         一张动作表，两个入口共用
-  //   ④  全局快捷键              必须早于 ③（petMenuView 要读 activeHotkey）
-  //   ⑤  气泡层                  独立透明层窗口，常态整窗穿透
-  //   ⑥  控制条 + 命令白名单      本项目第一个可聚焦窗口
-  //   ⑦  行为层                  漫游 / 微动作 / 打盹；纯函数在 kernel/behavior.ts
-  //   ⑧  状态源启动与时间推进     **必须等所有窗口建好之后**，见那处注释
-  //   ⑨  命中测试与光标轮询       ~60Hz 轮询光标，命中由渲染层按 alpha 判定
-  //   ⑩  自检 / 拖动 / 右键 / 确认   IPC 通道接线
-  //   ⑪  全屏让位                命中即隐藏，退出后 reload 渲染层
+  //   ②  状态源 → 仲裁器 → 渲染层   仲裁器是全应用唯一真值；状态源**最后**才启动（见 ⑦）
+  //   ③  托盘 / 右键菜单         一张动作表，两个入口共用（单击托盘 = 显示/隐藏）
+  //   ④  气泡层                  独立透明层窗口，常态整窗穿透
+  //   ⑤  控制条 + 命令白名单      本项目第一个可聚焦窗口
+  //   ⑥  行为层                  漫游 / 微动作 / 打盹；纯函数在 kernel/behavior.ts
+  //   ⑦  状态源启动与时间推进     **必须等所有窗口建好之后**，见那处注释
+  //   ⑧  命中测试与光标轮询       ~60Hz 轮询光标，命中由渲染层按 alpha 判定
+  //   ⑨  自检 / 拖动 / 右键 / 确认   IPC 通道接线
+  //   ⑩  全屏让位                命中即隐藏，退出后 reload 渲染层
+  //
+  // （原「④ 全局快捷键」已于 2026-09-21 整块删除，ADR 032：用户不用、且从未被真实按过一次，
+  //   留着就是一个未验证的静默失败面。控制条剩两条唤出路径：右键宠物 / 托盘菜单「控制条」。）
   // ══════════════════════════════════════════════════════════════════════
   const packDir = resolvePackDir();
   console.log('[pet] 加载宠物包：' + packDir);
@@ -379,7 +380,6 @@ function boot(): void {
       scale: currentScale,
       autoStart: isAutoStartEnabled(),
       statusLine,
-      hotkey: activeHotkey,
       defaultScale: pack.scale,
       scaleRange,
       scaleStep,
@@ -452,42 +452,12 @@ function boot(): void {
       tray?.destroy();
       bubble?.destroy();
       bar?.destroy();
-      unregisterHotkeys();
       app.quit();
     },
   };
 
-  // —— 全局快捷键（在托盘之前注册：petMenuView 要读 activeHotkey，早于它调用会踩 TDZ）——
-  // 默认值与降级链来自宠物包（interaction.hideShortcut）；本机实测默认值可用，见 spikes/m2-hotkey/。
-  //
-  // **语义在 M2 ④ 改了**（ADR 014）：从"切换宠物显示/隐藏"改为"唤出/收起控制条"，
-  // 按规格 §3.4「Windows 默认 Win+Alt+P：显示控制条」。隐藏宠物仍有托盘单击、右键菜单
-  // 与控制条里的"隐藏宠物"三个入口，能力没减，只是换了入口。
-  const shortcutMeta = pack.runtime.interaction?.['hideShortcut'] as
-    | { default?: string; fallbacks?: string[] }
-    | undefined;
-  const preferredHotkey = prefs.hotkey ?? shortcutMeta?.default ?? 'Super+Alt+P';
-  const fallbackHotkeys = Array.isArray(shortcutMeta?.fallbacks)
-    ? shortcutMeta.fallbacks
-    : ['Ctrl+Alt+P', 'Super+Alt+Space', 'Ctrl+Shift+Alt+P'];
-  const hotkeyResult = registerHotkey(preferredHotkey, fallbackHotkeys, () => {
-    console.log('[pet] 全局快捷键触发：唤出/收起控制条');
-    toggleBar();
-  });
-  const activeHotkey: string | null = hotkeyResult.accelerator;
-  if (hotkeyResult.ok) {
-    const how = hotkeyResult.usedFallback
-      ? `（首选 ${preferredHotkey} 不可用，已降级）`
-      : hotkeyResult.normalizedFrom
-        ? `（由 ${hotkeyResult.normalizedFrom} 归一化而来）`
-        : '';
-    console.log(`[pet] 快捷键已注册：${activeHotkey}${how}`);
-  } else {
-    console.warn('[pet] 快捷键注册失败（全部候选都被占用）：' +
-      hotkeyResult.attempts.map((a) => a.accelerator).join(' / ') +
-      '；宠物仍可从托盘或右键菜单操作');
-  }
-
+  // （原「全局快捷键」装配段已整块删除，ADR 032 —— 见上方装配索引的注记。）
+  // 控制条的唤出现在只有两条显式路径：右键宠物 / 托盘菜单「控制条」。
 
   // 托盘图标：脚本从图集生成（tools/make-tray-icon.py）。生成失败/缺失只降级不致命。
   const trayIcon = join(__dirname, '..', '..', 'assets', 'tray.ico');
@@ -603,7 +573,7 @@ function boot(): void {
       },
     });
     bar.followPet(overlay.browserWindow.getContentBounds());
-    console.log(`[pet] 控制条已创建（宽 ${barWidth}，可聚焦）—— 唤出：右键宠物 / ${activeHotkey ?? 'Win+Alt+P'} / 托盘菜单；`
+    console.log(`[pet] 控制条已创建（宽 ${barWidth}，可聚焦）—— 唤出：右键宠物 / 托盘菜单「控制条」；`
       + `失焦 ${barPolicy.blurHideMs}ms 后收起`);
   } catch (e) {
     console.error('[pet] 控制条创建失败（宠物本体不受影响）：' + String(e));
@@ -619,7 +589,6 @@ function boot(): void {
       sessions: arbiter.viewSessions(),
       maxRows: barMaxRows,
       petName: pack.manifest.displayName ?? pack.manifest.id,
-      hotkey: activeHotkey,
       petVisible: overlay.isVisible(),
       rev: s.rev,
     };
@@ -628,7 +597,7 @@ function boot(): void {
   /**
    * 把状态机的判定落到实际窗口上。调用方只需保证 `barState` 已更新。
    *
-   * 显示一律**抢焦点**（`focus: true`）：三条唤出路径（右键宠物 / 快捷键 / 托盘菜单项）
+   * 显示一律**抢焦点**（`focus: true`）：两条唤出路径（右键宠物 / 托盘菜单项）
    * 都是用户明确表达"我要看它"的动作，而悬停那条"可能正在打字"的路径已经不存在了
    * （ADR 016）。抢焦点换来的是"点到别处即关"与 Esc 可收 —— 面板因此像一个真窗口。
    */
@@ -666,7 +635,7 @@ function boot(): void {
     if (wasOn) console.log(`[pet] 控制条跟随隐藏（${reason}）`);
   }
 
-  /** 快捷键、宠物右键与托盘菜单「控制条」的共同入口。 */
+  /** 宠物右键与托盘菜单「控制条」的共同入口。 */
   function toggleBar(): void {
     if (!bar) return;
     if (!overlay.isVisible()) {
@@ -929,7 +898,7 @@ function boot(): void {
   overlay.browserWindow.on('show', startTimers);
   overlay.browserWindow.on('hide', stopTimers);
 
-  refreshMenu();   // 快捷键已定，菜单里那行"快捷键：…"要跟上
+  refreshMenu();
 
   // 探针用接缝：`--expose-actions` 时把动作表与若干只读探针挂到 globalThis，便于自动化验证
   // "隐藏→显示→仍可点击/拖动""改缩放后尺寸正确""自启回读正确""退出真的退出""气泡按策略显示"。
@@ -938,7 +907,6 @@ function boot(): void {
     g.__petActions = actions;
     g.__petDebug = {
       bubbleState: () => bubbleState,
-      hotkey: () => activeHotkey,
       bubbleVisible: () => bubble?.isVisible() ?? false,
       petBounds: () => overlay.browserWindow.getContentBounds(),
       /** 渲染层最近上报的命中状态。探针用它验证"光标远离宠物时必须为 false"。 */
@@ -969,7 +937,6 @@ function boot(): void {
   app.on('will-quit', () => {
     stopTimers();
     void statusSource?.stop();
-    unregisterHotkeys();
     bubble?.destroy();
     bar?.destroy();
   });

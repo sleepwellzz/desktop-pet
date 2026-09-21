@@ -41,7 +41,7 @@
    }
   },
   {
-   "label": "按快捷键收起",
+   "label": "右键再次点击收起",
    "visible": false,
    "focused": false,
    "keys": {
@@ -55,9 +55,9 @@
    "visible": true,
    "focused": true,
    "keys": {
-    "down": 3,
+    "down": 1,
     "esc": 0,
-    "last": "Alt"
+    "last": "a"
    }
   },
   {
@@ -65,7 +65,7 @@
    "visible": true,
    "focused": true,
    "keys": {
-    "down": 4,
+    "down": 2,
     "esc": 0,
     "last": "a"
    }
@@ -75,7 +75,7 @@
    "visible": false,
    "focused": false,
    "keys": {
-    "down": 5,
+    "down": 3,
     "esc": 1,
     "last": "Escape"
    }
@@ -85,7 +85,7 @@
    "visible": false,
    "focused": false,
    "keys": {
-    "down": 5,
+    "down": 3,
     "esc": 1,
     "last": "Escape"
    }

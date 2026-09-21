@@ -8,11 +8,11 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { CH, type BarCommand, type BarView } from '../shared/ipc';
 
 contextBridge.exposeInMainWorld('petBar', {
-  /** 主进程下发的整份视图数据（状态、会话列表、缩放、快捷键…）。 */
+  /** 主进程下发的整份视图数据（状态、会话列表、宠物名…）。 */
   onView: (cb: (view: BarView) => void): void => {
     ipcRenderer.on(CH.barView, (_e, view: BarView) => cb(view));
   },
-  /** 主进程下令聚焦（快捷键唤出时用）。 */
+  /** 主进程下令聚焦（右键宠物 / 托盘菜单「控制条」唤出时用）。 */
   onFocus: (cb: () => void): void => {
     ipcRenderer.on(CH.barFocus, () => cb());
   },

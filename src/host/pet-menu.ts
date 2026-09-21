@@ -17,8 +17,6 @@ export interface PetMenuView {
   autoStart: boolean;
   /** 人可读的状态行，来自 StatusArbiter.state。 */
   statusLine: string;
-  /** 当前生效的全局快捷键；null 表示注册失败（此时如实展示"不可用"）。 */
-  hotkey: string | null;
   /** 状态文件里现存的会话数。0 时"清空状态会话"置灰。 */
   sessionCount: number;
   /** 宠物包声明的默认缩放（"重置大小"的落点）。 */
@@ -29,7 +27,7 @@ export interface PetMenuView {
 
 export interface PetMenuActions {
   toggleVisibility(): void;
-  /** 唤出 / 收起悬浮控制条（M2 ④）。与全局快捷键同一条路径。 */
+  /** 唤出 / 收起悬浮控制条（M2 ④）。与宠物右键同一条路径。 */
   toggleControlBar(): void;
   /**
    * 清空状态文件里的全部会话（M2 ④ 人工验收后补）。
@@ -71,15 +69,8 @@ export function buildPetMenuTemplate(
   actions: PetMenuActions,
 ): MenuItemConstructorOptions[] {
   return [
-    // 状态行与快捷键：只读展示。快捷键写在这里是因为它没有别的可见处 ——
-    // 注册失败时更要让人看见"不可用"，否则用户按了没反应会以为程序坏了。
-    // 后缀"（唤出控制条）"必须写实：M2 ④ 把这颗快捷键的语义从"切换宠物显示"
-    // 改成了"唤出/收起控制条"（规格 §3.4），菜单不跟着改就是在说谎。
+    // 状态行：只读展示。（原「快捷键：…」只读行随全局快捷键一起删除，ADR 032。）
     { label: `状态：${view.statusLine}`, enabled: false },
-    {
-      label: `快捷键：${view.hotkey ? `${view.hotkey}（唤出控制条）` : '不可用（请从托盘或右键操作）'}`,
-      enabled: false,
-    },
     { type: 'separator' },
     { label: view.visible ? '隐藏宠物' : '显示宠物', click: () => actions.toggleVisibility() },
     { label: '控制条', click: () => actions.toggleControlBar() },

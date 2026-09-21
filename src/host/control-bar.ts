@@ -4,7 +4,7 @@
 // 所以本模块的每条取舍都由 `spikes/m2-control` 的真实探针支撑，不是推断：
 //
 //   - **双路径显示**：悬停唤出走 `showInactive()`（不抢焦点 —— 用户可能正在 IDE 里打字，
-//     鼠标划过宠物不该打断他），快捷键唤出走 `show()` + `focus()`（用户明确按了键）；
+//     鼠标划过宠物不该打断他），右键/菜单唤出走 `show()` + `focus()`（用户明确点了）；
 //   - **常态不做整窗穿透**：它是个填满窗口的矩形面板，窗口矩形 ≈ 可视矩形，
 //     "矩形窗口吃掉自己矩形的点击"是正常窗口语义，因此**不适用 ADR 008 的逐像素纪律**。
 //     代价是四角不能做圆角：圆角会留下 4 个透明三角去吃掉下层应用的点击（约 1% 面积），
@@ -88,7 +88,7 @@ export interface ControlBar {
   readonly browserWindow: BrowserWindow;
   /**
    * 显示并刷新内容。
-   * @param focus true = 抢焦点（快捷键唤出）；false = `showInactive()` 不抢（悬停 / 菜单唤出）。
+   * @param focus true = 抢焦点（右键 / 菜单唤出）；false = `showInactive()` 不抢（历史路径，现未使用）。
    */
   show(view: BarView, o: { focus: boolean }): void;
   /** 已显示时更新内容（高度可能随之变化）。未显示时只记下来。 */

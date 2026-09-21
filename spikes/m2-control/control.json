@@ -8,14 +8,14 @@
    "height": 1027
   },
   "pet": {
-   "x": 790,
-   "y": 437,
-   "width": 134,
-   "height": 146
+   "x": 807,
+   "y": 460,
+   "width": 96,
+   "height": 104
   },
   "bar": {
-   "x": 727,
-   "y": 591,
+   "x": 725,
+   "y": 572,
    "width": 260,
    "height": 72
   },
@@ -54,14 +54,14 @@
    "dy": -80
   },
   "barBefore": {
-   "x": 727,
-   "y": 591,
+   "x": 725,
+   "y": 572,
    "width": 260,
    "height": 128
   },
   "barAfter": {
-   "x": 557,
-   "y": 511,
+   "x": 555,
+   "y": 492,
    "width": 260,
    "height": 128
   },
@@ -75,13 +75,13 @@
    "height": 1027
   },
   "pet": {
-   "y": 877,
-   "h": 146,
-   "bottom": 1023
+   "y": 926,
+   "h": 104,
+   "bottom": 1030
   },
   "bar": {
-   "x": 557,
-   "y": 739,
+   "x": 555,
+   "y": 788,
    "width": 260,
    "height": 128
   },
@@ -99,10 +99,10 @@
  },
  "rightClickPet": {
   "pet": {
-   "x": 620,
-   "y": 877,
-   "width": 134,
-   "height": 146
+   "x": 637,
+   "y": 926,
+   "width": 96,
+   "height": 104
   },
   "shownByRightClick": true,
   "focusedWhenShown": {
@@ -116,14 +116,14 @@
   "hoverShows": false,
   "ghostShows": false,
   "ghostRect": {
-   "x": 557,
-   "y": 739,
+   "x": 555,
+   "y": 788,
    "width": 260,
    "height": 128
   },
   "petCenter": {
-   "x": 1031,
-   "y": 1425
+   "x": 1028,
+   "y": 1467
   }
  },
  "popupMenu": {
