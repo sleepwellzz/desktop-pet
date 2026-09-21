@@ -57,8 +57,23 @@ for (const line of lines) {
   });
 }
 
+// ⚠️ 关键区分：`ts` 是**写侧**时刻，`recvAt` 是宠物**读到**的时刻。
+// 当桌宠是"启动后首次读快照"时，读到的是**历史写入**（可能几分钟前），
+// 这时 `recvAt - ts` 量的是"那条状态在磁盘上躺了多久"，**不是端到端延迟**。
+// 判据：真正的实时事件，宠物在 1 秒内就能读到（状态源是"目录监听 + 1000ms 轮询兜底"）。
+// 所以按 5 秒切一刀分组呈现 —— 不隐藏数据，但绝不把两者混进同一个数字。
+const STALE_MS = 5000;
+const live = rows.filter((r) => r.delay <= STALE_MS);
+const stale = rows.filter((r) => r.delay > STALE_MS);
+
 const pct = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))] ?? 0;
 const fmt = (ms) => (ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(2)}s`);
+const describe = (label, group) => {
+  if (!group.length) { console.log(`  ${label}：无样本`); return; }
+  const s = group.map((r) => r.delay).sort((a, b) => a - b);
+  const mean = s.reduce((a, b) => a + b, 0) / s.length;
+  console.log(`  ${label}：${s.length} 条｜最小 ${fmt(s[0])}｜中位 ${fmt(pct(s, 50))}｜p95 ${fmt(pct(s, 95))}｜最大 ${fmt(s[s.length - 1])}｜平均 ${fmt(mean)}`);
+};
 
 console.log(`事件流水：${file}`);
 console.log(`总行数 ${lines.length}｜解析失败 ${bad}｜超出时间窗 ${skippedOld}｜**无 recvAt（无法测量）${unmeasurable}**｜可测 ${rows.length}`);
@@ -72,34 +87,40 @@ if (!rows.length) {
   process.exit(2);
 }
 
-const all = rows.map((r) => r.delay).sort((a, b) => a - b);
-console.log(`\n=== 端到端延迟（recvAt - ts）===`);
-console.log(`  样本 ${all.length}｜最小 ${fmt(all[0])}｜中位 ${fmt(pct(all, 50))}｜p95 ${fmt(pct(all, 95))}｜最大 ${fmt(all[all.length - 1])}`);
-const mean = all.reduce((a, b) => a + b, 0) / all.length;
-console.log(`  平均 ${fmt(mean)}`);
+console.log('\n=== 端到端延迟（recvAt - ts）===');
+describe('实时事件（≤5s，这就是判据 6 要的数字）', live);
+describe('启动首读快照（>5s，量的是"状态在磁盘上躺了多久"，不是延迟）', stale);
+if (stale.length && !live.length) {
+  console.log('\n  ⚠️ 本次样本**全部**来自启动首读 —— 想要真实延迟，请在桌宠运行期间干活。');
+}
+const all = live.map((r) => r.delay).sort((a, b) => a - b);
 
 const byOrigin = new Map();
-for (const r of rows) {
+for (const r of live) {
   const g = byOrigin.get(r.origin) ?? [];
   g.push(r.delay);
   byOrigin.set(r.origin, g);
 }
-console.log(`\n按通道：`);
-for (const [k, v] of [...byOrigin].sort()) {
-  const s = v.slice().sort((a, b) => a - b);
-  console.log(`  ${k.padEnd(8)} ${String(s.length).padStart(4)} 条｜中位 ${fmt(pct(s, 50))}｜p95 ${fmt(pct(s, 95))}｜最大 ${fmt(s[s.length - 1])}`);
+if (byOrigin.size) {
+  console.log(`\n按通道（只含实时事件）：`);
+  for (const [k, v] of [...byOrigin].sort()) {
+    const s = v.slice().sort((a, b) => a - b);
+    console.log(`  ${k.padEnd(8)} ${String(s.length).padStart(4)} 条｜中位 ${fmt(pct(s, 50))}｜p95 ${fmt(pct(s, 95))}｜最大 ${fmt(s[s.length - 1])}`);
+  }
 }
 
 const bySid = new Map();
-for (const r of rows) {
+for (const r of live) {
   const g = bySid.get(r.sessionId) ?? [];
   g.push(r.delay);
   bySid.set(r.sessionId, g);
 }
-console.log(`\n按会话（最多 8 条）：`);
-for (const [k, v] of [...bySid].sort((a, b) => b[1].length - a[1].length).slice(0, 8)) {
-  const s = v.slice().sort((a, b) => a - b);
-  console.log(`  ${k.padEnd(34)} ${String(s.length).padStart(4)} 条｜中位 ${fmt(pct(s, 50))}｜最大 ${fmt(s[s.length - 1])}`);
+if (bySid.size) {
+  console.log(`\n按会话（只含实时事件，最多 8 条）：`);
+  for (const [k, v] of [...bySid].sort((a, b) => b[1].length - a[1].length).slice(0, 8)) {
+    const s = v.slice().sort((a, b) => a - b);
+    console.log(`  ${k.padEnd(34)} ${String(s.length).padStart(4)} 条｜中位 ${fmt(pct(s, 50))}｜最大 ${fmt(s[s.length - 1])}`);
+  }
 }
 
 const negatives = all.filter((d) => d < 0).length;
@@ -108,7 +129,10 @@ if (negatives) {
 }
 
 let verdict = 'INFO（未给预算）';
-if (budget !== null) {
+if (!all.length) {
+  // 别把"样本全是启动首读"当成"0 条超标 ⇒ PASS" —— 那是拿证据不足当通过。
+  verdict = '无法判定（没有实时样本，只有启动首读）';
+} else if (budget !== null) {
   const over = all.filter((d) => d > budget).length;
   verdict = over === 0 ? `PASS（全部 ≤ ${fmt(budget)}）` : `FAIL（${over}/${all.length} 条超出 ${fmt(budget)}）`;
   console.log(`\n预算 ${fmt(budget)} ⇒ ${verdict}`);
