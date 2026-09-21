@@ -26,3 +26,6 @@ spikes/**/startup-cost.json
 
 # 一次性脚本与临时提交信息
 .tmp-*
+
+# 免安装绿色版产物（约 370 MB，由 node tools/make-portable.mjs 生成）
+dist-win/

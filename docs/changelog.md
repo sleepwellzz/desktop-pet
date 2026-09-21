@@ -518,3 +518,14 @@
   命题不变 —— 它验的是 hide→show 往返后键盘还进不进得来。
   连带：判据 9 第四问的未取得数据随之消失；打包那轮不再需要复核快捷键。
 
+
+- **2026-09-21**：**打包 = 免安装绿色目录（ADR 033），挂起 #13 产出成品。** 用户四选一定形态。
+  `node tools/make-portable.mjs` ⇒ `dist-win/desktop-pet/`（**373 MB**）= Electron 运行时 368MB
+  + `resources/app/`（**目录形态，故意不打 asar**：koffi 的 `.node` 不能从 asar 内加载）+ exe 改名。
+  零新依赖、零联网下载。**实测判据**（模拟双击启动后读 pet.log）：`isPackaged=true`、
+  Electron 认 `resources/app/`、koffi 无报错、托盘图标从包内 `assets/tray.ico` 读出、窗口显示、
+  渲染层精灵图就绪。**#13 两项复核**：托盘图标 ✅；注册表值名 ⚠️ 一半 —— `isPackaged=true` 走
+  正确的无参分支（值名应为 `desktop-pet`，开发态是 `electron.app.Electron`），但 `reg.exe`
+  被沙箱策略拦截（不绕过），字面值待用户勾一次「开机自启」确认。**待用户**：双击确认无控制台 + 关窗存活。
+  顺带给 `boot()` 加了一行「打包态 isPackaged」日志 —— 它决定注册表命令形态，只能实测不能猜。
+
