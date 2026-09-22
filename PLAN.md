@@ -31,6 +31,7 @@
 | **宠物包规格**（图集规格、行语义、常见坑） | 用户级技能 `codex-pet-pack`（权威来源，**不要重新调研**） |
 | 资产实测数据（帧数、锚点、基线） | `docs/asset-facts.md` |
 | **每个业务状态在屏幕上长什么样** | `docs/status-reference.png`（换宠物包后要重新生成） |
+| **控制条面板长什么样**（含动作排） | `docs/panel-actions-shelf.png`（改面板布局后要重拍） |
 | 历史会话做过什么 | `journal/`（按日期追加） |
 | 技术验证工程与回归探针 | `spikes/`（各目录有 README 说明怎么跑） |
 | 运行时代码 | `src/`（kernel 内核 / source 状态源 / host 宿主 / main 入口 / renderer 渲染） |
