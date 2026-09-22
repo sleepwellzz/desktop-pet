@@ -584,3 +584,25 @@
    端到端：新包启动后 `electron.app.Electron → electron.app.desktop-pet`、再启一次幂等不变。
   **新依赖**：`rcedit` 进 devDependencies（仅打包期用），`npm run make:portable` / `npm run check:timers`。
 
+
+- **2026-09-22（第三次）**：**两处修复的用户终局确认 + 分发形态定为「整目录 → 一个 zip」（ADR 037）**。
+  用户实测反馈：点了几次宠物**没有错误框**，**退出也没有错误框**，托盘「开机自启」**已勾选**
+  ⇒ ADR 035（退出崩溃）与 ADR 036（自启值名）双双收口，**挂起 15 项全部结项**。
+  随即按要求重新打包：`dist-win/desktop-pet/`（373 MB，exe 版本资源已带 ProductName=desktop-pet），
+  并新增 `--zip` 能力产出 `dist-win/desktop-pet-win-x64.zip`（**153 MB**）。
+  **本轮最重要的是纠正一个认知**：用户问"只发这一个 exe 给别人就行吧" —— **不行**。
+  它只是入口，启动时要在**同级目录**找 `resources/`、`*.dll`、`*.pak`、`locales/`（共 232 个文件）；
+  只发一个 exe 出去，对方双击的症状是**毫无反应且没有任何报错**（这个症状本项目做 rcedit 实验时
+  刚实测过）。⇒ **分发单位 = 整个目录；对外给一个 zip。** 已写进 README.txt 与 ADR 037 §5。
+  **实测（不能只验证"压出来了"）**：把 zip 解压到全新目录 → 启动 → 进程存活、
+  留下"10 秒前"的启动记录、窗口已显示、精灵图就绪、状态通道正常、**零未捕获异常**，随后清理。
+  **顺带修掉一个真缺陷**：第一版 zip 里那个说明文件的**文件名已损坏**（`说明.txt` 在包内变成
+  替换字符 U+FFFD）—— bsdtar 在 Windows 上写 zip 对非 ASCII 文件名处理不可靠。
+  ⇒ 改名 `README.txt`，现在 262 个条目**无一含非 ASCII 名**。与".bat 必须纯 ASCII"、
+  "写进 exe 版本资源的值必须 ASCII"同源：**Windows 上跟编码打交道一律保守。**
+  README.txt 里同时补了三条给对方看的话：未签名 exe 会被 SmartScreen 拦（点"仍要运行"）、
+  **勾了自启后不要移动目录**（注册表记的是绝对路径）、以及"必须整目录一起拷"。
+  新增 npm script：`make:portable:zip`。日志读取的一个坑也记一笔：**别用
+  `readFileSync(f,'utf8').slice(byteOffset)` 取增量**（字符下标 vs 字节偏移，中文日志下必然错位
+  读成空），改用启动时间戳锚定 —— 同一个坑本轮踩了第二次。
+

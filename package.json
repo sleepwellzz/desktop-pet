@@ -22,7 +22,8 @@
     "e2e:status": "node spikes/m2-status/run-status-e2e.mjs",
     "pet:validate": "python tools/validate_pet.py",
     "check:timers": "node tools/check-timers.mjs",
-    "make:portable": "node tools/make-portable.mjs"
+    "make:portable": "node tools/make-portable.mjs",
+    "make:portable:zip": "node tools/make-portable.mjs --zip"
   },
   "devDependencies": {
     "electron": "44.4.0",

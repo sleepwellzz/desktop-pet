@@ -121,3 +121,8 @@
     app package.json 的 `name` 不起作用、`app.setName()` 也不行（getName 变了值名不变），
     **只有改 exe 版本资源有效**（rcedit）。同时顺手修正：目标值名是 `electron.app.desktop-pet`
     而非 `desktop-pet`。旧条目由应用启动时迁移，保住已勾选状态。（ADR 036）
+37. **分发单位是「整个目录」，对外压成一个 zip**：`desktop-pet.exe` **不能单独发人** ——
+    它只是入口，要在同级目录找 `resources/`/`*.dll`/`*.pak`/`locales/`；只发 exe 的症状是
+    「毫无反应且无报错」。产物 `dist-win/desktop-pet-win-x64.zip`（153 MB）。
+    实测：解压到全新目录能直接跑。另：**进 zip 的文件名必须 ASCII** —— 非 ASCII 名会被 bsdtar 写坏
+    （`说明.txt` → 乱码），与 .bat 纯 ASCII、exe 版本资源值 ASCII 同源。（ADR 037）

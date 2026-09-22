@@ -79,10 +79,17 @@ if (rc.status !== 0) die('rcedit 改版本资源失败：' + ((rc.stdout || '') 
 console.log('[打包] exe 版本资源已改为 ProductName=desktop-pet（决定自启值名）');
 
 // 留一份说明，免得几个月后面对一个 370MB 目录不知道它是什么。
-writeFileSync(join(OUT, '说明.txt'), [
+writeFileSync(join(OUT, 'README.txt'), [
   '桌面宠物 · 免安装绿色版',
   '',
   '双击 desktop-pet.exe 即可运行，不需要安装。',
+  '',
+  '【要拷给别人 / 换机器时务必注意】',
+  '  必须把**整个 desktop-pet 目录**一起拷过去，不能只拷 desktop-pet.exe。',
+  '  这个 exe 只是入口，它启动时要在**同级目录**找 resources\\、*.dll、*.pak、locales\\ 等',
+  '  370 MB 运行时文件；只发一个 exe 出去，对方双击会**毫无反应且没有任何报错**。',
+  '  压缩包分发：<工程目录>/dist-win/desktop-pet-win-x64.zip 里就是整个目录。',
+  '',
   `打包时间：${new Date().toISOString()}`,
   '',
   '生成方式：node tools/make-portable.mjs',
@@ -92,7 +99,9 @@ writeFileSync(join(OUT, '说明.txt'), [
   '      全局快捷键已删除（ADR 032），控制条唤出 = 右键宠物 / 托盘菜单「控制条」。',
   '      开机自启写在 HKCU\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run，',
   '      值名 electron.app.desktop-pet（Electron 固定前缀 + exe 版本资源的 ProductName；',
-  '      升级 2026-09-22 之前打的包时，应用会在启动时自动把旧值名 migrate 过来）。',
+  '      升级 2026-09-22 之前打的包时，应用会在启动时自动把旧值名迁移过来）。',
+  '      ⚠️ 勾了开机自启之后**别移动这个目录** —— 注册表里记的是绝对路径，移动后会失效，',
+  '         需要在新位置重新双击一次让它自己修正。',
   '卸载：直接删掉整个目录，并在托盘菜单里关掉开机自启。',
   '',
 ].join('\r\n'), 'utf8');
@@ -112,3 +121,20 @@ const size = (() => {
 console.log('[打包] 完成：' + OUT);
 console.log('[打包] 体积 ' + (size / 1048576).toFixed(0) + ' MB');
 console.log('[打包] 主程序 ' + exeTo);
+
+// —— `--zip`：压成**单个** zip，这才是能"发一个文件给别人"的东西 ——
+// 必须说清楚：`desktop-pet.exe` **不能单独分发**。它只是入口，启动时要在同级目录找
+// resources\ / *.dll / *.pak / locales\；只发一个 exe 出去，对方双击会**毫无反应且没有报错**
+// （本轮实测过这个症状）。所以分发单位是"整个目录"，对外则压成一个 zip。
+if (process.argv.includes('--zip')) {
+  const zipPath = join(ROOT, 'dist-win', `desktop-pet-win-x64.zip`);
+  rmSync(zipPath, { force: true });
+  console.log('[打包] 压缩成单个 zip（分发用，约 1-2 分钟）…');
+  // 用系统自带的 bsdtar（Win10 1803+）而不是 PowerShell Compress-Archive：快得多，
+  // 且 `-a` 会按 .zip 后缀自动选 zip 格式。从 dist-win 里压，解出来就是一个 desktop-pet/ 目录。
+  const z = spawnSync('tar', ['-a', '-c', '-f', zipPath, '-C', join(ROOT, 'dist-win'), 'desktop-pet'],
+    { encoding: 'utf8', shell: false });
+  if (z.status !== 0) die('压缩失败：' + ((z.stdout || '') + (z.stderr || '')).trim());
+  console.log('[打包] zip 完成：' + zipPath + '（' + (statSync(zipPath).size / 1048576).toFixed(0) + ' MB）');
+  console.log('[打包] 分发方式：把这**一个** zip 发出去；对方解压后双击里面的 desktop-pet.exe');
+}
