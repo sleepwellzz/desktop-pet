@@ -1,6 +1,6 @@
 {
   "name": "desktop-pet",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "自研 Windows 桌面宠物运行时：解析 Codex/ChatGPT 宠物包，把 agent 活动状态可视化为可交互桌宠",
   "main": "dist/main/index.js",

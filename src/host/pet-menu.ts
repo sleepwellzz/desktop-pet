@@ -25,6 +25,14 @@ export interface PetMenuView {
    * 与面板上的身份位（ADR 016 第 4 条）同一个来源。
    */
   petName: string;
+  /**
+   * 软件版本（`package.json` 的 `version`，主进程用 `app.getVersion()` 现读，ADR 041）。
+   *
+   * 只出现在**菜单里的一行只读小字**。刻意**不放进托盘的悬停提示** ——
+   * 用户 2026-09-22 明确要求那里保持「淘淘 · 空闲」，不要掺版本号。
+   * 也**不要**把它写进控制条面板：面板宽只有 260px，身份位后面塞不下。
+   */
+  version: string;
   /** 状态文件里现存的会话数。0 时"清空状态会话"置灰。 */
   sessionCount: number;
   /** 宠物包声明的默认缩放（"重置大小"的落点）。 */
@@ -79,6 +87,11 @@ export function buildPetMenuTemplate(
   return [
     // 状态行：只读展示。（原「快捷键：…」只读行随全局快捷键一起删除，ADR 032。）
     { label: `状态：${view.statusLine}`, enabled: false },
+    // 版本行：与上面那条状态行同类 —— 只读信息行。（原生菜单不支持字号，
+    // `enabled: false` 的置灰效果就是这里最接近"小字"的表达。）
+    // 放在**最上方**而不是最下方：它属于"读一眼就走"的信息区，
+    // 而下面每一项都是**动作**，退出必须留在最后一项（ADR 034 第 1 条已拍板）。
+    { label: `版本：${view.version}`, enabled: false },
     { type: 'separator' },
     { label: view.visible ? '隐藏宠物' : '显示宠物', click: () => actions.toggleVisibility() },
     { label: '控制条', click: () => actions.toggleControlBar() },

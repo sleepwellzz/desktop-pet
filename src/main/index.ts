@@ -103,7 +103,10 @@ const bootMark = TRACE_BOOT
 function setupFileLog(): void {
   try {
     mkdirSync(dirname(LOG_PATH), { recursive: true });
-    writeFileSync(LOG_PATH, `[pet] ==== 启动 ${new Date().toISOString()} ====\n`, 'utf8');
+    // 横幅带版本号（ADR 041）：排查时第一眼就知道对方跑的是哪一版。
+    // 版本只有一个真源 —— `package.json`；打包态 `app.getVersion()` 读的是
+    // `resources/app/package.json`，与开发态是同一份文件，两边的数字天然一致。
+    writeFileSync(LOG_PATH, `[pet] ==== 启动 v${app.getVersion()} · ${new Date().toISOString()} ====\n`, 'utf8');
     for (const level of ['log', 'warn', 'error'] as const) {
       const orig = console[level].bind(console);
       console[level] = (...args: unknown[]): void => {
@@ -151,7 +154,8 @@ function boot(): void {
   // 打包态诊断（挂起 #13）： 决定开机自启写进注册表的命令形态
   // （未打包要带应用路径参数，已打包不能带 —— 带上会被当成要打开的文件）。
   // 它**只从真实运行里才看得到**，猜测它的取值会直接写错注册表，所以落成一行启动日志。
-  console.log('[pet] 打包态 isPackaged=' + app.isPackaged + '｜应用路径=' + app.getAppPath());
+  console.log('[pet] 打包态 isPackaged=' + app.isPackaged + '｜版本 v' + app.getVersion()
+    + '｜应用路径=' + app.getAppPath());
   const packDir = resolvePackDir();
   console.log('[pet] 加载宠物包：' + packDir);
   const pack = loadPack(packDir);
@@ -399,6 +403,8 @@ function boot(): void {
       autoStart: isAutoStartEnabled(),
       statusLine,
       petName,
+      // 版本号**从 Electron 现读**，不在这里写字面量 —— 这也是唯一真源纪律的一部分（ADR 041）。
+      version: app.getVersion(),
       defaultScale: pack.scale,
       scaleRange,
       scaleStep,

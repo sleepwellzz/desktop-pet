@@ -12,7 +12,7 @@
 // 用法：node tools/make-portable.mjs
 //   产物：<工程>/dist-win/desktop-pet/（约 370 MB，已 gitignore）
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync, statSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,6 +20,30 @@ const ROOT = resolve(fileURLToPath(new URL('../', import.meta.url)));
 const OUT = join(ROOT, 'dist-win', 'desktop-pet');
 const ELECTRON_DIST = join(ROOT, 'node_modules', 'electron', 'dist');
 const EXE_NAME = 'desktop-pet.exe';   // 刻意用 ASCII：见 ADR 029（含空格/非 ASCII 路径反复出问题）
+
+/**
+ * 软件版本。**唯一真源是 `package.json` 的 `version`，这里不许手写第二份**（ADR 041）。
+ *
+ * 为什么单拎出来强调：同一个数字写两遍就会不一致 —— 本工程已经在"宠物名"上栽过一次
+ * （面板写淘淘、托盘写 desktop-pet，2026-09-22 用户报的）。版本号比名字更容易悄悄漂移，
+ * 因为它没人天天看，而且要跨四处（exe 资源 / 日志 / 菜单 / zip 名）保持一致。
+ */
+const VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
+
+/**
+ * semver → Windows 的四段数值版（`1.0.0` → `1.0.0.0`）。
+ *
+ * Windows 的 `FileVersion` 数值字段**必须是四段纯数字**，semver 的预发布后缀
+ * （`1.0.0-beta.1`）在那里没有位置 —— 显式剥掉，别让它悄悄漏进 exe 里变成乱码。
+ *
+ * 两套是给两个读者看的（实测，见 ADR 041）：四段数值给系统/安装器**比较**大小，
+ * 字符串版才是用户在「属性 → 详细信息」里看到的那一行。所以两个都得写。
+ */
+function windowsVersion(v) {
+  const parts = String(v).split('-')[0].split('+')[0].split('.');
+  while (parts.length < 4) parts.push('0');
+  return parts.slice(0, 4).map((p) => String(Number.parseInt(p, 10) || 0)).join('.');
+}
 
 // 应用要带走的运行时依赖。**只带真正被 require 的**，不要把整个 node_modules 拷进去。
 const RUNTIME_DEPS = ['koffi', '@koromix'];
@@ -73,14 +97,29 @@ const rc = spawnSync(RCEDIT, [exeTo,
   '--set-version-string', 'ProductName', 'desktop-pet',
   // **值一律用 ASCII**：中文写进版本资源在部分读取路径上会变乱码（本轮实测
   // FileDescription 读到的是问号），跟 .bat 必须纯 ASCII 是同一类坑（ADR 029）。
-  '--set-version-string', 'FileDescription', 'desktop-pet desktop pet'],
+  '--set-version-string', 'FileDescription', 'desktop-pet desktop pet',
+  // —— 版本号（ADR 041）——
+  // 两套都写，缺一不可：只写数值 ⇒ 属性页显示 1.0.0.0（或干脆空着）；
+  // 只写字符串 ⇒ 安装器/系统读不到可比较的数字。
+  '--set-file-version', windowsVersion(VERSION),
+  '--set-product-version', windowsVersion(VERSION),
+  '--set-version-string', 'FileVersion', VERSION,
+  '--set-version-string', 'ProductVersion', VERSION,
+  // —— 清掉 Electron 留在同一批资源里的痕迹 ——
+  // 不改的话「属性 → 详细信息」里写着 GitHub, Inc. / 2015 年的版权 / OriginalFilename=electron.exe，
+  // 看起来就像"Electron 换了个名字"而不是一个自己的软件。
+  // 版权刻意只写产品名：没有的东西（作者、年份）**不要编**，留白比编一句假声明诚实。
+  '--set-version-string', 'CompanyName', 'desktop-pet',
+  '--set-version-string', 'LegalCopyright', 'desktop-pet',
+  '--set-version-string', 'OriginalFilename', EXE_NAME],
 { encoding: 'utf8', shell: false });   // 含空格路径**不要** shell:true，参数会被截断
 if (rc.status !== 0) die('rcedit 改版本资源失败：' + ((rc.stdout || '') + (rc.stderr || '')).trim());
-console.log('[打包] exe 版本资源已改为 ProductName=desktop-pet（决定自启值名）');
+console.log(`[打包] exe 版本资源：ProductName=desktop-pet（决定自启值名）｜版本 ${VERSION}`);
 
 // 留一份说明，免得几个月后面对一个 370MB 目录不知道它是什么。
 writeFileSync(join(OUT, 'README.txt'), [
   '桌面宠物 · 免安装绿色版',
+  `版本：${VERSION}`,
   '',
   '双击 desktop-pet.exe 即可运行，不需要安装。',
   '',
@@ -88,7 +127,7 @@ writeFileSync(join(OUT, 'README.txt'), [
   '  必须把**整个 desktop-pet 目录**一起拷过去，不能只拷 desktop-pet.exe。',
   '  这个 exe 只是入口，它启动时要在**同级目录**找 resources\\、*.dll、*.pak、locales\\ 等',
   '  370 MB 运行时文件；只发一个 exe 出去，对方双击会**毫无反应且没有任何报错**。',
-  '  压缩包分发：<工程目录>/dist-win/desktop-pet-win-x64.zip 里就是整个目录。',
+  `  压缩包分发：<工程目录>/dist-win/desktop-pet-${VERSION}-win-x64.zip 里就是整个目录。`,
   '',
   `打包时间：${new Date().toISOString()}`,
   '',
@@ -127,7 +166,9 @@ console.log('[打包] 主程序 ' + exeTo);
 // resources\ / *.dll / *.pak / locales\；只发一个 exe 出去，对方双击会**毫无反应且没有报错**
 // （本轮实测过这个症状）。所以分发单位是"整个目录"，对外则压成一个 zip。
 if (process.argv.includes('--zip')) {
-  const zipPath = join(ROOT, 'dist-win', `desktop-pet-win-x64.zip`);
+  // zip 名带版本号（ADR 041）：对方手上是哪一版一眼可知，你自己也好留旧包对照。
+  // **目录名保持不带版本** —— 自启注册表里记的是绝对路径，目录改名会让老用户的条目失效。
+  const zipPath = join(ROOT, 'dist-win', `desktop-pet-${VERSION}-win-x64.zip`);
   rmSync(zipPath, { force: true });
   console.log('[打包] 压缩成单个 zip（分发用，约 1-2 分钟）…');
   // 用系统自带的 bsdtar（Win10 1803+）而不是 PowerShell Compress-Archive：快得多，

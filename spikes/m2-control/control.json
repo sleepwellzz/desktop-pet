@@ -218,10 +218,10 @@
  },
  "manualWalk": {
   "clickedWalk": "clicked",
-  "targetX": 423,
+  "targetX": 350,
   "xBefore": 620,
-  "xAfter": 423,
-  "dx": -197,
+  "xAfter": 350,
+  "dx": -270,
   "walkedLeft": true,
   "withinDeclared": true,
   "released": true
@@ -241,10 +241,10 @@
  "walkBar": {
   "walkClick": "clicked",
   "hiddenDuringWalk": true,
-  "targetX": 234,
-  "petDx": -189,
+  "targetX": 75,
+  "petDx": -275,
   "barBack": true,
-  "centerDeltaBack": 0,
+  "centerDeltaBack": 1,
   "highlightCleared": true
  },
  "realClickAfterHideShow": {

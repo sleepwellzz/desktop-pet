@@ -1632,6 +1632,68 @@ section('⑰ 手动把玩：动作清单解析 + 演出时长 + 位移（纯函�
   }
 }
 
+// —— ⑱ 版本号：一处真源、四处派生（2026-09-22，ADR 041）——
+// 起因：用户问"能不能给这一版编个号"。查下去发现 exe 属性里显示的版本是**Electron 的 44.4.0**，
+// 而 `package.json` 里那个 0.1.0 谁都看不见 —— 也就是"版本号"这件事连唯一真源都还没有。
+// 这一节钉的不是"数字是多少"，而是**这个数字只准有一个出处**：
+// 同一个数字写两遍就会不一致，本工程已经在"宠物名"上栽过一次（面板淘淘 / 托盘 desktop-pet）。
+{
+  section('⑱ 版本号：唯一真源与派生');
+  const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+
+  // ① 真源本身必须是规范的三段 semver：它要被换算成 exe 的四段数值版，也要被人肉读。
+  check('package.json 的 version 是 x.y.z 三段 semver',
+    /^\d+\.\d+\.\d+$/.test(pkg.version), `实际 ${JSON.stringify(pkg.version)}`);
+
+  // ② 主进程只能现读，不许写死 —— 写死就会出现"package.json 说 1.1.0、exe 属性说 1.0.0"。
+  const vMainSrc = stripComments(readFileSync(join(root, 'src/main/index.ts'), 'utf8'));
+  check('主进程的版本号来自 app.getVersion()，源码里没有版本字面量',
+    vMainSrc.includes('version: app.getVersion(),') && !/\d+\.\d+\.\d+/.test(vMainSrc));
+
+  // ③ 用户明确要求：托盘**悬停提示**不要出现版本号（保持「淘淘 · 空闲」）。
+  //    这条是"用户说不要"的落点 —— 别让下一个会话觉得"到处都显示才完整"顺手加回去。
+  const vTraySrc = stripComments(readFileSync(join(root, 'src/host/tray.ts'), 'utf8'));
+  check('托盘悬停提示不含版本号（用户 2026-09-22 明确要求）', !/version/i.test(vTraySrc));
+
+  // ④ 打包脚本：版本从 package.json 派生，且 exe 的资源要写全。
+  const mpRaw = stripComments(readFileSync(join(root, 'tools/make-portable.mjs'), 'utf8'));
+  check('打包脚本从 package.json 读版本，不手写第二份',
+    mpRaw.includes("JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version")
+    && !/\d+\.\d+\.\d+/.test(mpRaw));
+  for (const [name, needle] of [
+    ['exe 数值版 FileVersion（系统/安装器比较大小用）', "'--set-file-version', windowsVersion(VERSION)"],
+    ['exe 数值版 ProductVersion', "'--set-product-version', windowsVersion(VERSION)"],
+    ['exe 字符串版 FileVersion（属性页显示的就是它）', "'--set-version-string', 'FileVersion', VERSION"],
+    ['exe 字符串版 ProductVersion', "'--set-version-string', 'ProductVersion', VERSION"],
+    ['清掉 Electron 的 CompanyName', "'--set-version-string', 'CompanyName', 'desktop-pet'"],
+    ['清掉 Electron 的 LegalCopyright', "'--set-version-string', 'LegalCopyright', 'desktop-pet'"],
+    ['清掉 OriginalFilename=electron.exe', "'--set-version-string', 'OriginalFilename', EXE_NAME"],
+  ]) check(name, mpRaw.includes(needle));
+  check('分发 zip 名带版本号', mpRaw.includes('desktop-pet-${VERSION}-win-x64.zip'));
+  check('打包目录名不带版本号（自启注册表记的是绝对路径，改名会让老用户的条目失效）',
+    mpRaw.includes("join(ROOT, 'dist-win', 'desktop-pet')"));
+
+  // ⑤ 用**真实的菜单模板**跑一遍 —— 这才是"用户真的会看到它吗"的落点。
+  //    该模块顶层 `import { Menu } from 'electron'`，纯 node 下 require('electron') 拿到的是
+  //    路径字符串而不是对象；但只有 popupPetMenu 用 Menu，buildPetMenuTemplate 是纯函数。
+  const vMenu = require(join(root, 'dist/host/pet-menu.js'));
+  const vView = {
+    visible: true, scale: 1, autoStart: false, statusLine: '空闲', petName: '淘淘',
+    version: pkg.version, sessionCount: 0, defaultScale: 1,
+    scaleRange: [0.5, 1.5], scaleStep: 0.25,
+  };
+  const vNoop = () => {};
+  const vItems = vMenu.buildPetMenuTemplate(vView, {
+    toggleVisibility: vNoop, toggleControlBar: vNoop, clearSessions: vNoop,
+    setScale: vNoop, resetScale: vNoop, setAutoStart: vNoop, quit: vNoop,
+  });
+  const vRow = vItems.find((i) => typeof i.label === 'string' && i.label.startsWith('版本：'));
+  check('真实菜单模板里确实有一行版本', Boolean(vRow));
+  eq('版本行的值来自视图，不是模板自己编的', vRow && vRow.label, `版本：${pkg.version}`);
+  eq('版本行是只读的（可点会让人以为点它能升级）', vRow && vRow.enabled, false);
+  eq('退出仍是最后一项（版本行不许挤到它后面）', vItems[vItems.length - 1].label, '退出');
+}
+
 // —— ⑳ 定时器必须都能被关掉 ——
 // 起因：2026-09-22 用户在便携版点「退出宠物」弹出 `Object has been destroyed`。
 // 根因是两条 interval 的句柄从来没被接住（250ms 仲裁推进 + 600ms 全屏监听），
