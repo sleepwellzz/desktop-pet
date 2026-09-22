@@ -17,6 +17,9 @@
  *  11. **「清空状态会话」把视图也清掉**：面板行数 0、菜单计数 0（ADR 016 / D2）；
  *  12. **动作排 / 手动把玩**（ADR 038）：按钮与 sidecar 清单一致；点一下**渲染层真的切过去**；
  *      循环动作到点自动交回；**位移类真的走**（读窗口 x）且不超出声明的距离。
+ *  13. **走路时面板先收起、走完自己回来**（ADR 039）＋ **真实鼠标点击**这个面板
+ *      （此前探针一律用 DOM 合成点击，绕过了 Windows 的输入路由；而 ADR 009 那条
+ *      "hide 之后不再路由真实鼠标按钮事件"正好要靠这条路径才验得到）。
  *
  * 用法：node spikes/m2-control/run.mjs control
  */
@@ -479,13 +482,13 @@ app.whenReady().then(async () => {
       return 'clicked';
     })()`).catch((e) => 'error:' + String(e));
     await sleep(700);
-    const walking = dbg.manualPlay();
+    const walkingNow = dbg.manualPlay();
     await sleep(5000);                        // 180–300px / 96px·s⁻¹ ≈ 2–3.2 秒，留足余量
     const xAfter = pet.getContentBounds().x;
     const walked = Math.abs(xAfter - xBefore);
     report.manualWalk = {
       clickedWalk,
-      targetX: walking ? walking.targetX : null,
+      targetX: walkingNow ? walkingNow.targetX : null,
       xBefore, xAfter, dx: xAfter - xBefore,
       walkedLeft: xAfter < xBefore,
       withinDeclared: walked >= sidecar.actions.walkDistancePx[0] - 4
@@ -517,6 +520,92 @@ app.whenReady().then(async () => {
     log(`[probe] 再点一次同一个按钮：${firstClick} → 在演=${report.manualToggle.started}`
       + ` → ${secondClick} → 已停止=${report.manualToggle.stopped}（期望 true）`
       + `｜高亮已清=${report.manualToggle.highlightCleared}（期望 true）`);
+
+    // —— ⑫c 真实鼠标点击 + 「走路时收起面板」（ADR 039）——
+    // 两件事必须一起验，因为它们互相纠缠：
+    //   ① **真实鼠标点击**这个面板，此前从来没被验过 —— 探针一律用 `b.click()`
+    //      （DOM 合成事件，绕过 Windows 的输入路由）。而 ADR 009 那条
+    //      "hide 之后系统不再把**真实鼠标按钮事件**路由到该窗口"只对**键盘**路径被验证过
+    //      （ADR 016 实测的是 keyDelta）。控制条恰好"会接收按钮事件"，所以这一面是空的。
+    //   ② 新需求让面板**自己 hide 再 show**（走路时收起、走完还回来）——
+    //      正好把面板推进 ADR 009 描述的那个情形里。
+    // ⇒ 判据顺序：先证明"正常情况下真实点击有效"（基线），再走一次路（hide→show），
+    //   再真实点击一次。**若基线通过而复查失败，那就是 ADR 009 在控制条上复现了。**
+    if (!dbg.barVisible()) await ensureBar();
+
+    const rectOf = async (sel) => bar.webContents.executeJavaScript(`(() => {
+      const el = document.querySelector(${JSON.stringify(sel)});
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    })()`).catch(() => null);
+
+    /** 在这个元素中心注入**真实**鼠标左键点击（不是 DOM 合成事件）。 */
+    const realClick = async (sel) => {
+      const r = await rectOf(sel);
+      if (!r) return 'no-button';
+      const bb = dbg.barBounds();
+      if (!bb) return 'no-bar-bounds';
+      const d = screen.getDisplayNearestPoint({ x: bb.x + 10, y: bb.y + 10 }).scaleFactor;
+      const sx = Math.round((bb.x + r.x + r.w / 2) * d);
+      const sy = Math.round((bb.y + r.y + r.h / 2) * d);
+      moveTo(sx, sy); await sleep(350);
+      mouse_event(LEFT_DOWN, 0, 0, 0, 0); await sleep(80);
+      mouse_event(LEFT_UP, 0, 0, 0, 0);
+      await sleep(650);
+      return 'clicked';
+    };
+
+    // ① 基线：正常情况下真实鼠标点击有效（「等一等」是循环动作，状态能稳定读到）
+    const baselineClick = await realClick('#plays button[data-state="waiting"]');
+    const baselineState = dbg.manualPlay();
+    await realClick('#plays button[data-state="waiting"]');   // 再点一次停止
+    report.realClick = {
+      baselineClick,
+      baselineState: baselineState ? baselineState.state : null,
+      stoppedAgain: dbg.manualPlay() === null,
+    };
+    log(`[probe] 真实鼠标点击（基线）：${baselineClick} → 在演=${report.realClick.baselineState}`
+      + `（期望 waiting）｜再点一次已停=${report.realClick.stoppedAgain}`);
+
+    // ② 走路：面板必须**先收起**，走完**自己回来**
+    const cx0 = pet.getContentBounds().x;
+    const walkClick = await realClick('#plays button[data-state="running-left"]');
+    await sleep(500);
+    const hiddenDuringWalk = !dbg.barVisible();
+    const walking = dbg.manualPlay();
+    await sleep(5500);                        // 180–300px / 96px·s⁻¹ ≈ 2–3.2s，留足余量
+    const barBack = dbg.barVisible();
+    const cx1 = pet.getContentBounds().x;
+    const bbBack = dbg.barBounds();
+    const petBack = pet.getContentBounds();
+    const centerDeltaBack = bbBack
+      ? Math.abs((bbBack.x + bbBack.width / 2) - (petBack.x + petBack.width / 2)) : null;
+    report.walkBar = {
+      walkClick, hiddenDuringWalk,
+      targetX: walking ? walking.targetX : null,
+      petDx: cx1 - cx0,
+      barBack, centerDeltaBack,
+      highlightCleared: (await dom()).playButtons.every((b) => b.on !== true),
+    };
+    log(`[probe] 走路：${walkClick} → 走路中面板收起=${hiddenDuringWalk}（期望 true）`
+      + `｜目标 x=${report.walkBar.targetX}｜宠物 620→${cx1}（走了 ${cx1 - cx0}px）`
+      + `｜走完面板自己回来=${barBack}（期望 true）｜回来后水平偏差=${centerDeltaBack}`
+      + `｜高亮已清=${report.walkBar.highlightCleared}`);
+
+    // ③ 关键复查：**经历一次 hide→show 之后，真实鼠标点击还进不进得来**（ADR 009 那一面）
+    const afterCycleDpr = screen.getDisplayNearestPoint({
+      x: pet.getContentBounds().x + 10, y: pet.getContentBounds().y + 10,
+    }).scaleFactor;
+    const postClick = await realClick('#plays button[data-state="waiting"]');
+    const postState = dbg.manualPlay();
+    report.realClickAfterHideShow = {
+      postClick, postState: postState ? postState.state : null, dpr: afterCycleDpr,
+    };
+    log(`[probe] 隐藏→显示之后的真实鼠标点击：${postClick} → 在演=${report.realClickAfterHideShow.postState}`
+      + `（期望 waiting —— 若这里为空而基线通过，就是 ADR 009 在控制条上复现了）`);
+    await realClick('#plays button[data-state="waiting"]');   // 收尾：停掉
+    await sleep(400);
 
     // —— ⑬ 面板「隐藏宠物」：面板跟着收起 ——
     await send({ id: 'hide-pet' });
@@ -621,6 +710,28 @@ app.whenReady().then(async () => {
     }
     if (!report.manualToggle.stopped) fails.push('再点一次同一个按钮没有停止（toggle 失效）');
     if (!report.manualToggle.highlightCleared) fails.push('手动停止之后高亮没清掉');
+    // —— ⑫c 真实鼠标点击 + 走路时收起面板（ADR 039）——
+    if (report.realClick.baselineClick !== 'clicked') {
+      fails.push('基线失败：真实鼠标点击面板按钮没被收到：' + report.realClick.baselineClick);
+    }
+    if (report.realClick.baselineState !== 'waiting') {
+      fails.push(`基线失败：真实鼠标点击没有触发动作用（在演=${report.realClick.baselineState}）`);
+    }
+    if (!report.realClick.stoppedAgain) fails.push('基线：真实鼠标再点一次没有停止');
+    if (!report.walkBar.hiddenDuringWalk) fails.push('走路开始时面板没有收起（用户要的是先消失再出现）');
+    if (!(report.walkBar.petDx < 0)) fails.push(`走路没有真的左移（dx=${report.walkBar.petDx}）`);
+    if (!report.walkBar.barBack) fails.push('走路结束后面板没有自己回来');
+    if (!(report.walkBar.centerDeltaBack <= 2)) {
+      fails.push(`走路结束后回来的面板没有重新居中（偏差 ${report.walkBar.centerDeltaBack}）`);
+    }
+    if (!report.walkBar.highlightCleared) fails.push('走路结束后面板上的高亮没清掉');
+    // **关键复查**：经历一次 hide→show 之后真实鼠标点击是否还进得来（ADR 009 那一面）
+    if (report.realClickAfterHideShow.postClick !== 'clicked') {
+      fails.push('hide→show 之后连点击都没注入成功：' + report.realClickAfterHideShow.postClick);
+    }
+    if (report.realClickAfterHideShow.postState !== 'waiting') {
+      fails.push('❌ hide→show 之后真实鼠标点击没被路由到面板（ADR 009 在控制条上复现了）');
+    }
     report.failures = fails;
     report.verdict = fails.length === 0 ? 'PASS' : 'FAIL';
     log(`[probe] 判定：${report.verdict}${fails.length ? ' —— ' + fails.join('；') : ''}`);

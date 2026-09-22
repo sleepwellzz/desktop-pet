@@ -21,14 +21,17 @@ export function createTray(opts: {
   const icon = nativeImage.createFromPath(opts.iconPath);
   if (icon.isEmpty()) throw new Error(`托盘图标读不出来：${opts.iconPath}`);
   const tray = new Tray(icon);
-  tray.setToolTip('desktop-pet');
 
   const refresh = (): void => {
     const view = opts.getView();
     // 菜单每次重建而不是复用：勾选态（缩放档位、开机自启）与文案（隐藏/显示）都要现读，
     // 复用会让"点完之后勾没动"这类问题藏起来。
     tray.setContextMenu(Menu.buildFromTemplate(buildPetMenuTemplate(view, opts.actions)));
-    tray.setToolTip(`desktop-pet · ${view.statusLine}`);
+    // 悬停提示 = 宠物名 + 状态。**不再用 `desktop-pet`**（那是产品/进程名，2026-09-22 用户
+    // 要求换成宠物的名字）——取自宠物包，换包自动跟着变。
+    // 这里不另设一次初始 tooltip：`refresh()` 紧接着就会调用，两处写同一个值只会让
+    // 下一个人不确定该改哪一处。
+    tray.setToolTip(view.petName ? `${view.petName} · ${view.statusLine}` : view.statusLine);
   };
 
   // Windows 上左键单击托盘图标通常不弹菜单，正好用它做"收起/放出宠物"

@@ -157,7 +157,16 @@ function boot(): void {
   const pack = loadPack(packDir);
   bootMark('宠物包已解析（含精灵图 stat / 魔数 / 尺寸校验）');
   for (const w of pack.warnings) console.warn('[pet][warn] ' + w);
-  console.log(`[pet] ${pack.manifest.displayName ?? pack.manifest.id} · ${pack.sheet.width}x${pack.sheet.height} ` +
+
+  /**
+   * 宠物名 —— 面板身份位（ADR 016）、托盘悬停提示（ADR 039）、渲染层 init 都用它。
+   *
+   * 收成一处而不是每处各写一遍 `pack.manifest.displayName ?? pack.manifest.id`：
+   * 三处各写一份时，"换个说法"就会让三个地方显示不同的名字（面板写名字、托盘写产品名，
+   * 2026-09-22 用户报的正是这个观感不一致）。
+   */
+  const petName = pack.manifest.displayName ?? pack.manifest.id;
+  console.log(`[pet] ${petName} · ${pack.sheet.width}x${pack.sheet.height} ` +
     `· ${pack.grid.columns}x${pack.grid.rows} @ ${pack.cell.width}x${pack.cell.height} · ${Object.keys(pack.states).length} 个状态`);
 
   // —— 缩放：宠物包默认值 + 用户偏好（prefs），并夹进宠物包声明的可用区间 ——
@@ -195,7 +204,7 @@ function boot(): void {
     initialState: 'idle',
     warnings: pack.warnings,
     petId: pack.manifest.id,
-    displayName: pack.manifest.displayName ?? pack.manifest.id,
+    displayName: petName,
   });
 
   overlay.browserWindow.once('ready-to-show', () => {
@@ -389,6 +398,7 @@ function boot(): void {
       scale: currentScale,
       autoStart: isAutoStartEnabled(),
       statusLine,
+      petName,
       defaultScale: pack.scale,
       scaleRange,
       scaleStep,
@@ -643,7 +653,7 @@ function boot(): void {
       statusLabels: STATUS_TEXT,
       sessions: arbiter.viewSessions(),
       maxRows: barMaxRows,
-      petName: pack.manifest.displayName ?? pack.manifest.id,
+      petName,
       petVisible: overlay.isVisible(),
       // 动作排：清单来自 sidecar，`active` 由主进程的真相（`manualPlay`）给出 ——
       // 渲染层不自己记"我点过哪个"，否则面板收起再打开就会显示错的高亮。
@@ -915,6 +925,11 @@ function boot(): void {
       Math.random,
     );
     manualPlay = res.play;
+    // 位移类动作**先把面板收起来**（ADR 039）：面板锚在宠物身上，走路会拖着它一起飘 ——
+    // 用户实测后明确不接受那个观感。走完由 `endManualPlay` 还回去。
+    // 判据用 `targetX !== null`（= 真的会移动窗口）而不是"这个动作是不是位移姿态"：
+    // 贴着屏幕边缘时位移动作会**降级成原地演**，那时宠物不动，没有任何理由收走面板。
+    if (res.play.targetX !== null) dispatchBar({ kind: 'walk-hide' });
     applyStageCommand(res.command, 'manual');
     wakePet(`手动把玩 ${action.label}`);
     refreshBar();                            // 高亮当前动作
@@ -940,7 +955,13 @@ function boot(): void {
     if (!releaseSent) {
       applyStageCommand({ play: null, moveX: targetX === null ? null : Math.round(targetX) }, 'manual');
     }
-    refreshBar();                            // 清掉高亮
+    refreshBar();                            // 清掉高亮（面板可见时才有效）
+    // 位移类动作：走完了，把面板**还回去**（ADR 039）。
+    // 顺序在 `manualPlay = null` 之后：面板重新显示时 `barView()` 读的是最新的进行态
+    // （此刻已是 null ⇒ 高亮是清的，不会显示成"还在演")。
+    // 有没有欠账、以及"用户已经自己把面板叫回来了"这两种情况都在状态机里判断
+    // （`restoreAfterWalk` 的不变量），这里不做二次判断。
+    if (targetX !== null) dispatchBar({ kind: 'walk-restore' });
     console.log(`[pet][manual] 结束（${reason}）：${state} → 交回仲裁器`);
   }
 
@@ -1113,7 +1134,7 @@ function boot(): void {
       /** 菜单视图（含 `sessionCount`）：探针用它验「清空状态会话」后计数归零。 */
       menuView: () => petMenuView(),
       /** 面板该显示谁的名字（探针用它验"面板显示宠物名，而不是缩放百分比"）。 */
-      petName: () => pack.manifest.displayName ?? pack.manifest.id,
+      petName: () => petName,
       // —— M3 行为层（探针用）——
       behaviorState: () => behaviorState,
       behaviorPolicy: () => behaviorPolicy,

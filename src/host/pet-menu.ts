@@ -17,6 +17,14 @@ export interface PetMenuView {
   autoStart: boolean;
   /** 人可读的状态行，来自 StatusArbiter.state。 */
   statusLine: string;
+  /**
+   * 宠物名（`pet.json` 的 `displayName`，回落 id）。
+   *
+   * 托盘图标的悬停提示用它 —— 2026-09-22 用户要求把那里显示的 `desktop-pet`（产品/进程名）
+   * 改成宠物的名字「淘淘」。**取自宠物包而不是硬编码**：换宠物包自动跟着变，
+   * 与面板上的身份位（ADR 016 第 4 条）同一个来源。
+   */
+  petName: string;
   /** 状态文件里现存的会话数。0 时"清空状态会话"置灰。 */
   sessionCount: number;
   /** 宠物包声明的默认缩放（"重置大小"的落点）。 */

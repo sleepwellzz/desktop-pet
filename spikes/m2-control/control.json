@@ -156,7 +156,8 @@
   "focusedWhenShown": {
    "visible": true,
    "hasFocus": true,
-   "hideAt": null
+   "hideAt": null,
+   "restoreAfterWalk": false
   },
   "hiddenByRightClick": true
  },
@@ -217,10 +218,10 @@
  },
  "manualWalk": {
   "clickedWalk": "clicked",
-  "targetX": 347,
+  "targetX": 423,
   "xBefore": 620,
-  "xAfter": 347,
-  "dx": -273,
+  "xAfter": 423,
+  "dx": -197,
   "walkedLeft": true,
   "withinDeclared": true,
   "released": true
@@ -231,6 +232,25 @@
   "secondClick": "clicked",
   "stopped": true,
   "highlightCleared": true
+ },
+ "realClick": {
+  "baselineClick": "clicked",
+  "baselineState": "waiting",
+  "stoppedAgain": true
+ },
+ "walkBar": {
+  "walkClick": "clicked",
+  "hiddenDuringWalk": true,
+  "targetX": 234,
+  "petDx": -189,
+  "barBack": true,
+  "centerDeltaBack": 0,
+  "highlightCleared": true
+ },
+ "realClickAfterHideShow": {
+  "postClick": "clicked",
+  "postState": "waiting",
+  "dpr": 1.5
  },
  "teardown": {
   "petHidden": true,

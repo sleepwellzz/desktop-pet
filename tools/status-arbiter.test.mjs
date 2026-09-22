@@ -33,6 +33,16 @@ function eq(name, actual, expected) {
 function section(title) { process.stdout.write(`\n${title}\n`); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * 去掉注释再做"源码里有没有这个字符串"这类结构性检查。
+ *
+ * 起因（2026-09-22）：`tray.ts` 里那句"**不再用 `desktop-pet`**"的**注释**本身含有那个字符串，
+ * 于是"托盘不再写死 desktop-pet"这条断言被自己的注释判红 —— **断言比它要测的东西更脆**。
+ * 结构性检查一律先过这一步。
+ */
+const stripComments = (src) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
 /** 虚拟时钟：一切与时间有关的断言都在它上面做，不依赖机器快慢。 */
 function makeClock(start = 1_000_000) {
   let t = start;
@@ -644,6 +654,90 @@ section('⑪ 控制条显示策略');
   const inv = ev(ev({ ...BAR_HIDDEN }, { kind: 'toggle' }), { kind: 'pet-hidden' });
   eq('隐藏后清掉焦点记账', inv.hasFocus, false);
   eq('隐藏后不留收起计划', inv.hideAt, null);
+
+  // —— ⑪b 走路时收起面板、走完还回去（ADR 039）——
+  // 这是本项目唯一一处"面板会自己出现"的规则，所以必须钉死它**只有**一种触发源：
+  // 用户自己点了「左走/右走」。任何被动原因都不许让它冒出来（ADR 016 的学费）。
+  {
+    const shown = ev({ ...BAR_HIDDEN }, { kind: 'toggle' });
+    eq('前置：面板可见', shown.visible, true);
+
+    // ① 走路开始：收起并记下欠账
+    const walking = ev(shown, { kind: 'walk-hide' });
+    eq('走路开始 → 面板收起', walking.visible, false);
+    eq('走路开始 → 记下"待恢复"', walking.restoreAfterWalk, true);
+    eq('收起时不留收起计划', walking.hideAt, null);
+    eq('收起时放弃焦点记账', walking.hasFocus, false);
+    // 走路期间时间推进不会把它弄回来（它本来就不可见）
+    eq('走路期间 tick 不会让它冒出来', tickBarState(walking, clock.now() + 600_000).visible, false);
+    eq('走路期间 tick 也不会把欠账清掉', tickBarState(walking, clock.now() + 600_000).restoreAfterWalk, true);
+
+    // ② 走路结束：还回去，欠账结清
+    const back = ev(walking, { kind: 'walk-restore' });
+    eq('走路结束 → 面板回来', back.visible, true);
+    eq('欠账结清', back.restoreAfterWalk, false);
+
+    // ③ **没有欠账时 `walk-restore` 什么都不做** —— 这是"绝不自作主张显示"的落点
+    const noDebt = ev({ ...BAR_HIDDEN }, { kind: 'walk-restore' });
+    eq('没有欠账 ⇒ 面板不会凭空出现', noDebt.visible, false);
+    // 传同一个对象进去，断言它被**原样返回**（不造新对象 = 这条路径零副作用）
+    const hidden = { ...BAR_HIDDEN };
+    eq('没有欠账 ⇒ 状态原样返回（连新对象都不造）', ev(hidden, { kind: 'walk-restore' }), hidden);
+
+    // ④ 面板本来就没显示时 `walk-hide` 不该产生欠账（否则走完会凭空冒出一个面板）
+    const hideWhenHidden = ev({ ...BAR_HIDDEN }, { kind: 'walk-hide' });
+    eq('面板本来就不可见 ⇒ 不产生欠账', hideWhenHidden.restoreAfterWalk, false);
+    eq('面板本来就不可见 ⇒ 走完也不会冒出来',
+      ev(hideWhenHidden, { kind: 'walk-restore' }).visible, false);
+
+    // ⑤ **不变量②：面板一可见，欠账即作废** —— 用户已经自己把它叫回来了
+    const userReopened = ev(walking, { kind: 'toggle' });
+    eq('用户自己唤回面板', userReopened.visible, true);
+    eq('用户唤回 ⇒ 欠账作废', userReopened.restoreAfterWalk, false);
+    eq('于是走完不会再自作主张开一次',
+      ev(userReopened, { kind: 'walk-restore' }).visible, true);
+    // 用户显式收起同理作废：他刚把面板关掉，走完再自动开一次就是"它自己冒出来"
+    const userClosed = ev(ev(walking, { kind: 'toggle' }), { kind: 'request-close' });
+    eq('用户显式关掉 ⇒ 欠账作废', userClosed.restoreAfterWalk, false);
+    eq('于是走完不会自己冒出来', ev(userClosed, { kind: 'walk-restore' }).visible, false);
+    // 宠物被隐藏同理（宠物不在了，面板锚在半空没有意义）
+    const petGone = ev(walking, { kind: 'pet-hidden' });
+    eq('宠物被隐藏 ⇒ 欠账作废', petGone.restoreAfterWalk, false);
+    eq('于是走完不会把面板开在半空', ev(petGone, { kind: 'walk-restore' }).visible, false);
+
+    // ⑥ 走路期间的失焦事件不得把欠账弄丢（收起窗口本身会触发一次 blur）
+    const blurDuringWalk = ev(walking, { kind: 'focus', hasFocus: false });
+    eq('走路期间的失焦不改变可见性', blurDuringWalk.visible, false);
+    eq('走路期间的失焦不丢欠账', blurDuringWalk.restoreAfterWalk, true);
+    eq('走完照样能还回去', ev(blurDuringWalk, { kind: 'walk-restore' }).visible, true);
+  }
+
+  // —— 结构性：这两条不许悄悄回退 ——
+  {
+    const mainSrc = readFileSync(join(root, 'src/main/index.ts'), 'utf8');
+    check('走路收起只在"真的会移动窗口"时触发（原地降级不收面板）',
+      mainSrc.includes("if (res.play.targetX !== null) dispatchBar({ kind: 'walk-hide' })"));
+    check('走路结束会把面板还回去',
+      mainSrc.includes("if (targetX !== null) dispatchBar({ kind: 'walk-restore' })"));
+    // 宠物名必须只有一处来源：面板身份位 / 托盘悬停提示 / 渲染层 init 各写一份，
+    // 就会出现"面板写淘淘、托盘写 desktop-pet"这种同一个人两个名字（2026-09-22 用户报的）
+    check('宠物名只有一处定义',
+      mainSrc.includes('const petName = pack.manifest.displayName ?? pack.manifest.id;'));
+    check('没有第二处各写一遍宠物名',
+      !/petName:\s*pack\.manifest\.displayName/.test(mainSrc)
+      && !/displayName:\s*pack\.manifest\.displayName/.test(mainSrc));
+
+    const traySrc = stripComments(readFileSync(join(root, 'src/host/tray.ts'), 'utf8'));
+    check('托盘悬停提示不再写死 desktop-pet（那是产品/进程名）',
+      !traySrc.includes('desktop-pet'));
+    check('托盘悬停提示取自宠物包的名字', traySrc.includes('view.petName'));
+
+    // 宠物**窗口标题**必须保持 desktop-pet —— 所有探针都靠 `getTitle()` 找窗口，
+    // 改了它会让整套回归静默失效（找不到窗口 ⇒ 报"未等到桌宠窗口"）。
+    const petHtml = readFileSync(join(root, 'src/renderer/index.html'), 'utf8');
+    check('宠物窗口标题仍是 desktop-pet（探针靠它找窗口，别顺手改）',
+      /<title>desktop-pet<\/title>/.test(petHtml));
+  }
 }
 
 // —— ⑫ 控制条仪表盘：会话视图（只读，不改仲裁行为）——
