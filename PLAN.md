@@ -183,6 +183,24 @@ hook 通道 71 条中位 61ms。取数：`node tools/measure-latency.mjs --since
 本轮产物已产出：`dist-win/desktop-pet/` + `dist-win/desktop-pet-1.0.0-win-x64.zip`
 （**zip 名从 `package.json` 的 `version` 派生**，改版本号即改名）。
 
+**GitHub 发布（2026-09-22 进行中 · 只差用户登录一步）** —— 详见 `docs/HANDOFF-2026-09-22.md`。
+- **你只差一件事**：登录 `gh`（或走 GCM / PAT），然后
+  `gh repo create desktop-pet --private --source=. --remote=origin --push`。
+- **`gh` 在 `C:\Program Files\GitHub CLI\gh.exe`**（**不在 PATH 里**，用绝对路径调）。
+  `gh auth login --web` 的那个码**印在终端里、不发邮箱/短信** —— 用户卡住的就是这点。
+  本机另有 **Git Credential Manager 2.9.0**，推的时候会自己弹窗引导。
+- **身份**：`sleepwellzz` / `wenhaoling98@gmail.com`，**仓库级**（全局仍是空的，没污染别的项目）。
+- **历史署名已全部改写**（逐条验证过文件树 / 时间戳 / 提交信息**一字未动**，只有署名变）。
+  备份分支 **`backup-pre-author-rewrite`** 指向改写前 —— **别推、别删**，那是唯一的后悔药。
+- **`.workbuddy/` 不进仓库**（用户决定）：本地照常保留，已移出版本库**并从 main 历史中清掉**
+  （提交 68 → 65，剪掉 3 个"只改它"的提交）。`.gitignore` 改成整个目录。
+- **本机痕迹清理**：被跟踪文件命中 25 → 9 个（其余是脱敏后的假命中）。最值钱的是修掉
+  **4 处承重的硬编码绝对路径**（`run-build.cjs` 的 `root` 等 ⇒ 一律改为从脚本位置推导）——
+  那是真 bug 不只是痕迹。日志类（`spikes/**/*.out`）就地脱敏。
+- **转公开前必须再做一次历史级清理**：ADR / changelog / INDEX / 旧 HANDOFF 里仍有
+  `<工程目录>\...` 与用户名 —— 本轮**刻意没动**（"只增不改"的档案，且那里的路径**本身就是证据**）。
+- **CI 先不加**（用户决定）—— 没在本机以外验证过，加了红反而更糟。
+
 **已关闭，不要再提议**（理由见对应 ADR）：
 M2 ⑤ 多宠物切换（ADR 015，缺素材与规格）｜行为层的"忙碌动作"（ADR 019，用户不认这个动机）｜
 跨屏漫游（ADR 019，锁定"不跨屏"）｜Proma 适配器（**冻结中**，先做完 WorkBuddy 通道的成品）。
