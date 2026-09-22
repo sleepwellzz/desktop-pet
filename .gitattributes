@@ -1,0 +1,26 @@
+# 统一换行，避免"同一份代码在不同机器上显示成整文件被改过"。
+# 起因（2026-09-22）：本机 core.autocrlf=true，每次提交 git 都在警告
+# `LF will be replaced by CRLF the next time Git touches it`。
+# 仓库里一律以 LF 存储；检出时不做转换（下面的例外见注释）。
+* text=auto eol=lf
+
+# Windows 批处理必须是 CRLF —— cmd.exe 对 LF-only 的 .bat 处理很脆
+# （本工程有 启动桌宠.bat / 启动桌宠-后台.bat / 喂状态.bat 三个入口脚本）。
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制：不做任何换行/编码转换
+*.webp binary
+*.png  binary
+*.ico  binary
+*.exe  binary
+*.dll  binary
+*.node binary
+*.pak  binary
+*.zip  binary
+
+# 语言统计（GitHub 的 linguist）—— 探针产物与文档不要压过真实语言占比
+docs/**      linguist-documentation
+journal/**   linguist-documentation
+spikes/**    linguist-documentation
+*.html       linguist-documentation
