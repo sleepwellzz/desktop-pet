@@ -10,6 +10,7 @@ import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
@@ -1359,6 +1360,18 @@ section('⑯ isAckable 真值表（五种状态 × 已确认 × 已过期）');
   const barSrc = readFileSync(join(root, 'src/renderer/control-bar.ts'), 'utf8');
   check('控制条渲染层从内核取判据', barSrc.includes("from '../kernel/status'"), '缺少 import');
   check('控制条渲染层不再自己写状态判据', !barSrc.includes("s.status === 'needs-input'"), '又抄了一份');
+}
+
+// —— ⑳ 定时器必须都能被关掉 ——
+// 起因：2026-09-22 用户在便携版点「退出宠物」弹出 `Object has been destroyed`。
+// 根因是两条 interval 的句柄从来没被接住（250ms 仲裁推进 + 600ms 全屏监听），
+// 退出时清理不到，窗口销毁后又 tick 了一次。详见 ADR 035。
+// 这个缺陷**跑测试抓不稳**（它是竞态，本轮写了三版探针都没能确定性复现），
+// 但在代码里一眼可见 ⇒ 把它变成静态规则：不但修这一次，也挡住下一次。
+{
+  const r = spawnSync(process.execPath, [join(root, 'tools/check-timers.mjs')], { encoding: 'utf8' });
+  const out = ((r.stdout || '') + (r.stderr || '')).trim();
+  check('每一个定时器都能被关闭（setInterval / *Watch 的句柄都被接住）', r.status === 0, out.slice(0, 400));
 }
 
 // —— 汇总 ——

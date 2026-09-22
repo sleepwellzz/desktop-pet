@@ -40,9 +40,17 @@ const alive = (() => {
   const r = spawnSync('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8' });
   return /electron\.exe/i.test(r.stdout || '');
 })();
+const logText = (() => { try { return fs.readFileSync(LOG, 'utf8'); } catch { return ''; } })();
+/** 退出途中抓到的未捕获异常。**只看"进程消失"是不够的** —— 进程崩了也一样会消失。 */
+const crashesInLog = logText.split('\n').filter((l) => l.includes('[uncaught]'));
+
 console.log(alive
   ? `\n❌ 退出用例失败：pid=${pid} 仍在运行`
-  : `\n✅ 退出用例通过：pid=${pid} 已消失`);
+  : crashesInLog.length
+    ? `\n❌ 退出用例失败：进程是退了，但**退出途中崩了 ${crashesInLog.length} 次** ——\n`
+      + `   第一条：${crashesInLog[0].trim().slice(0, 200)}\n`
+      + `   （"进程消失"不等于"退出干净"；2026-09-22 就是被这条漏判坑的，详见 ADR 035）`
+    : `\n✅ 退出用例通过：pid=${pid} 已消失，且退出途中没有未捕获异常`);
 
 try {
   const r = JSON.parse(fs.readFileSync(REPORT, 'utf8'));

@@ -179,7 +179,10 @@ function render(v: BarView): void {
 }
 
 /** 相对时间每秒刷新。只改文本节点，不重建 DOM —— 否则按钮的 hover 状态会每秒闪一次。 */
-setInterval(() => {
+// 句柄留着并在页面卸载时清掉 —— 这条本身无害（渲染层的定时器随 JS 上下文一起消失），
+// 但它被 `tools/check-timers.mjs` 判为"关不掉的定时器"，而那条检查是为了主进程那次
+// 真实崩溃（ADR 035：窗口都销毁了还在 tick）才立的。**对例外要解释清楚，不要加白名单了事。**
+const relTimeTimer = setInterval(() => {
   if (!lastView) return;
   const now = Date.now();
   for (const it of liveTimes) {
@@ -187,6 +190,7 @@ setInterval(() => {
     it.el.classList.toggle('stale', now - it.ts > STALE_HINT_MS);
   }
 }, 1000);
+window.addEventListener('beforeunload', () => clearInterval(relTimeTimer));
 
 window.petBar.onView(render);
 

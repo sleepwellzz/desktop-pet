@@ -20,11 +20,14 @@
     "dev": "npm run build && electron .",
     "test:status": "node tools/status-arbiter.test.mjs",
     "e2e:status": "node spikes/m2-status/run-status-e2e.mjs",
-    "pet:validate": "python tools/validate_pet.py"
+    "pet:validate": "python tools/validate_pet.py",
+    "check:timers": "node tools/check-timers.mjs",
+    "make:portable": "node tools/make-portable.mjs"
   },
   "devDependencies": {
     "electron": "44.4.0",
     "esbuild": "^0.28.2",
+    "rcedit": "^5.0.2",
     "typescript": "^5.0.0"
   },
   "dependencies": {

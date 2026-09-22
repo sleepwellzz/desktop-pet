@@ -11,6 +11,7 @@
 //
 // 用法：node tools/make-portable.mjs
 //   产物：<工程>/dist-win/desktop-pet/（约 370 MB，已 gitignore）
+import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -59,6 +60,24 @@ if (!existsSync(exeFrom)) die('运行时里没有 electron.exe');
 rmSync(exeTo, { force: true });
 renameSync(exeFrom, exeTo);
 
+// —— 改 exe 的**版本资源**：这一步决定开机自启在注册表里叫什么 ——
+// Electron 写 HKCU\...\Run 时的值名 = `electron.app.` + **exe 版本资源的 ProductName**，
+// 跟 app package.json 的 name、跟 app.setName() **都没有关系**（2026-09-22 三种都实测过：
+// 前者放着正确的 name 也不起作用，后者 getName() 变了值名还是不变，只有改 ProductName 有效）。
+// 不改的话它会一直叫 `electron.app.Electron` —— 用户在系统启动列表里认不出这是桌宠，
+// 也得承担与别的便携 Electron 应用互相覆盖的风险（挂起 #15 / ADR 034、035）。
+// 顺带改 FileDescription：**这个 exe 在任务管理器里显示什么**也跟着变成 desktop-pet。
+const RCEDIT = join(ROOT, 'node_modules', 'rcedit', 'bin', 'rcedit.exe');
+if (!existsSync(RCEDIT)) die('缺 node_modules/rcedit（它是打包期依赖）：npm i -D rcedit');
+const rc = spawnSync(RCEDIT, [exeTo,
+  '--set-version-string', 'ProductName', 'desktop-pet',
+  // **值一律用 ASCII**：中文写进版本资源在部分读取路径上会变乱码（本轮实测
+  // FileDescription 读到的是问号），跟 .bat 必须纯 ASCII 是同一类坑（ADR 029）。
+  '--set-version-string', 'FileDescription', 'desktop-pet desktop pet'],
+{ encoding: 'utf8', shell: false });   // 含空格路径**不要** shell:true，参数会被截断
+if (rc.status !== 0) die('rcedit 改版本资源失败：' + ((rc.stdout || '') + (rc.stderr || '')).trim());
+console.log('[打包] exe 版本资源已改为 ProductName=desktop-pet（决定自启值名）');
+
 // 留一份说明，免得几个月后面对一个 370MB 目录不知道它是什么。
 writeFileSync(join(OUT, '说明.txt'), [
   '桌面宠物 · 免安装绿色版',
@@ -71,7 +90,10 @@ writeFileSync(join(OUT, '说明.txt'), [
   '      不打 asar 是因为 koffi 的原生二进制 .node 不能从 asar 内部加载。',
   '      托盘：左键单击 = 显示/隐藏宠物；右键 = 完整菜单。',
   '      全局快捷键已删除（ADR 032），控制条唤出 = 右键宠物 / 托盘菜单「控制条」。',
-  '卸载：直接删掉整个目录。开机自启可在托盘菜单里关掉（它写的是 HKCU\\\\...\\\\Run）。',
+  '      开机自启写在 HKCU\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run，',
+  '      值名 electron.app.desktop-pet（Electron 固定前缀 + exe 版本资源的 ProductName；',
+  '      升级 2026-09-22 之前打的包时，应用会在启动时自动把旧值名 migrate 过来）。',
+  '卸载：直接删掉整个目录，并在托盘菜单里关掉开机自启。',
   '',
 ].join('\r\n'), 'utf8');
 

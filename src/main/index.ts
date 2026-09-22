@@ -16,7 +16,7 @@ import { createOverlayWindow } from '../host/overlay-window';
 import { detectFullscreen, startFullscreenWatch, fullscreenUnavailableReason } from '../host/fullscreen';
 import { createTray } from '../host/tray';
 import { buildPetMenuTemplate, type PetMenuActions, type PetMenuView } from '../host/pet-menu';
-import { isAutoStartEnabled, writeAutoStart } from '../host/autostart';
+import { isAutoStartEnabled, migrateLegacyAutoStart, writeAutoStart } from '../host/autostart';
 import { createBubbleLayer, type BubbleLayer } from '../host/bubble-layer';
 import { createControlBar, type ControlBar } from '../host/control-bar';
 import { loadPrefs, savePrefs } from '../host/prefs';
@@ -449,9 +449,15 @@ function boot(): void {
     },
     quit() {
       console.log('[pet] 用户从菜单退出');
-      // 先停定时器再拆窗口：否则拆完到进程真正退出之间还会有一两次 tick 落在
-      // 已销毁的窗口上（`Object has been destroyed`，探针日志里那行噪音就是它）。
+      // **两条定时器都要停**（缺一不可，ADR 035）：
+      //   - `stopTimers()`      16/33ms，也跟着窗口 show/hide 走；
+      //   - `stopProcessTimers()` 250ms 仲裁推进 + 600ms 全屏监听，**只在这里停**。
+      // 后者漏了的话，拆完窗口到进程真正退出之间还会有一两次 tick 落在已销毁的
+      // 窗口上 —— 那正是用户在便携版点「退出宠物」时弹出的 `Object has been destroyed`
+      // （探针日志里那行"噪音"从来就不是一个可忽略的噪音，是把高分 Styling 问题
+      // 降格处理的代价）。
       stopTimers();
+      stopProcessTimers();
       void statusSource?.stop();
       tray?.destroy();
       bubble?.destroy();
@@ -858,12 +864,35 @@ function boot(): void {
     });
   }
 
+  // **进程级**定时器：只在**退出**时清理，宠物隐藏期间照常跑。
+  //
+  // 它跟下面那组（33ms 行为层 / 16ms 光标轮询，跟着窗口 show/hide 启停）不是一回事 ——
+  // 250ms 这条推进仲裁器的粘滞超时与静默兜底，600ms 那条盯着全屏让位，
+  // 宠物藏起来不用画东西，但托盘那行"需要输入"仍然必须如实变化（ADR 023）。
+  //
+  // 正因为它们不被 `stopTimers()` 管，**退出时若不显式清掉，就会在窗口销毁之后
+  // 再来一两次 tick** —— 那一 tick 打在已销毁的 `webContents` 上就是
+  // `TypeError: Object has been destroyed`，Electron 会弹默认错误框给用户
+  // （2026-09-22 用户在便携版点「退出宠物」时看到的那个，ADR 035）。
+  //
+  // **教训：定时器的生命周期必须和它要碰的对象的生命周期对齐。** 否则就会出现
+  // "对象已经死了、定时器还在撞它"，而且只在退出这种一次性路径上暴露。
+  // 这里统一登记 dispose，**回头新加定时器时记得也登记进来**。
+  const processTimerDisposers: Array<() => void> = [];
+  function stopProcessTimers(): void {
+    // splice(0) 保证幂等：quit() 与 will-quit 都会来，第二次进来是空数组
+    for (const dispose of processTimerDisposers.splice(0)) {
+      try { dispose(); } catch { /* 已在退出途中，不必再抛 */ }
+    }
+  }
+
   // 仲裁器需要"时间推进"才能处理粘滞超时、会话静默过期，以及被限流挡下的那次切换。
   // 气泡的到期检查顺带挂在这里（它也是"到点就该收"的语义，没必要另开一个定时器）。
-  setInterval(() => {
+  const arbiterTimer = setInterval(() => {
     if (arbiter.tick()) pushStatus();
     expireBubble();
   }, 250);
+  processTimerDisposers.push(() => clearInterval(arbiterTimer));
 
   /**
    * 两个高频定时器的启停（33ms 行为层 + 16ms 光标轮询）。
@@ -939,7 +968,10 @@ function boot(): void {
   }
 
   app.on('will-quit', () => {
+    // 与 quit() 同一套清理：这条路径也会被 `app.quit()` 其它调用点触发
+    // （自检截图那个分支、`window-all-closed`），它们不经过上面的菜单动作。
     stopTimers();
+    stopProcessTimers();
     void statusSource?.stop();
     bubble?.destroy();
     bar?.destroy();
@@ -1095,7 +1127,11 @@ function boot(): void {
   if (!detectFullscreen().available) {
     console.warn('[pet] 全屏检测不可用：' + (fullscreenUnavailableReason() ?? '未知原因') + '（宠物将不会自动让位）');
   }
-  startFullscreenWatch((status) => {
+  const stopFullscreenWatch = startFullscreenWatch((status) => {
+    // 守卫：这条回调可能在窗口已经销毁之后才被 tick 到（退出竞态）—— 见上面
+    // `processTimerDisposers` 那段注释。有了上面的清理它已不该发生，但这里是最后一道防线：
+    // 崩让用户看见，比什么都不做糟得多。
+    if (overlay.browserWindow.isDestroyed()) return;
     fullscreenHidden = status.coversMonitor;
     if (status.coversMonitor) {
       overlay.hide();
@@ -1115,11 +1151,16 @@ function boot(): void {
     }
     overlay.browserWindow.webContents.send(CH.fullscreen, { hidden: status.coversMonitor, fgTitle: status.fgTitle });
   }, 600);
+  processTimerDisposers.push(stopFullscreenWatch);
   bootMark('boot() 返回（全屏监听已启动）');
 }
 
 app.whenReady().then(() => {
   bootMark('app ready（Electron 自身初始化完成）');
+  // 一次性迁移：旧包遗留的自启条目（值名 electron.app.Electron）搬到新值名。
+  // **必须在 boot() 之前** —— boot 里第一次读回菜单状态时，用户看来应当已经是迁移后的样子。
+  // 幂等且只在旧条目指向本应用时才动手，见 autostart.ts 的注释。
+  migrateLegacyAutoStart();
   boot();
 }).catch((e) => {
   console.error('[pet] 启动失败：', e);

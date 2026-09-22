@@ -113,3 +113,11 @@
     **推翻推断**：`app package.json` 的 `name` **不决定**值名（放着正确的名字也没用）——
     `loginItem()` 的入参只决定命令。改 exe 的版本资源 ProductName（Obsidian 那条路）最有可能是正解。
     **读注册表必须走 PowerShell**（`reg.exe` 被沙箱拦，不绕）。（ADR 034）
+35. **退出必须清掉所有定时器，且这件事要由机器守住**：用户点退出弹出
+    `Object has been destroyed`，根因是两条 interval（250ms 仲裁推进 + 600ms 全屏监听）句柄从未登记，
+    横跨了窗口的死亡时点。**这个缺陷是竞态的、跑测试抓不住**，所以补了一条静态检查守住 ——
+    另：**"进程消失"≠"退出干净"**，探针原来只查前者，让这个 bug 混过了一轮。（ADR 035）
+36. **开机自启值名 = `electron.app.` + exe 版本资源的 ProductName**：三条候选逐个实测 ——
+    app package.json 的 `name` 不起作用、`app.setName()` 也不行（getName 变了值名不变），
+    **只有改 exe 版本资源有效**（rcedit）。同时顺手修正：目标值名是 `electron.app.desktop-pet`
+    而非 `desktop-pet`。旧条目由应用启动时迁移，保住已勾选状态。（ADR 036）

@@ -554,3 +554,33 @@
   **环境事实更正**：`reg.exe` 被沙箱拦（不绕过），但 **PowerShell `Get-ItemProperty` 可用**
    —— 写法：`Out-File` 落文件再用 Read 读。这条已两次验证，`reg.exe` 上不要再浪费轮次。
 
+
+- **2026-09-22（第二次）**：**第三次打包前的两处修复 —— 退出崩溃（ADR 035）+ 自启值名（ADR 036）**。
+  用户要求：先修这两件，再打包一次，之后进入新开发阶段、视情况再打包。
+  **① 点「退出宠物」弹出 `Uncaught Exception: TypeError: Object has been destroyed`（ADR 035）。**
+   根因：**两条从未登记的 interval** —— 250ms 仲裁推进（裸语句）与 600ms 全屏监听（dispose 返回值没人接），
+   它们**横跨了窗口的死亡时点**：退出把它们留在那儿，下一个 tick 撞在已销毁的 `webContents` 上。
+   修复是机制级：新增 `processTimerDisposers` 登记所有"进程级"定时器，`quit()` 与 `will-quit` 都要停；
+   全屏回调加 `isDestroyed()` 守卫。顺带把渲染层控制条那条 1s 定时器也接住句柄（它不是崩溃源，随页面销毁）。
+   **让它不再复发**：新增 `tools/check-timers.mjs`（裸 setInterval / `*Watch` 未接返回值即失败），
+   并挂进 `status-arbiter.test.mjs` **第 ⑳ 节**，跟着 313 项断言一起每次必跑。
+   **同时修判据**：`run-tray.mjs` 的退出用例原来只核对"进程消失" —— 进程崩了也一样会消失，
+   那个 bug 就是这么混过一轮的（探针日志里早有 `[uncaught]` 却只当"噪音"）。现在一并检查未捕获异常。
+   **诚实记录**：本轮**没能构造出确定性复现**。试了三种都失败 —— 同步忙等会锁死事件循环
+   （定时器更不会执行）、`process._getActiveHandles` 在 Electron 主进程不可靠、拦截 `app.quit`
+   会把 Electron 卡在半死状态。所以它最终是"机制清楚 + 用户亲历 + 历史日志佐证"，不是"我复现过"。
+   **② 开机自启的注册表值名（ADR 036，挂起 #15）。** 三条候选逐个实测：
+   app package.json 的 `name` ❌（放着正确的名字也没用，ADR 034 已证明）；
+   `app.setName('desktop-pet')` ❌（`app.getName()` 确实变成 desktop-pet，**值名纹丝不动**）；
+   **改 exe 版本资源 ProductName ✅**（rcedit，实测 `Electron → desktop-pet` 后值名即变）。
+   **顺带修正目标**：值名应为 `electron.app.desktop-pet`，不是 ADR 034 里写的 `desktop-pet`
+   —— `electron.app.` 是 Electron 的固定前缀（对照组的 Obsidian 也是 `electron.app.Obsidian`）。
+   打包脚本 `make-portable.mjs` 加了 rcedit 一步；旧条目由 `migrateLegacyAutoStart()` 在启动时搬，
+   三条原则：只动指向本应用的、保住用户已勾选的意图、幂等。实测：旧条目消失、新条目生成、**自启仍开着**。
+   **实现上改走 PowerShell 而非 reg.exe**：reg.exe 在受限环境会被策略拦（本轮就撞上），
+   且读值要直接取属性 —— `Get-ItemProperty` 的表格输出会**折行**，解析出来是残缺内容。
+   另：exe 的 FileDescription 改用 ASCII（中文写进版本资源读取时是乱码，同 .bat 必须 ASCII 那一类坑）。
+  **判据**：构建 OK｜定时器检查 ✅｜单测 **313/313**（新增第 ⑳ 节）｜托盘探针 PASS 且日志零 uncaught｜
+   端到端：新包启动后 `electron.app.Electron → electron.app.desktop-pet`、再启一次幂等不变。
+  **新依赖**：`rcedit` 进 devDependencies（仅打包期用），`npm run make:portable` / `npm run check:timers`。
+
