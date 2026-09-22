@@ -2,8 +2,11 @@
 // 用法：node spikes/m2-hittest/run.mjs [探针文件名] [产出文件名]
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = '<工程目录>';
+// 路径含空格 ⇒ 必须走 fileURLToPath，不能手拼 `import.meta.url`（会出现 %20）。
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DIR = ROOT + '/spikes/m2-hittest';
 const EXE = ROOT + '/node_modules/electron/dist/electron.exe';
 const probeName = process.argv[2] || 'probe.js';

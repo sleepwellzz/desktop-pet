@@ -6,10 +6,12 @@ const { spawnSync, spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const root = '<工程目录>';
+// 工程根从脚本位置推（spikes/m3-startup/ 往上两级），node/npm 从**当前解释器**推 ——
+// 三者都不写死绝对路径，否则换台机器或换个 node 就静默跑错。
+const root = path.resolve(__dirname, '..', '..');
 const NODE = process.execPath;
-const NPM_BIN = 'C:/Program Files/nodejs/node_modules/npm/bin/npm-cli.js';
-const NODE_EXE = 'C:/Program Files/nodejs/node.exe';
+const NPM_BIN = path.join(path.dirname(NODE), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+const NODE_EXE = NODE;
 
 function stage(label, exe, args, opts = {}) {
   const t0 = Date.now();

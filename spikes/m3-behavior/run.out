@@ -1,5 +1,5 @@
 spawned electron pid=201028 probe=probe-behavior.js
-[pet] 加载宠物包：C:\Users\<用户名>\AppData\Local\Temp\pet-behavior-72VxEn
+[pet] 加载宠物包：C:/Users/<用户名>\AppData\Local\Temp\pet-behavior-72VxEn
 [pet] 淘淘 · 1536x1872 · 8x9 @ 192x208 · 9 个状态
 [pet] 状态源：状态文件 <工程目录>\spikes\m3-behavior\probe-status.json（监听目录 + 1000ms 轮询兜底）
 [pet] 快捷键已注册：Super+Alt+P（由 Win+Alt+P 归一化而来）

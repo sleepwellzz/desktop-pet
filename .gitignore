@@ -8,9 +8,10 @@ Thumbs.db
 .env
 .env.local
 
-# WorkBuddy 工作区数据：只保留跨会话记忆，其余运行时文件不入库
-.workbuddy/*
-!.workbuddy/memory/
+# WorkBuddy 工作区数据：**整个目录都不入库**（2026-09-22 用户决定）。
+# 这里存的是跨会话工作记忆与运行时文件，含本机路径与协作过程记录 ——
+# 工程本身要能对外分享，所以它不跟着代码走。本地照常保留，只是不进版本库。
+.workbuddy/
 
 # 本机 hook 配置：命令里含本机绝对路径（node 可执行文件），因人而异，不入库。
 # 生成方式：node tools/install-codebuddy-hooks.mjs --apply

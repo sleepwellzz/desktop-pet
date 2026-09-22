@@ -4,7 +4,9 @@
 import io, json, os
 from PIL import Image
 
-base = r"<工作区>\2026-09-15-17-23-06\desktop-pet"
+# 工程根从脚本位置推（tools/ 的上一级）。此前写死的是一个**旧工作区目录**
+# （2026-09-15-17-23-06），换工作区后这个脚本就指向了不存在的地方。
+base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 im = Image.open(os.path.join(base, "spritesheet.webp")).convert("RGBA")
 W, H = im.size
 CW, CH = 192, 208

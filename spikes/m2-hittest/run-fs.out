@@ -9,7 +9,7 @@ spawned electron pid=197372 probe=probe-fs-verify.js
 --- probe-fs-verify.js 日志 ---
 [pet] 加载宠物包：<工程目录>
 [pet] 淘淘 · 1536x1872 · 8x9 @ 192x208 · 9 个状态
-[pet] 状态源：状态文件 C:\Users\<用户名>\.desktop-pet\status.json（监听目录 + 1000ms 轮询兜底）
+[pet] 状态源：状态文件 C:/Users/<用户名>\.desktop-pet\status.json（监听目录 + 1000ms 轮询兜底）
 [pet] 快捷键已注册：Super+Alt+P（由 Win+Alt+P 归一化而来）
 [pet] 托盘已创建：<工程目录>\assets\tray.ico
 [pet] 气泡层已创建（常态整窗穿透，不参与命中判定）

@@ -3,7 +3,9 @@ const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
 
-const root = '<工程目录>';
+// 工程根从**脚本自己的位置**推出来（tools/ 的上一级），不写死绝对路径 ——
+// 写死的后果是：仓库 clone 到别处、或换台机器，这个脚本就悄悄跑错目录。
+const root = path.resolve(__dirname, '..');
 const tscJs = path.join(root, 'node_modules', 'typescript', 'bin', 'tsc');
 const esbuildJs = path.join(root, 'node_modules', 'esbuild', 'bin', 'esbuild');
 

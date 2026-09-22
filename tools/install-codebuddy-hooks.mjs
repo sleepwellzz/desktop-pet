@@ -56,8 +56,8 @@ const events = eventsMode === 'all'
   : [...DEFAULT_CONFIGURED_EVENTS];
 
 /**
- * 命令串。**必须给两个路径都加双引号** —— 本工程路径含空格
- * （`<工程目录>`），不加引号会被 shell 从空格处截断。
+ * 命令串。**必须给两个路径都加双引号** —— 工程所在目录可能含空格
+ * （例如 `...\Agent Base\...`），不加引号会被 shell 从空格处截断。
  * 这条在本项目已经栽过一次（见用户级记忆：含空格路径不要走 shell 拼接）。
  */
 function buildCommand() {
