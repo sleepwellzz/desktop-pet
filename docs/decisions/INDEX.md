@@ -124,6 +124,8 @@
 37. **分发单位是「整个目录」，对外压成一个 zip**：`desktop-pet.exe` **不能单独发人** ——
     它只是入口，要在同级目录找 `resources/`/`*.dll`/`*.pak`/`locales/`；只发 exe 的症状是
     「毫无反应且无报错」。产物 `dist-win/desktop-pet-win-x64.zip`（153 MB）。
+    ⚠️ **zip 名自 ADR 041 起带版本号**（现为 `desktop-pet-1.0.0-win-x64.zip`）——
+    看到本条去目录里找旧名字会找不到。**目录名仍不带版本**。
     实测：解压到全新目录能直接跑。另：**进 zip 的文件名必须 ASCII** —— 非 ASCII 名会被 bsdtar 写坏
     （`说明.txt` → 乱码），与 .bat 纯 ASCII、exe 版本资源值 ASCII 同源。（ADR 037）
 38. **手动把玩：控制条动作排把 9 行姿态做成按钮，走「动画覆盖」通道而非仲裁器** ——
