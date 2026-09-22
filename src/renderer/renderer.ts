@@ -182,11 +182,15 @@ function reconcileStatus(): void {
   }
 }
 
-// —— 行为层（M3 第一块）：漫游 / 微动作 / 打盹的动画覆盖 ——
+// —— 动画覆盖（M3 第一块：行为层；2026-09-22 起手动把玩也走这条）——
 //
 // 主进程说演什么就演什么（与状态同一条纪律）；`null` = 交回仲裁器。
 // 覆盖期间 `reconcileStatus` 不再收敛（见上），所以走路能被看见。
 // 命中判定不受影响：它每帧查**当前帧**的 alpha（ADR 008），换了行/帧自然跟着换。
+//
+// 日志前缀是 `动画覆盖：` 而不是 `行为层：` —— 这条通道现在有两个来源
+// （自主行为层 / 用户手动把玩），主进程侧用 `[pet][behavior]` 与 `[pet][manual]`
+// 区分来源，渲染层只说"我换成了哪一格"。
 let behaviorOverride: { state: string; loop: boolean } | null = null;
 
 window.pet.onBehavior((o) => {
@@ -194,7 +198,7 @@ window.pet.onBehavior((o) => {
   if (!player) return;
   if (o) {
     const changed = player.setState(o.state);
-    if (changed) window.pet.log(`行为层：${o.state}${o.loop ? '（循环）' : '（一次性）'}`);
+    if (changed) window.pet.log(`动画覆盖：${o.state}${o.loop ? '（循环）' : '（一次性）'}`);
     return;
   }
   // 交回仲裁器：立刻落到当前主状态的静止落点，而不是等下一帧的 reconcile

@@ -13,7 +13,7 @@
    "dragEvents": {
     "down": 1,
     "up": 1,
-    "move": 36,
+    "move": 21,
     "cancel": 0
    },
    "transparentAtStart": false,
@@ -22,7 +22,7 @@
   {
    "name": "setScale(1.0)",
    "bounds": {
-    "x": 1269,
+    "x": 1250,
     "y": 595,
     "width": 192,
     "height": 208
@@ -52,7 +52,7 @@
   {
    "name": "resetScale",
    "bounds": {
-    "x": 1298,
+    "x": 1279,
     "y": 657,
     "width": 134,
     "height": 146
@@ -75,11 +75,11 @@
    }
   }
  ],
- "pid": 152648,
+ "pid": 215788,
  "actionsAvailable": true,
  "trayCreated": true,
  "cursorBeforeQuit": {
-  "x": 1910,
+  "x": 1881,
   "y": 899
  },
  "failures": [],

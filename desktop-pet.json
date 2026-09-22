@@ -265,6 +265,9 @@
     "rowHeight": 28,
     "footerHeight": 42,
     "maxRows": 5,
+    "actionRowHeight": 30,
+    "actionColumns": 5,
+    "actionShelfNote": "动作排（2026-09-22 新增，ADR 038）。**面板高度算式因此变成四段**：headerHeight + 会话行数 × rowHeight + 动作排行数 × actionRowHeight + footerHeight，其中动作排行数 = ceil(动作个数 / actionColumns)。渲染层**不再自己写死这两条**——它们随 BarView 一起下发，所以改这里（而不是改 CSS）就能让两边始终对齐。这正是当初 `.row { height: 28px }` 与 rowHeight 各写一份的那个隐患，动作排顺手把它消掉。",
     "gapBelowPet": 8,
     "gapAbovePet": 10,
     "blurHideMs": 200
@@ -304,5 +307,27 @@
       "semantic": "review",
       "note": "作者在此行绘制了小厨师姿态。原生语义为 review，可复用为「整理/汇总产出」场景。"
     }
+  },
+  "actions": {
+    "note": "手动把玩（2026-09-22 新增，ADR 038）。控制条面板上的动作排让用户像逗宠物一样随时触发任意一个动作，**与 agent 现在是什么状态无关**。两条分界线：① 手动触发走动画覆盖通道（`CH.behavior`），**不经过仲裁器** ⇒ 它天然不产生气泡 —— 气泡只由业务状态产生（手动 = 陪它玩，agent = 有事要告诉你）；② 优先级是**手动把玩 > 自主行为层 > 仲裁器状态**。",
+    "dwellMs": 6000,
+    "dwellNote": "循环类动作手动触发后的演出时长（ms）：到点自动交回仲裁器。**不能改成「一直演到再点一次」**——一次事件让宠物把那格姿态举着不放到静默兜底，正是 ADR 021 花过学费的场景（用户报的「没有 agent 在跑，它还在炒菜」）。一次性动作（waving / jumping）按自身片长播完即回，不看这个值。手动**走路**也不看它：走到位就结束。",
+    "walkDistancePx": [
+      180,
+      300
+    ],
+    "walkNote": "位移姿态（`role: locomotion-*` 的那两行）手动触发时**真的走一段**。距离在此区间内取，再夹进当前显示器的工作区；方向由该行自身的朝向决定（左走行往左、右走行往右）。速度与自主漫游同一套换算（`behavior` 段那句话 + 位移行的步频），所以不会滑步——本项目明确记过「位移速度与步频不匹配就会滑步」。贴着屏幕边缘走不动时（可用空间 < 20px）降级为原地演一遍 dwellMs：**不假装走了**（同 ADR 021 那条「拿不到就别显示在错的地方」）。",
+    "list": [
+      { "state": "idle", "label": "待机" },
+      { "state": "running-left", "label": "左走" },
+      { "state": "running-right", "label": "右走" },
+      { "state": "waving", "label": "拜一拜" },
+      { "state": "jumping", "label": "跳一下" },
+      { "state": "failed", "label": "趴下" },
+      { "state": "waiting", "label": "等一等" },
+      { "state": "running", "label": "过生日" },
+      { "state": "review", "label": "炒菜" }
+    ],
+    "listNote": "动作清单。`state` 必须是宠物包里真实存在的状态（解析时校验，不存在的丢弃并告警）；`label` **只影响面板上的按钮文字**，所以「过生日 / 炒菜」这类**画面语义**在这里改名即可，完全不必动 `pet.json`（那两行的原生语义仍是 working / review，见 extraAssets——同一个画面在两处语义下的对照）。省略 `list` 时按行号顺序取全部状态、文字回落为状态 id。"
   }
 }

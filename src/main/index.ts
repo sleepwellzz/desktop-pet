@@ -26,9 +26,13 @@ import {
   type BarEvent, type BarPolicy, type BarState,
 } from '../kernel/bar-policy';
 import {
-  BEHAVIOR_IDLE, parseBehaviorPolicy, tickBehavior, wakeBehavior,
+  BEHAVIOR_IDLE, parseBehaviorPolicy, roamSpeedPxPerSec, tickBehavior, wakeBehavior,
   type BehaviorCommand, type BehaviorPolicy, type BehaviorState,
 } from '../kernel/behavior';
+import {
+  beginManualPlay, parseManualPlayPolicy, tickManualPlay,
+  type ManualAction, type ManualPlay, type ManualPlayPolicy,
+} from '../kernel/manual-play';
 import {
   CH, type BarCommand, type BarCommandId, type BarView, type DragDelta, type DragState, type HitState,
   type PointerHint, type ReadyInfo, type RendererInit, type StatusPush,
@@ -131,10 +135,11 @@ function boot(): void {
   // 装配索引（按执行顺序）
   //   ①  缩放与宠物覆盖窗口      pack 的默认值 + 用户 prefs，夹进包声明的可用区间
   //   ②  状态源 → 仲裁器 → 渲染层   仲裁器是全应用唯一真值；状态源**最后**才启动（见 ⑦）
-  //   ③  托盘 / 右键菜单         一张动作表，两个入口共用（单击托盘 = 显示/隐藏）
+  //  ③  托盘 / 右键菜单         一张动作表，两个入口共用（单击托盘 = 显示/隐藏）
   //   ④  气泡层                  独立透明层窗口，常态整窗穿透
   //   ⑤  控制条 + 命令白名单      本项目第一个可聚焦窗口
   //   ⑥  行为层                  漫游 / 微动作 / 打盹；纯函数在 kernel/behavior.ts
+  //   ⑦  手动把玩                面板动作排点一个动作就演一次；纯函数在 kernel/manual-play.ts
   //   ⑦  状态源启动与时间推进     **必须等所有窗口建好之后**，见那处注释
   //   ⑧  命中测试与光标轮询       ~60Hz 轮询光标，命中由渲染层按 alpha 判定
   //   ⑨  自检 / 拖动 / 右键 / 确认   IPC 通道接线
@@ -535,6 +540,41 @@ function boot(): void {
     bubble.hide();
   }
 
+  // —— 手动把玩：面板动作排（2026-09-22，ADR 038）——
+  //
+  // 用户右键唤出面板、点一个动作，宠物就演一次 —— **与 agent 现在是什么状态无关**，
+  // 所以它必须**高过**仲裁器状态，也必须高过自主行为层。三级优先级的来由：
+  //   手动把玩（用户在看着它、刚点了它）> 自主行为层（它自己找乐子）> 仲裁器状态（agent 的事）。
+  //
+  // 为什么不能用 `CH.status` 实现：仲裁器是"全应用唯一真值"，往里塞一个手动动作会污染
+  // 业务语义（托盘、气泡、面板会话行都会开始显示一些并不存在的 agent 状态）。所以手动把玩
+  // 走的是**动画覆盖通道**（`CH.behavior`，与行为层同一条）—— 顺带白拿了"不产生气泡"：
+  // 气泡只由业务状态产生（`statusMap[].bubble`），覆盖通道从不碰它。
+  //
+  // 状态放这里（而不是行为层内部）是因为 `barView()` 要读它做高亮，而 `barView` 比行为层先装配。
+  const manualPolicy: ManualPlayPolicy = parseManualPlayPolicy(
+    (pack.runtime as unknown as Record<string, unknown>)['actions'],
+    pack,
+    (m) => console.warn('[pet][manual] ' + m),
+  );
+  const manualActionByState = new Map(manualPolicy.actions.map((a) => [a.state, a]));
+  /** 正在手动把玩的那一个；null = 没有。同一时刻最多一个（用户一次只点一个动作）。 */
+  let manualPlay: ManualPlay | null = null;
+  console.log(`[pet] 手动把玩：${manualPolicy.actions.length} 个动作（`
+    + manualPolicy.actions.map((a) => `${a.label}=${a.state}`).join(' / ')
+    + `），循环动作演 ${manualPolicy.dwellMs / 1000}s`
+    + `，位移 ${manualPolicy.walkDistancePx.min}–${manualPolicy.walkDistancePx.max}px`);
+
+  /** 宠物所在显示器的工作区。手动位移要夹进它（与自主漫游同一条范围纪律：不跨屏）。 */
+  function workAreaOf(pet: { x: number; y: number; width: number; height: number }): {
+    x: number; y: number; width: number; height: number;
+  } {
+    return screen.getDisplayNearestPoint({
+      x: Math.round(pet.x + pet.width / 2),
+      y: Math.round(pet.y + pet.height / 2),
+    }).workArea;
+  }
+
   // —— 控制条：本项目**第一个可聚焦窗口**（M2 ④，设计见 docs/design/m2-control-bar.md）——
   //
   // 本轮范围（D1 已拍板）：控制条 = 状态仪表盘 + 快捷动作，**不渲染自由文本输入框**。
@@ -551,6 +591,9 @@ function boot(): void {
   };
   const barWidth = barNum('width', 260);
   const barMaxRows = Math.max(1, Math.round(barNum('maxRows', 5)));
+  /** 动作排（手动把玩）的排版参数。随 `BarView` 下发，渲染层不写死这两条 —— 见 ipc.ts。 */
+  const barActionRowHeight = Math.max(1, barNum('actionRowHeight', 30));
+  const barActionColumns = Math.max(1, Math.round(barNum('actionColumns', 5)));
 
   let bar: ControlBar | null = null;
   let barState: BarState = BAR_HIDDEN;
@@ -572,6 +615,8 @@ function boot(): void {
       headerHeight: barNum('headerHeight', 30),
       rowHeight: barNum('rowHeight', 28),
       footerHeight: barNum('footerHeight', 42),
+      actionRowHeight: barActionRowHeight,
+      actionColumns: barActionColumns,
       maxRows: barMaxRows,
       gapBelowPet: barNum('gapBelowPet', 8),
       gapAbovePet: barNum('gapAbovePet', 10),
@@ -600,6 +645,15 @@ function boot(): void {
       maxRows: barMaxRows,
       petName: pack.manifest.displayName ?? pack.manifest.id,
       petVisible: overlay.isVisible(),
+      // 动作排：清单来自 sidecar，`active` 由主进程的真相（`manualPlay`）给出 ——
+      // 渲染层不自己记"我点过哪个"，否则面板收起再打开就会显示错的高亮。
+      actions: manualPolicy.actions.map((a) => ({
+        state: a.state,
+        label: a.label,
+        active: manualPlay?.state === a.state,
+      })),
+      actionColumns: barActionColumns,
+      actionRowHeight: barActionRowHeight,
       rev: s.rev,
     };
   }
@@ -710,6 +764,26 @@ function boot(): void {
         refreshBar();
       }
     },
+    /**
+     * 手动把玩：让宠物演一次这个动作（2026-09-22，ADR 038）。
+     *
+     * 白名单校验与 `ack-session` 同形：`arg` 必须是**宠物包里真实存在的动作**。
+     * 同一个动作再发一次 = 立刻停止（渲染层不记状态，高亮由主进程的 `manualPlay` 决定）。
+     *
+     * 这里**不碰仲裁器**：手动把玩不是业务状态，宠物演完就自动交回（见 `endManualPlay`）。
+     */
+    'play-action'(arg) {
+      const action = arg ? manualActionByState.get(arg) : undefined;
+      if (!action) {
+        console.warn(`[pet] 控制条请求播放不存在的动作：${arg ?? '(空)'}（已忽略）`);
+        return;
+      }
+      if (manualPlay && manualPlay.state === action.state) {
+        endManualPlay('再点一次同一个按钮');
+        return;
+      }
+      startManualPlay(action);
+    },
     'popup-menu'() {
       if (!bar) return;
       // 弹的是**同一份**原生菜单（含"退出"），所以面板里不必再实现一遍退出按钮，
@@ -780,18 +854,19 @@ function boot(): void {
     return draggingPet                       // 用户抓着它 —— 绝不与人的手抢方向盘
       || !overlay.isVisible()                // 宠物本身不在（用户隐藏 / 全屏让位）
       || fullscreenHidden                    // 兜底：让位期间即使窗口还没隐藏也不动
-      || barState.visible;                   // 面板开着：它锚在宠物身上，动了会一起飘
+      || barState.visible                    // 面板开着：它锚在宠物身上，动了会一起飘
+      || manualPlay !== null;                // 手动把玩中：它刚被用户点过，没有"自己找乐子"的余地
   }
 
-  /** 把纯函数给的命令落到窗口与 IPC 上。命令的语义全在 kernel 侧，这里不做二次判断。 */
-  function applyBehaviorCommand(cmd: BehaviorCommand): void {
+  /** 把命令真正落到窗口与 IPC 上。命令的语义全在 kernel 侧，这里不做二次判断。 */
+  function applyStageCommand(cmd: BehaviorCommand, channel: string): void {
     // `play` 是三态：缺省 = 不变（不发消息）、null = 交回仲裁器、对象 = 按它演。
     if (cmd.play !== undefined) {
       const o = cmd.play;
       if (!overlay.browserWindow.isDestroyed()) {
         overlay.browserWindow.webContents.send(CH.behavior, o);
       }
-      console.log('[pet][behavior] 动画覆盖 → '
+      console.log(`[pet][${channel}] 动画覆盖 → `
         + (o ? `${o.state}${o.loop ? '（循环）' : '（一次性）'}` : '交回仲裁器'));
     }
     if (cmd.moveX !== null) {
@@ -809,10 +884,75 @@ function boot(): void {
   }
 
   /**
+   * 行为层的命令入口。**手动把玩期间一律丢弃**（2026-09-22，ADR 038）。
+   *
+   * 为什么非挡不可：面板打开时行为层本来就处于抑制态（`behaviorSuppressed` 含
+   * `barState.visible`），它每 tick 都会在边沿下发一次"交回仲裁器" ——
+   * 不挡的话，用户在面板上点的那个动作会被每秒冲掉 30 次，表现为"点了没反应"。
+   *
+   * 注意**行为层本身照旧每 tick 推进**（见 `tickBehaviorLayer`）：它在抑制态会把自己的
+   * `sentPlay` 清成 null，这一步不能省 —— 省了的话把玩结束后它仍记着"我正在走"，
+   * 窗口会移动而腿停在待机姿态（滑着走），而屏幕上只表现为"它怎么飘着"。
+   */
+  function applyBehaviorCommand(cmd: BehaviorCommand): void {
+    if (manualPlay) return;
+    applyStageCommand(cmd, 'behavior');
+  }
+
+  /**
+   * 开始一次手动把玩（面板动作排上的按钮）。
+   *
+   * 三件事：算好位移目标（`beginManualPlay` 里，纯函数）、下发第一条覆盖命令、
+   * 把这次点击当作"用户碰了它"（醒来 + 重排自主行为的计时，与单击宠物同一语义）。
+   */
+  function startManualPlay(action: ManualAction): void {
+    const pet = overlay.browserWindow.getContentBounds();
+    const res = beginManualPlay(
+      action, manualPolicy, Date.now(), pet, workAreaOf(pet),
+      // 位移速度取**与自主漫游同一个函数**（按缩放归一化）：两处取不同值会有一处滑步。
+      // `--no-behavior` 时行为层只是 enabled=false，速度参数仍在，所以手动走路照常可用。
+      roamSpeedPxPerSec(behaviorPolicy, currentScale),
+      Math.random,
+    );
+    manualPlay = res.play;
+    applyStageCommand(res.command, 'manual');
+    wakePet(`手动把玩 ${action.label}`);
+    refreshBar();                            // 高亮当前动作
+    console.log(`[pet][manual] 开始「${action.label}」（${action.state}`
+      + (res.play.targetX === null ? '，原地' : `，走 ${action.facing === 'left' ? '左' : '右'} → x=${res.play.targetX}`)
+      + `），最多演 ${Math.round((res.play.until - Date.now()) / 100) / 10}s`);
+  }
+
+  /**
+   * 结束手动把玩，把舞台交回仲裁器。
+   *
+   * **必须显式发一次 `play: null`**：覆盖是渲染层的一个变量，没人撤销它就永远停在那里 ——
+   * 此刻行为层的 `sentPlay` 已经是 null（抑制期间清的），它不会替我们撤销。
+   *
+   * @param releaseSent 这一 tick 的 `tickManualPlay` 已经下发过"交回仲裁器"（走 33ms tick
+   *   结束时传 true）—— 避免同一毫秒连发两条。多余的那条只多一行日志，
+   *   但这个项目的日志是取证手段，不该自己污染自己。
+   */
+  function endManualPlay(reason: string, releaseSent = false): void {
+    if (!manualPlay) return;
+    const { state, targetX } = manualPlay;
+    manualPlay = null;
+    if (!releaseSent) {
+      applyStageCommand({ play: null, moveX: targetX === null ? null : Math.round(targetX) }, 'manual');
+    }
+    refreshBar();                            // 清掉高亮
+    console.log(`[pet][manual] 结束（${reason}）：${state} → 交回仲裁器`);
+  }
+
+  /**
    * 行为层 tick，33ms（≈30Hz）。
    *
    * 为什么不并进 16ms 的光标轮询：窗口移动不需要 60Hz（拖动那条路径是"手在动"才发增量），
    * 30Hz 已经足够顺；而且**分开跑就不会让"光标静止时轮询短路"顺带把行为层也冻住**。
+   *
+   * 手动把玩挂在这条 tick 上推进（而不是另开定时器）：两者是同一件事的两个优先级，
+   * 而且这样**天然继承了定时器的生命周期纪律** —— 宠物隐藏时这条 tick 会一起停
+   * （此时面板也必然已收起，不存在"宠物藏着、把玩还在走"）。
    */
   function tickBehaviorLayer(): void {
     behaviorTicks += 1;
@@ -821,8 +961,9 @@ function boot(): void {
       x: Math.round(pet.x + pet.width / 2),
       y: Math.round(pet.y + pet.height / 2),
     }).workArea;
+    const now = Date.now();
     const result = tickBehavior(behaviorState, {
-      now: Date.now(),
+      now,
       pet,
       workArea: area,
       scale: currentScale,
@@ -831,7 +972,26 @@ function boot(): void {
       reducedMotion: rendererReducedMotion,
     }, behaviorPolicy, Math.random);
     behaviorState = result.state;
-    applyBehaviorCommand(result.command);
+    applyBehaviorCommand(result.command);     // 手动把玩期间它自己会被丢弃（见那里的守卫）
+
+    // —— 手动把玩：优先级最高，最后落地 ——
+    // 放在行为层**之后**：这一 tick 行为层的记账已经推完（抑制态下它会清掉自己的 sentPlay），
+    // 所以把玩结束时不会留下"它以为自己在走"的账。顺序反了就会出现滑步。
+    if (!manualPlay) return;
+    const mp = tickManualPlay(manualPlay, now, pet, roamSpeedPxPerSec(behaviorPolicy, currentScale));
+    // ⚠️ 这里**不能**先写 `manualPlay = mp.play` 再调 `endManualPlay`：结束那一 tick
+    // `mp.play` 是 null，先赋值会让 `endManualPlay` 开头的 `if (!manualPlay) return` 直接返回 ——
+    // 于是它内部的 `refreshBar()` 不执行、**面板上的高亮永远不会清掉**（按钮一直亮着），
+    // 日志里也看不到"结束"那行。2026-09-22 由探针报告的 `endLogged=false` 抓到。
+    // `endManualPlay` 需要读 `manualPlay.state/targetX` 做记账与收尾定位，所以顺序必须是：
+    // **先落地这一 tick 的命令 → 再交给它去清状态**。
+    if (mp.play === null) {
+      applyStageCommand(mp.command, 'manual');   // 这条命令本身就带 `play: null`（交回仲裁器）
+      endManualPlay('到点／走到位', true);
+      return;
+    }
+    manualPlay = mp.play;
+    applyStageCommand(mp.command, 'manual');
   }
 
   /** 用户碰了宠物（单击 / 拖动）→ 从打盹里醒来并重新排程。 */
@@ -963,6 +1123,12 @@ function boot(): void {
       behaviorMoves: () => behaviorMoves,
       behaviorSuppressed: () => behaviorSuppressed(),
       draggingPet: () => draggingPet,
+      // —— 手动把玩（探针用）——
+      /** 正在把玩的那一个（null = 没有）。探针靠它验"点了动作→真的在演→到点自动交回"。 */
+      manualPlay: () => manualPlay,
+      /** sidecar 解析出来的动作清单（面板上应该有几个按钮、文字是什么）。 */
+      manualActions: () => manualPolicy.actions,
+      manualPolicy: () => manualPolicy,
     };
     console.log('[pet] --expose-actions：动作表与只读探针已挂到 globalThis（仅供探针）');
   }
@@ -993,7 +1159,11 @@ function boot(): void {
     // 行为层的覆盖也要补推：新页面的 `behaviorOverride` 是 null，而主进程侧
     // `sentPlay` 仍记着"正在漫游" —— 不补这一句，全屏让位恢复后宠物会**滑着走**
     // （窗口在动、腿却停在待机姿态）。（与 pushStatus(true) 同一个模式。）
-    overlay.browserWindow.webContents.send(CH.behavior, behaviorState.sentPlay);
+    // **手动把玩优先**：正在把玩时补推给它的（行为层此刻的 sentPlay 已被抑制清空）。
+    overlay.browserWindow.webContents.send(
+      CH.behavior,
+      manualPlay ? { state: manualPlay.state, loop: manualPlay.loop } : behaviorState.sentPlay,
+    );
     if (!selfCheckStarted) {
       selfCheckStarted = true;
       scheduleSelfCheck();

@@ -14,7 +14,9 @@
  *   8. **唤出手势 = 右键宠物**（真实注入右键），再右键一次收起；
  *   9. **悬停不再唤出**（2026-09-17 移除的能力，必须钉住"不会自己回来"）；
  *  10. **「⋯」弹原生菜单时面板不被自己的失焦收掉**（菜单会夺焦，必须屏蔽）；
- *  11. **「清空状态会话」把视图也清掉**：面板行数 0、菜单计数 0（ADR 016 / D2）。
+ *  11. **「清空状态会话」把视图也清掉**：面板行数 0、菜单计数 0（ADR 016 / D2）；
+ *  12. **动作排 / 手动把玩**（ADR 038）：按钮与 sidecar 清单一致；点一下**渲染层真的切过去**；
+ *      循环动作到点自动交回；**位移类真的走**（读窗口 x）且不超出声明的距离。
  *
  * 用法：node spikes/m2-control/run.mjs control
  */
@@ -101,12 +103,21 @@ app.whenReady().then(async () => {
     const sidecar = JSON.parse(fs.readFileSync(path.join(ROOT, 'desktop-pet.json'), 'utf8'));
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'pet.json'), 'utf8'));
     const expectGapBelow = sidecar.controlBar.gapBelowPet;
+    // 面板高度算式是**四段**（2026-09-22 起多了动作排，ADR 038）。期望值一律从 sidecar 推，
+    // 不在探针里写死 —— 否则测的是探针自己的假设，改了配置这里会一起骗人。
+    const actionRows = sidecar.actions.list.length === 0
+      ? 0 : Math.ceil(sidecar.actions.list.length / sidecar.controlBar.actionColumns);
+    const shelfHeight = actionRows * sidecar.controlBar.actionRowHeight;
 
     const dom = async () => bar.webContents.executeJavaScript(`JSON.stringify({
       rows: [...document.querySelectorAll('#sessions .row')].map(r => r.textContent),
       ackButtons: document.querySelectorAll('#sessions .row .ack').length,
       summary: document.getElementById('summary').textContent,
       petName: document.getElementById('pet-name').textContent,
+      playButtons: [...document.querySelectorAll('#plays button')].map(b => ({
+        label: b.textContent, state: b.dataset.state, on: b.classList.contains('on'),
+      })),
+      shelfHidden: document.getElementById('plays').hidden,
     })`).then(JSON.parse).catch((e) => ({ error: String(e) }));
 
     const send = async (cmd) => {
@@ -165,7 +176,7 @@ app.whenReady().then(async () => {
     report.placement = {
       workArea: area0, pet: petB, bar: bb, gapBelow, centerDelta,
       expectGapBelow: expectGapBelow,
-      expectHeight: sidecar.controlBar.headerHeight + sidecar.controlBar.footerHeight,
+      expectHeight: sidecar.controlBar.headerHeight + shelfHeight + sidecar.controlBar.footerHeight,
     };
     log(`[probe] 位置：宠物 ${petB.width}x${petB.height}@${petB.x},${petB.y} → 面板 ${bb ? `${bb.width}x${bb.height}@${bb.x},${bb.y}` : '无'}`
       + ` ｜ 下间距=${gapBelow}（宠物包声明 ${expectGapBelow}）水平偏差=${centerDelta}`
@@ -185,10 +196,11 @@ app.whenReady().then(async () => {
     const bbWithRows = dbg.barBounds();
     report.content = { ...d1, barHeight: bbWithRows?.height };
     report.expectHeightWithRows = sidecar.controlBar.headerHeight
-      + 2 * sidecar.controlBar.rowHeight + sidecar.controlBar.footerHeight;
+      + 2 * sidecar.controlBar.rowHeight + shelfHeight + sidecar.controlBar.footerHeight;
     log(`[probe] 面板内容：摘要「${d1.summary}」｜行数=${d1.rows?.length} 确认按钮=${d1.ackButtons}`
       + `｜宠物名「${d1.petName}」`
-      + `｜高度 ${bbWithRows?.height}（2 条会话期望 ${report.expectHeightWithRows}）｜`
+      + `｜高度 ${bbWithRows?.height}（2 条会话期望 ${report.expectHeightWithRows}）`
+      + `｜动作按钮 ${d1.playButtons?.length} 个（期望 ${sidecar.actions.list.length}）｜`
       + (d1.rows ?? []).map((r, i) => `\n        行${i}: ${r}`).join(''));
 
     // —— ③ 点「确认」：粘滞解除（真实 DOM 点击）——
@@ -386,6 +398,126 @@ app.whenReady().then(async () => {
       + `面板高度 ${report.clearSessions.heightBefore} → ${report.clearSessions.heightAfter}`
       + `（期望回落 ${report.placement.expectHeight}）｜摘要「${report.clearSessions.summaryBefore}」→「${report.clearSessions.summaryAfter}」`);
 
+    // —— ⑫b 动作排：手动把玩（2026-09-22，ADR 038）——
+    // 用户要的是"像逗宠物一样把玩它的所有状态"。三条一次验完：
+    //   ① 面板上真的有按钮，且文字/状态与 sidecar 一一对应（清单不在渲染层另写一份）；
+    //   ② 点一下宠物**真的**去演它 —— 判据取**渲染层的日志**（`[pet][renderer] 动画覆盖：…`），
+    //      那是端到端证据；只看主进程的记账等于在自己证明自己；
+    //   ③ **位移类真的走**（读窗口 x，不是看日志），且到点/走到位后自动交回仲裁器
+    //      —— "一直演下去"正是 ADR 021 那个"没有 agent 在跑它还在炒菜"的形状。
+    if (!dbg.barVisible()) await ensureBar();
+    const dShelf = await dom();
+    const expectShelf = sidecar.actions.list.map((a) => `${a.label}|${a.state}`);
+    const gotShelf = (dShelf.playButtons ?? []).map((b) => `${b.label}|${b.state}`);
+    report.shelf = {
+      count: gotShelf.length,
+      matchesSidecar: JSON.stringify(gotShelf) === JSON.stringify(expectShelf),
+      hidden: dShelf.shelfHidden === true,
+      exp: expectShelf.join(','), got: gotShelf.join(','),
+    };
+    log(`[probe] 动作排：${gotShelf.length} 个按钮（期望 ${expectShelf.length}）｜与 sidecar 一致=`
+      + `${report.shelf.matchesSidecar}｜${gotShelf.join(' / ')}`);
+
+    // ② 点「过生日」：循环动作，演 dwellMs 后自动交回
+    const mark = fs.readFileSync(LOG, 'utf8').length;
+    const logTail = () => fs.readFileSync(LOG, 'utf8').slice(mark);
+    // 高度断言拿"点击前"当基准，而不是拿某个固定期望值：此刻的会话数取决于前面的用例
+    // （⑫ 刚把会话清空过），要钉住的不变量是"**高亮不改变布局**"，与会话数无关。
+    const heightBeforePlay = dbg.barBounds() ? dbg.barBounds().height : null;
+    const clickedPlay = await bar.webContents.executeJavaScript(`(() => {
+      const b = document.querySelector('#plays button[data-state="running"]');
+      if (!b) return 'no-button';
+      const label = b.textContent;
+      b.click();
+      return 'clicked:' + label;
+    })()`).catch((e) => 'error:' + String(e));
+    await sleep(800);
+    const playing = dbg.manualPlay();
+    const dPlaying = await dom();
+    report.manualPlay = {
+      clickedPlay,
+      activeState: playing ? playing.state : null,
+      activeLoop: playing ? playing.loop : null,
+      highlightOn: (dPlaying.playButtons ?? []).find((b) => b.state === 'running')?.on === true,
+      rendererSwitched: logTail().includes('[pet][renderer] 动画覆盖：running'),
+      heightBeforePlay,
+      barHeightDuring: dbg.barBounds() ? dbg.barBounds().height : null,
+    };
+    log(`[probe] 点「过生日」：${clickedPlay} → 主进程在演=${report.manualPlay.activeState}`
+      + `｜面板高亮=${report.manualPlay.highlightOn}`
+      + `｜渲染层确实切过去了=${report.manualPlay.rendererSwitched}`);
+
+    // 到点自动交回（dwellMs + 余量）
+    await sleep(sidecar.actions.dwellMs + 1500);
+    const t = logTail();
+    const dAfterDwell = await dom();
+    report.manualDwell = {
+      stillPlaying: dbg.manualPlay() !== null,
+      endLogged: t.includes('[pet][manual] 结束'),
+      releasedToArbiter: t.includes('[pet][manual] 动画覆盖 → 交回仲裁器'),
+      // **收尾必须把面板上的高亮也清掉**：这一条是第一版探针漏掉的，结果放过了一个真缺陷 ——
+      // 结束那一 tick 先写了 `manualPlay = mp.play`（null）再调记账函数，后者开头的
+      // `if (!manualPlay) return` 直接返回，`refreshBar()` 从未执行 ⇒ 按钮一直亮着。
+      // 教训：**"动作演完了"与"面板不再说它在演"是两件事，必须分别断言。**
+      highlightCleared: (dAfterDwell.playButtons ?? []).every((b) => b.on !== true),
+      heightBeforePlay,
+      barHeightAfter: dbg.barBounds() ? dbg.barBounds().height : null,
+    };
+    log(`[probe] ${sidecar.actions.dwellMs / 1000} 秒后：仍在演=${report.manualDwell.stillPlaying}（期望 false）`
+      + `｜已交回仲裁器=${report.manualDwell.releasedToArbiter}`
+      + `｜结束日志=${report.manualDwell.endLogged}`
+      + `｜面板高亮已清=${report.manualDwell.highlightCleared}（期望 true）`
+      + `｜面板高度 ${heightBeforePlay} → 把玩中 ${report.manualPlay.barHeightDuring} → 结束 ${report.manualDwell.barHeightAfter}`
+      + `（高亮不该改变布局）`);
+
+    // ③ 点「左走」：位移类**真的走**（读窗口 x）
+    const xBefore = pet.getContentBounds().x;
+    const clickedWalk = await bar.webContents.executeJavaScript(`(() => {
+      const b = document.querySelector('#plays button[data-state="running-left"]');
+      if (!b) return 'no-button';
+      b.click();
+      return 'clicked';
+    })()`).catch((e) => 'error:' + String(e));
+    await sleep(700);
+    const walking = dbg.manualPlay();
+    await sleep(5000);                        // 180–300px / 96px·s⁻¹ ≈ 2–3.2 秒，留足余量
+    const xAfter = pet.getContentBounds().x;
+    const walked = Math.abs(xAfter - xBefore);
+    report.manualWalk = {
+      clickedWalk,
+      targetX: walking ? walking.targetX : null,
+      xBefore, xAfter, dx: xAfter - xBefore,
+      walkedLeft: xAfter < xBefore,
+      withinDeclared: walked >= sidecar.actions.walkDistancePx[0] - 4
+        && walked <= sidecar.actions.walkDistancePx[1] + 4,
+      released: dbg.manualPlay() === null,
+    };
+    log(`[probe] 点「左走」：${clickedWalk} → 目标 x=${report.manualWalk.targetX}`
+      + `｜窗口 ${xBefore} → ${xAfter}（走了 ${report.manualWalk.dx}px，声明区间 `
+      + `${sidecar.actions.walkDistancePx.join('–')}）｜走完已交回=${report.manualWalk.released}`);
+
+    // ④ 再点同一个按钮 = 停止（toggle 那条路径，与"到点自动收"是两条不同的代码路径）
+    const clickPlay = async (state) => bar.webContents.executeJavaScript(`(() => {
+      const b = document.querySelector('#plays button[data-state="${state}"]');
+      if (!b) return 'no-button';
+      b.click();
+      return 'clicked';
+    })()`).catch((e) => 'error:' + String(e));
+    const firstClick = await clickPlay('review');           // 炒菜（循环，不会自己马上结束）
+    await sleep(700);
+    const playingAgain = dbg.manualPlay();
+    const secondClick = await clickPlay('review');
+    await sleep(700);
+    const dToggled = await dom();
+    report.manualToggle = {
+      firstClick, started: playingAgain ? playingAgain.state : null,
+      secondClick, stopped: dbg.manualPlay() === null,
+      highlightCleared: (dToggled.playButtons ?? []).every((b) => b.on !== true),
+    };
+    log(`[probe] 再点一次同一个按钮：${firstClick} → 在演=${report.manualToggle.started}`
+      + ` → ${secondClick} → 已停止=${report.manualToggle.stopped}（期望 true）`
+      + `｜高亮已清=${report.manualToggle.highlightCleared}（期望 true）`);
+
     // —— ⑬ 面板「隐藏宠物」：面板跟着收起 ——
     await send({ id: 'hide-pet' });
     await sleep(600);
@@ -446,6 +578,49 @@ app.whenReady().then(async () => {
     }
     if (!petHidden) fails.push('hide-pet 没有隐藏宠物');
     if (barAfterHidePet) fails.push('宠物隐藏后控制条还在');
+    // —— 动作排 / 手动把玩（ADR 038）——
+    if (report.shelf.count !== sidecar.actions.list.length) {
+      fails.push(`面板上的动作按钮 ${report.shelf.count} 个，期望 ${sidecar.actions.list.length}`);
+    }
+    if (!report.shelf.matchesSidecar) {
+      fails.push(`动作按钮与 sidecar 清单不一致：期望 ${report.shelf.exp}，实际 ${report.shelf.got}`);
+    }
+    if (report.shelf.hidden) fails.push('面板上没有任何动作按钮（动作排被隐藏了）');
+    if (report.manualPlay.clickedPlay !== 'clicked:' + sidecar.actions.list.find((a) => a.state === 'running').label) {
+      fails.push('点不到「过生日」按钮：' + report.manualPlay.clickedPlay);
+    }
+    if (report.manualPlay.activeState !== 'running') {
+      fails.push(`点了「过生日」但主进程没在演它（activeState=${report.manualPlay.activeState}）`);
+    }
+    if (!report.manualPlay.highlightOn) fails.push('正在演的动作没有在面板上高亮（用户看不到自己点了哪个）');
+    if (!report.manualPlay.rendererSwitched) {
+      fails.push('主进程记着在演，但渲染层没有切到那一格（端到端没通）');
+    }
+    if (report.manualDwell.stillPlaying) fails.push('循环动作到点后仍在演（"一直炒菜"那个形状）');
+    if (!report.manualDwell.releasedToArbiter) fails.push('手动把玩结束后没有显式交回仲裁器（覆盖会永久留在渲染层）');
+    if (!report.manualDwell.endLogged) fails.push('收尾代码没有被执行（日志里没有"结束"那一行）');
+    if (!report.manualDwell.highlightCleared) {
+      fails.push('动作演完了但面板上的高亮还在（回头再看那个按钮一直亮着）');
+    }
+    if (heightBeforePlay === null || report.manualPlay.barHeightDuring !== heightBeforePlay
+      || report.manualDwell.barHeightAfter !== heightBeforePlay) {
+      fails.push(`把玩把面板高度改了：${heightBeforePlay} → 把玩中 ${report.manualPlay.barHeightDuring}`
+        + ` → 结束 ${report.manualDwell.barHeightAfter}（高亮不该改变布局）`);
+    }
+    if (report.manualWalk.clickedWalk !== 'clicked') fails.push('点不到「左走」按钮：' + report.manualWalk.clickedWalk);
+    if (!report.manualWalk.walkedLeft) {
+      fails.push(`点「左走」但宠物没有往左走（x ${report.manualWalk.xBefore} → ${report.manualWalk.xAfter}）`);
+    }
+    if (!report.manualWalk.withinDeclared) {
+      fails.push(`「左走」走了 ${report.manualWalk.dx}px，超出 sidecar 声明的 ${sidecar.actions.walkDistancePx.join('–')}`);
+    }
+    if (!report.manualWalk.released) fails.push('走完之后手动把玩没有交回（宠物会一直挂着位移姿态）');
+    if (report.manualToggle.firstClick !== 'clicked') fails.push('点不到「炒菜」按钮：' + report.manualToggle.firstClick);
+    if (report.manualToggle.started !== 'review') {
+      fails.push(`点「炒菜」没有开演（在演=${report.manualToggle.started}）`);
+    }
+    if (!report.manualToggle.stopped) fails.push('再点一次同一个按钮没有停止（toggle 失效）');
+    if (!report.manualToggle.highlightCleared) fails.push('手动停止之后高亮没清掉');
     report.failures = fails;
     report.verdict = fails.length === 0 ? 'PASS' : 'FAIL';
     log(`[probe] 判定：${report.verdict}${fails.length ? ' —— ' + fails.join('；') : ''}`);

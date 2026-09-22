@@ -12,12 +12,13 @@ const barEl = document.getElementById('bar') as HTMLDivElement;
 const dotEl = document.getElementById('dot') as HTMLSpanElement;
 const summaryEl = document.getElementById('summary') as HTMLSpanElement;
 const sessionsEl = document.getElementById('sessions') as HTMLDivElement;
+const playsEl = document.getElementById('plays') as HTMLDivElement;
 const petNameEl = document.getElementById('pet-name') as HTMLSpanElement;
 const clearAllEl = document.getElementById('clear-all') as HTMLButtonElement;
 
 /** 白名单的镜像，仅用于"发之前再确认一次"。真正的白名单在主进程。 */
 const KNOWN_IDS: readonly BarCommandId[] = [
-  'hide-pet', 'ack-session', 'ack-all', 'popup-menu', 'close-bar',
+  'hide-pet', 'ack-session', 'ack-all', 'popup-menu', 'close-bar', 'play-action',
 ];
 
 /**
@@ -41,8 +42,10 @@ document.addEventListener('click', (e) => {
   if (!hit) return;
   const id = hit.dataset['cmd'] as BarCommandId | undefined;
   if (!id) return;
-  const sid = hit.dataset['sid'];
-  send(sid ? { id, arg: sid } : { id });
+  // 命令参数：会话行用 `data-sid`（会话 id），动作排用 `data-state`（状态 id）。
+  // 两者都只是"给主进程查表用的 id"，主进程会各自校验它真的存在。
+  const arg = hit.dataset['sid'] ?? hit.dataset['state'];
+  send(arg ? { id, arg } : { id });
 });
 
 // Esc 收起。控制条是本项目唯一收键盘的窗口，这条路径同时也在验证
@@ -83,6 +86,56 @@ function dot(status: string, primary: boolean): HTMLSpanElement {
  * 现在两边都调内核的 `isAckable`，结构上不可能再漂移。语义留在内核的那份注释里。
  */
 const needsAck = isAckable;
+
+/**
+ * 动作排的按钮与它对应的状态 id。
+ *
+ * 清单不变时**只改高亮、不重建 DOM**：面板内容会随状态推送重画，而重建会把
+ * 光标下（或正按下）的那个按钮换成一个新元素 —— 那可能吞掉一次点击。
+ * 会话行是全量重建的，那是它的既有做法；动作排是"要点的东西"，这里不沿用。
+ */
+let playButtons: { el: HTMLButtonElement; state: string }[] = [];
+/** 上次渲染的动作清单签名（state:label 拼接）。用来判断"要不要重建"。 */
+let playSignature = '';
+
+/**
+ * 动作排（2026-09-22，ADR 038）：手动把玩按钮。
+ *
+ * 每项 = 宠物包里的一个动作（文字取自 sidecar 的 `actions.list[].label`）。
+ * 点一下 → 发 `play-action` 命令；**正在演的那一个再点一下 = 停止**（主进程做 toggle）。
+ * 高亮用的是 `BarView.actions[].active`（主进程的真相），渲染层不自己记"我点过哪个"。
+ */
+function renderActions(v: BarView): void {
+  const signature = v.actions.map((a) => `${a.state}=${a.label}`).join('|');
+  if (signature !== playSignature) {
+    playSignature = signature;
+    playsEl.textContent = '';
+    playButtons = v.actions.map((a) => {
+      const b = document.createElement('button');
+      // data-cmd 是事件委托的钩子；data-state 是命令参数（见上面的 click 委托）
+      b.dataset['cmd'] = 'play-action';
+      b.dataset['state'] = a.state;
+      b.textContent = a.label;
+      b.title = `让${v.petName}演一次「${a.label}」（正在演时再点一次即停止；手动把玩不显示气泡）`;
+      playsEl.appendChild(b);
+      return { el: b, state: a.state };
+    });
+  }
+  for (const { el, state } of playButtons) {
+    el.classList.toggle('on', v.actions.some((a) => a.state === state && a.active));
+  }
+
+  // 排版参数**全部**来自主进程（`desktop-pet.json → controlBar.actionColumns / actionRowHeight`）：
+  // 面板高度是那边按同一对值算出来再 `setContentBounds` 的，两边各写一份就会出现
+  // "面板比窗口矮一截、底部被切"。总高必须显式给 —— `#plays` 是 flex item，
+  // 否则高度由内容（行数 × autoRows + 那条 border）决定，正好差 1px。
+  const cols = Math.max(1, Math.round(v.actionColumns));
+  const rows = v.actions.length === 0 ? 0 : Math.ceil(v.actions.length / cols);
+  playsEl.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+  playsEl.style.gridAutoRows = `${v.actionRowHeight}px`;
+  playsEl.style.height = `${rows * v.actionRowHeight}px`;
+  playsEl.hidden = v.actions.length === 0;
+}
 
 function render(v: BarView): void {
   lastView = v;
@@ -161,7 +214,10 @@ function render(v: BarView): void {
     sessionsEl.appendChild(more);
   }
 
-  // —— 动作排 ——
+  // —— 手动把玩动作排 ——
+  renderActions(v);
+
+  // —— 底部动作排 ——
   // 面板刻意只有三个东西：一个动作（隐藏宠物）、一个身份（是谁）、一个出口（⋯ 完整菜单）。
   // 缩放曾经在这里有一个只读的百分比，2026-09-17 换成宠物名 —— 只读的 `70%` 既点不动、
   // 也不是用户关心的事，而"这块面板是谁的"才是它该回答的（ADR 016）。

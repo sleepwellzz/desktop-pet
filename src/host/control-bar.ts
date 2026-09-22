@@ -71,6 +71,10 @@ export interface ControlBarOptions {
   rowHeight: number;
   /** 底部动作排高度。 */
   footerHeight: number;
+  /** 动作排（手动把玩）**每行**的高度。 */
+  actionRowHeight: number;
+  /** 动作排的列数：行数 = ceil(动作个数 / 列数)。 */
+  actionColumns: number;
   /** 会话行最多显示几条，超出显示"另有 N 条"。 */
   maxRows: number;
   gapBelowPet: number;
@@ -156,11 +160,22 @@ export function createControlBar(opts: ControlBarOptions): ControlBar {
   win.on('show', () => { visible = true; });
   win.on('hide', () => { visible = false; });
 
-  /** 内容高度：无会话时只有顶栏 + 动作排。 */
+  /**
+   * 内容高度 = 四段之和：顶栏 + 会话行 + **动作排** + 底部动作排。
+   *
+   * 动作排（2026-09-22，ADR 038）是第 3 段，行数 = `ceil(动作个数 / 列数)` ——
+   * 主进程按它算窗口高度，渲染层按同一对参数设 CSS，因此**改 sidecar 就能两边一起动**。
+   * （会话行当年是"主进程算 + CSS 里再写一个 28px"，动作排不再重复那个隐患。）
+   */
   function desiredHeight(view: BarView): number {
     const n = view.sessions.length;
     const rows = n === 0 ? 0 : Math.min(n, opts.maxRows) + (n > opts.maxRows ? 1 : 0);
-    return opts.headerHeight + rows * opts.rowHeight + opts.footerHeight;
+    const cols = Math.max(1, Math.round(opts.actionColumns));
+    const actionRows = view.actions.length === 0 ? 0 : Math.ceil(view.actions.length / cols);
+    return opts.headerHeight
+      + rows * opts.rowHeight
+      + actionRows * opts.actionRowHeight
+      + opts.footerHeight;
   }
 
   function place(view: BarView, h: number): void {

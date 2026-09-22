@@ -6,9 +6,12 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'">
   <title>desktop-pet-control-bar</title>
   <style>
-    /* 高度必须与主进程的算式严格对齐：headerHeight + 行数 × rowHeight + footerHeight
-       （desktop-pet.json → controlBar）。三段都用 border-box + 显式高度，
-       否则一条分隔线就会让面板比窗口矮 1px，出现滚动条或底部被切。 */
+    /* 高度必须与主进程的算式严格对齐（**四段**）：
+       headerHeight + 会话行数 × rowHeight + 动作排行数 × actionRowHeight + footerHeight
+       （desktop-pet.json → controlBar）。每段都用 border-box + 显式高度 ——
+       否则一条分隔线就会让面板比窗口矮 1px，出现滚动条或底部被切。
+       动作排的两个参数**不写死在这里**：它们随 BarView 下发，由 control-bar.ts 设到
+       #plays 的 grid-template-columns / grid-auto-rows / height 上（见那处注释）。 */
     html, body {
       margin: 0; padding: 0; width: 100%; height: 100%;
       background: #1b1f27; overflow: hidden;
@@ -86,6 +89,33 @@
 
     .row.ackable:hover { background: rgba(255, 255, 255, 0.05); }
 
+    /* —— 手动把玩动作排（2026-09-22，ADR 038）——
+       让用户像逗宠物一样随时触发任意一个动作，与 agent 现在是什么状态无关。
+       列数 / 行高 / 总高**全部由渲染层按 BarView 里的 actionColumns / actionRowHeight 设**
+       （见 control-bar.ts 的 renderActions），这里不写死任何一个 ——
+       主进程按同一对值算窗口高度，两边各写一份就会出现"面板比窗口矮一截、底部被切"。
+       **刻意不加 border/padding 的纵向值**：容器的内容高必须严格等于 行数 × actionRowHeight，
+       多 1px 就会顶掉面板底部（会话行的分隔线在自己身上，那是对的）。 */
+    #plays {
+      flex: 0 0 auto; box-sizing: border-box;
+      display: grid; gap: 0 4px; padding: 0 8px;
+    }
+    #plays button {
+      align-self: stretch; margin: 3px 0; padding: 0 2px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 4px; background: rgba(255, 255, 255, 0.06);
+      color: #cdd5e0; font: inherit; font-size: 11px;
+      cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #plays button:hover { background: rgba(255, 255, 255, 0.14); color: #e8ecf2; }
+    /* 正在演的那一个：暖色描边（与行内「确认」同一套语义色 —— 都是"你刚让它做的事"）。
+       再点一次就是停止，所以它同时是一个可点的"取消"。 */
+    #plays button.on {
+      border-color: rgba(226, 134, 60, 0.75);
+      background: rgba(226, 134, 60, 0.18);
+      color: #e2863c;
+    }
+
     #close {
       flex: 0 0 auto; width: 20px; height: 20px; padding: 0; line-height: 18px;
       border: none; border-radius: 4px; background: transparent;
@@ -104,6 +134,10 @@
       <button id="close" data-cmd="close-bar" title="收起（Esc）">×</button>
     </div>
     <div id="sessions"></div>
+    <!-- 动作排（手动把玩）：按宠物包里的动作清单渲染成小按钮，点了宠物就演一次。
+         与 agent 状态无关，且**不产生气泡** —— 手动 = 陪它玩，agent = 有事告诉你。
+         内容与排版参数都由主进程下发（见 control-bar.ts 的 render）。 -->
+    <div id="plays"></div>
     <div id="actions">
       <button data-cmd="hide-pet">隐藏宠物</button>
       <span class="sp"></span>

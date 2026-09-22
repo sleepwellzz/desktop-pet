@@ -1362,6 +1362,182 @@ section('⑯ isAckable 真值表（五种状态 × 已确认 × 已过期）');
   check('控制条渲染层不再自己写状态判据', !barSrc.includes("s.status === 'needs-input'"), '又抄了一份');
 }
 
+// —— ⑰ 手动把玩：面板动作排（2026-09-22，ADR 038）——
+// 为什么也要做成纯函数并钉在这里：它和行为层是同一类规则 —— "到点才发生"，
+// 屏幕上看不出对错（演 5 秒还是 7 秒、走 180px 还是 300px 都只表现为"它演了一下"）。
+// 三条最要紧的：
+//   ① **清单解析**：写错一个状态名不能让宠物卡住（丢弃 + 告警），也不能悄悄少一个动作；
+//   ② **一次性动作按自身片长收尾** —— 用 dwellMs 会让画面冻在末帧上摆 6 秒；
+//   ③ **位移类真的走**，且夹进工作区；走不动时降级为原地演（**不假装走了**）。
+section('⑰ 手动把玩：动作清单解析 + 演出时长 + 位移（纯函数 + 虚拟时钟）');
+{
+  const { parseManualPlayPolicy, beginManualPlay, tickManualPlay } =
+    require(join(root, 'dist/kernel/manual-play.js'));
+  const { loadPack } = require(join(root, 'dist/kernel/pack.js'));
+  // 用**真实宠物包**（loadPack 会校验精灵图与状态表），而不是测试里另造一份
+  const pack = loadPack(root);
+  const list = runtimeManifest.actions.list;
+
+  // —— ① 真实 sidecar 的清单解析 ——
+  const warns = [];
+  const policy = parseManualPlayPolicy(runtimeManifest.actions, pack, (m) => warns.push(m));
+  eq('动作个数 = sidecar 清单长度', policy.actions.length, list.length);
+  eq('顺序与清单一致', policy.actions.map((a) => a.state).join(','), list.map((a) => a.state).join(','));
+  eq('文字取自 sidecar（"过生日"是画面语义，不在 pet.json 里）',
+    policy.actions.find((a) => a.state === 'running')?.label, '过生日');
+  eq('解析真实清单时零告警', warns.length, 0);
+  eq('dwellMs 取自 sidecar', policy.dwellMs, runtimeManifest.actions.dwellMs);
+  eq('位移距离区间取自 sidecar',
+    `${policy.walkDistancePx.min}-${policy.walkDistancePx.max}`,
+    runtimeManifest.actions.walkDistancePx.join('-'));
+
+  // 朝向由状态自己的 role 推出来（不按状态名猜 —— 换宠物包时状态名会变，role 不会）
+  eq('running-left 的朝向 = left', policy.actions.find((a) => a.state === 'running-left')?.facing, 'left');
+  eq('running-right 的朝向 = right', policy.actions.find((a) => a.state === 'running-right')?.facing, 'right');
+  eq('过生日（循环、非位移）不位移', policy.actions.find((a) => a.state === 'running')?.facing, null);
+  eq('待机不位移', policy.actions.find((a) => a.state === 'idle')?.facing, null);
+  // 片长必须与宠物包一致（一次性动作靠它收尾）
+  const wavingAct = policy.actions.find((a) => a.state === 'waving');
+  eq('waving 是一次性', wavingAct.loop, false);
+  eq('waving 的片长 = frames / fps',
+    wavingAct.clipMs, Math.round((pack.states.waving.frames / pack.states.waving.fps) * 1000));
+
+  // —— ①b 容错：写错状态名 / 省略清单 / 空清单 ——
+  {
+    const w = [];
+    const p = parseManualPlayPolicy(
+      { list: [{ state: '根本不存在的状态', label: 'x' }, { state: 'idle', label: '待机' }, { state: 'idle', label: '重复' }] },
+      pack, (m) => w.push(m),
+    );
+    eq('不存在的动作被丢弃（不让宠物卡住）', p.actions.length, 1);
+    eq('丢弃时告警', w.some((m) => m.includes('不在宠物包里')), true);
+    eq('重复项只保留第一次', w.some((m) => m.includes('重复')), true);
+    eq('留下的那一条是合法项', p.actions[0].state, 'idle');
+  }
+  for (const [name, raw] of [['省略 list', undefined], ['空 list', { list: [] }]]) {
+    const p = parseManualPlayPolicy(raw, pack, () => {});
+    eq(`${name} ⇒ 回落到全部状态（面板不能没有可点的动作）`,
+      p.actions.length, Object.keys(pack.states).length);
+    eq(`${name} 时的文字回落为状态 id`, p.actions[0].label, p.actions[0].state);
+  }
+  // 清单外多出来的状态（有渲染参数但没进 list）不该被硬塞进来 —— 清单是权威
+  check('清单是权威：动作数 = 清单长度（不按行号自动补齐）',
+    policy.actions.length === list.length && policy.actions.length <= Object.keys(pack.states).length);
+
+  // —— ②③ 演出时长 / 位移：虚拟时钟 + 固定随机种子 ——
+  const area = { x: 0, y: 0, width: 1920, height: 1040 };
+  const mid = { x: 900, y: 400, width: 134, height: 146 };
+  const SPEED = 96;                              // 默认缩放下 96px/s（desktop-pet.json → behavior）
+  const leftAct = policy.actions.find((a) => a.state === 'running-left');
+  const rightAct = policy.actions.find((a) => a.state === 'running-right');
+  const bdayAct = policy.actions.find((a) => a.state === 'running');
+
+  // ② 循环动作 → dwellMs；一次性动作 → 自身片长 + 收尾停顿
+  {
+    const clock = makeClock();
+    const r = beginManualPlay(bdayAct, policy, clock.now(), mid, area, SPEED, makeRng(1));
+    eq('循环动作演 dwellMs', r.play.until - clock.now(), policy.dwellMs);
+    eq('循环动作不位移', r.play.targetX, null);
+    eq('第一条命令就带"演这个"',
+      JSON.stringify(r.command.play), JSON.stringify({ state: 'running', loop: true }));
+
+    const o = beginManualPlay(wavingAct, policy, clock.now(), mid, area, SPEED, makeRng(1));
+    const held = o.play.until - clock.now();
+    eq('一次性动作不位移', o.play.targetX, null);
+    check('一次性动作的时长 < dwellMs（不能用它 —— loop:false 会冻在末帧）',
+      held < policy.dwellMs, `实际 ${held}ms，dwellMs=${policy.dwellMs}`);
+    check('一次性动作至少演满自己一个片长（落定姿势要看得见）',
+      held >= wavingAct.clipMs, `实际 ${held}ms，片长 ${wavingAct.clipMs}ms`);
+
+    // 到点前一直在演，到点立刻交回（并且**显式**下发 play:null）
+    const midTick = tickManualPlay(o.play, o.play.until - 1, mid, SPEED);
+    check('到点前仍在演', midTick.play !== null);
+    const endTick = tickManualPlay(o.play, o.play.until, mid, SPEED);
+    eq('到点 → 交回仲裁器', endTick.play, null);
+    check('交回时是显式的 play:null（渲染层没人替我们撤销覆盖）',
+      endTick.command.play === null, JSON.stringify(endTick.command));
+  }
+
+  // ③a 位移类真的走：目标方向正确、距离落在声明区间内、逐 tick 走到位后结束
+  {
+    const clock = makeClock();
+    const start = beginManualPlay(leftAct, policy, clock.now(), mid, area, SPEED, makeRng(4242));
+    check('往左走的目标在当前位置左侧', start.play.targetX !== null && start.play.targetX < mid.x,
+      `targetX=${start.play.targetX}`);
+    const dist = mid.x - start.play.targetX;
+    check('走出的距离落在 sidecar 声明的区间内',
+      dist >= policy.walkDistancePx.min && dist <= policy.walkDistancePx.max, `dist=${dist}`);
+    eq('第一条命令带位移姿态',
+      JSON.stringify(start.command.play), JSON.stringify({ state: 'running-left', loop: true }));
+
+    let st = start.play;
+    let x = mid.x;
+    let steps = 0;
+    while (st && steps < 5000) {
+      const r = tickManualPlay(st, clock.advance(33), { ...mid, x }, SPEED);
+      if (r.command.moveX !== null) x = r.command.moveX;
+      st = r.play;
+      steps += 1;
+    }
+    eq('走到目标点后结束', st, null);
+    eq('落点正好是目标点', x, start.play.targetX);
+    // 至少走了 1 秒（180px / 96px·s⁻¹ ≈ 1.9 秒）—— 钉住"不是瞬间贴过去"
+    check('是走出去的，不是瞬移', steps * 33 >= 1000, `${steps} tick`);
+  }
+
+  // ③b 夹进工作区（不跨屏）：贴着右边缘时目标被夹住，距离随之变短
+  {
+    const clock = makeClock();
+    const nearRight = { x: 1700, y: 400, width: 134, height: 146 };   // 右向只剩 86px
+    const r = beginManualPlay(rightAct, policy, clock.now(), nearRight, area, SPEED, makeRng(1));
+    eq('目标被夹进工作区右边界', r.play.targetX, area.x + area.width - nearRight.width);
+    check('夹取后的距离小于声明的区间下限',
+      r.play.targetX - nearRight.x < policy.walkDistancePx.min,
+      `${r.play.targetX - nearRight.x}px`);
+  }
+
+  // ③c 走不动就**不假装走了**：贴着边缘时降级为原地演 dwellMs，但仍播位移姿态
+  {
+    const clock = makeClock();
+    const atLeft = { x: area.x, y: 400, width: 134, height: 146 };
+    const atRight = { x: area.x + area.width - 134, y: 400, width: 134, height: 146 };
+    const l = beginManualPlay(leftAct, policy, clock.now(), atLeft, area, SPEED, makeRng(1));
+    eq('贴左边缘时"往左走"降级为原地演', l.play.targetX, null);
+    eq('降级后按 dwellMs 演', l.play.until - clock.now(), policy.dwellMs);
+    eq('降级时仍然播位移姿态（动作本身要看得见）',
+      JSON.stringify(l.command.play), JSON.stringify({ state: 'running-left', loop: true }));
+
+    const r = beginManualPlay(rightAct, policy, clock.now(), atRight, area, SPEED, makeRng(1));
+    eq('贴右边缘时"往右走"降级为原地演', r.play.targetX, null);
+  }
+  // 工作区比宠物还窄（异常配置）也不该崩、也不该乱走
+  {
+    const narrow = { x: 0, y: 0, width: 100, height: 200 };
+    const clock = makeClock();
+    const r = beginManualPlay(leftAct, policy, clock.now(), { x: 0, y: 0, width: 134, height: 146 }, narrow, SPEED, makeRng(1));
+    eq('工作区比宠物还窄 ⇒ 原地演，不乱走', r.play.targetX, null);
+  }
+
+  // —— ④ 结构性：面板高度与白名单的两处"不许各写一份" ——
+  {
+    const hostSrc = readFileSync(join(root, 'src/host/control-bar.ts'), 'utf8');
+    check('面板高度算式含有动作排（主进程按 sidecar 算）',
+      hostSrc.includes('actionRows * opts.actionRowHeight'));
+    const barRenderSrc = readFileSync(join(root, 'src/renderer/control-bar.ts'), 'utf8');
+    check('控制条渲染层的白名单镜像含 play-action', barRenderSrc.includes("'play-action'"));
+    check('渲染层的动作排排版取自下发参数（不自己写死行高）',
+      barRenderSrc.includes('v.actionRowHeight') && barRenderSrc.includes('v.actionColumns'));
+    const htmlSrc = readFileSync(join(root, 'src/renderer/control-bar.html'), 'utf8');
+    check('CSS 里不写死动作排的行高/列数（否则改 sidecar 就两边对不上）',
+      !/grid-(auto-rows|template-columns)\s*:\s*\d/.test(htmlSrc));
+    // 手动把玩**不许**碰仲裁器：它是"陪它玩"，不是业务状态（气泡只由业务状态产生）
+    const mainSrc = readFileSync(join(root, 'src/main/index.ts'), 'utf8');
+    const playHandler = mainSrc.slice(mainSrc.indexOf("'play-action'(arg)"), mainSrc.indexOf("'popup-menu'()"));
+    check('play-action 不调用仲裁器（手动把玩不产生气泡，也不改 agent 状态）',
+      !playHandler.includes('arbiter.'), '手动把玩里出现了 arbiter 调用');
+  }
+}
+
 // —— ⑳ 定时器必须都能被关掉 ——
 // 起因：2026-09-22 用户在便携版点「退出宠物」弹出 `Object has been destroyed`。
 // 根因是两条 interval 的句柄从来没被接住（250ms 仲裁推进 + 600ms 全屏监听），

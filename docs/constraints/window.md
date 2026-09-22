@@ -37,6 +37,15 @@
   **隐藏宠物后唯一的快捷入口是托盘左键单击**（`tray.ts` 的默认 `toggleVisibility`）——
   删掉快捷键之后这条是唯一兜底，不要动它。
   面板动作排里显示的是**宠物名**（`pet.json` 的 `displayName`），没有缩放控件（那在菜单里）。
+- **面板高度算式是四段，不是三段**（2026-09-22 加动作排，ADR 038）：
+  `headerHeight + 会话行数 × rowHeight + 动作排行数 × actionRowHeight + footerHeight`，
+  其中动作排行数 = `ceil(动作个数 / actionColumns)`。两个新参数
+  **随 `BarView` 下发**（渲染层不写死，连 CSS 里一行 `grid-auto-rows` 都不许有）——
+  主进程按它们算窗口高度再 `setContentBounds`，两边各写一份就是"面板比窗口矮一截、底部被切"。
+  改这两条只改 `desktop-pet.json → controlBar`。
+- **手动把玩（面板动作排）的按钮走 `play-action` 命令**，`arg` = 状态 id，主进程校验它真的在宠物包里
+  （与 `ack-session` 同一条白名单纪律）。**它不碰仲裁器** —— 手动把玩走动画覆盖通道，
+  所以**不产生气泡**（这是"手动 = 陪它玩 / agent = 有事告诉你"的实现方式，不是靠 if 判断）。
 
 ## 定时器
 

@@ -11,6 +11,7 @@
 |---|---|---|
 | `pet.json` / `behavior-map.json` / 精灵图 / 行语义 / 动作外观 | `docs/constraints/pet-pack.md` | — |
 | 窗口创建·显示·隐藏·移动·缩放、命中判定、控制条、定时器、指针事件 | `docs/constraints/window.md` | `spikes/m2-hittest`（**第二参数不能省**）/ `spikes/m2-menu/run-tray.mjs` / `spikes/m2-control/run.mjs` |
+| 面板动作排 / 手动把玩（`kernel/manual-play.ts`、`desktop-pet.json → actions`） | `docs/constraints/behavior.md`（末节）+ `docs/constraints/window.md`（控制条那节） | `node tools/status-arbiter.test.mjs`（第 ⑰ 节）+ `spikes/m2-control/run.mjs control` |
 | `src/kernel/status.ts` / `src/source/*` / 确认与消解 / `ready`·`needs-input` | `docs/constraints/status.md` | `node tools/status-arbiter.test.mjs` + `spikes/m3-ready-ack/probe-ack-revival.mjs`；动了出口再跑 `spikes/m3-ready-exit/run.mjs` |
 | `tools/pet-hook*.mjs` / hook 映射层与安装器 / 状态源接线 | `docs/constraints/sources-hooks.md` | `node tools/codebuddy-hook.test.mjs`（70 项） |
 | `src/kernel/behavior.ts` / `desktop-pet.json → behavior` | `docs/constraints/behavior.md` | `node tools/status-arbiter.test.mjs` + `node spikes/m3-behavior/run.mjs`（**不带** `--no-behavior`） |
@@ -22,6 +23,13 @@
    报告里要区分"实测"与"推测"。
 2. **凡是"位置类/兜底类"参数都要显式传入，不许让下游自己猜** ——
    拿不到就选择"不显示"，而不是显示在错的地方（ADR 021）。
+
+**第三条是 2026-09-22 补的，与第一条同族：别拿"代理指标"顶替"那个结果本身"。**
+
+3. **"发生了"不等于"表现对了"。** 已有两次同形事故：**"进程消失"≠"退出干净"**（ADR 035）、
+   **"动作演完了"≠"面板不再说它在演"**（ADR 038 —— 收尾函数被一个 `if (!manualPlay) return`
+   提前返回，`refreshBar()` 从未执行，按钮一直亮着；而探针只查了"点下去有没有开始演"）。
+   落笔前自检：**我要断言的这个量，用户真的会看到它吗？如果用户看的是另一个量，就得断言那个。**
 
 ## 知识与文档在哪（不要再重新调研）
 

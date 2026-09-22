@@ -159,7 +159,21 @@ export type BarCommandId =
    */
   | 'popup-menu'
   /** 收起控制条（等同 Esc 或面板右上角的 ×）。 */
-  | 'close-bar';
+  | 'close-bar'
+  /**
+   * 手动把玩一个动作（2026-09-22，ADR 038）。`arg` = 宠物包里的状态 id。
+   *
+   * 语义：**与 agent 状态无关地**让宠物演一次这个动作，像逗宠物一样。
+   * 同一个 id 再发一次 = 立刻停止（面板上表现为同一按钮再点一下取消）。
+   *
+   * 为什么走命令白名单而不是新开通道：与 `ack-session` 完全同形 ——
+   * 渲染层拿不到动作表，只能发 id，主进程查表并**校验该状态真的在宠物包里**
+   * （`ack-session` 校验"会话真的在面板上"，同一套纪律）。
+   *
+   * 气泡：手动把玩**不经过仲裁器**，因此不产生任何气泡文案 ——
+   * "手动 = 陪它玩 / agent = 有事告诉你"这条分界线就是靠这一点落实的。
+   */
+  | 'play-action';
 
 export interface BarCommand {
   id: BarCommandId;
@@ -189,8 +203,32 @@ export interface BarView {
   // （原 `hotkey: string | null` 随全局快捷键功能一并删除，ADR 032。渲染层从未渲染过这个字段，
   //   它只是随 BarView 一起下发 —— 留着会让"面板数据里有个没人读的键"继续骗人。）
   petVisible: boolean;
+  /**
+   * 动作排（2026-09-22，ADR 038）：手动把玩按钮。`active` = 现在正演着的那一个。
+   *
+   * 清单在**主进程**由 sidecar（`desktop-pet.json → actions`）解析后下发 ——
+   * 渲染层不读文件、也不自己拼一份（延续"哑面板"的纪律，见本文件顶部）。
+   */
+  actions: BarActionView[];
+  /**
+   * 动作排的排版参数（`desktop-pet.json → controlBar.actionColumns / actionRowHeight`）。
+   *
+   * **随视图下发而不是让渲染层自己写死**：面板高度由主进程按这两个值算（`desiredHeight` ×
+   * `setContentBounds`），渲染层若各写一份，改配置就会出现"面板比窗口矮一截、底部被切"。
+   * 会话行当年正是这个结构（`.row { height: 28px }` 与 `rowHeight` 各写一份），动作排顺手消掉它。
+   */
+  actionColumns: number;
+  actionRowHeight: number;
   /** 与 `StatusPush.rev` 同源：渲染层据此识别"重载后的第一帧"。 */
   rev: number;
+}
+
+/** 主进程 → 控制条：动作排里的一个按钮。 */
+export interface BarActionView {
+  state: string;
+  label: string;
+  /** 现在正演着这一个（面板据此高亮，再点一次即停止）。 */
+  active: boolean;
 }
 
 /**
