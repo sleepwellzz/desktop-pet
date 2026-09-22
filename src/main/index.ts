@@ -131,8 +131,30 @@ function setupFileLog(): void {
  * 而启动路径的**任何**改动都要跑全屏/托盘/控制条/行为层/状态五套真实窗口回归。
  * 权衡下来：**先让它可导航**（索引 + 分节），等真出现"某一段要被复用"的需求再拆。
  */
+/**
+ * 把**未捕获异常的完整堆栈**写进 `pet.log`。
+ *
+ * 为什么需要：未捕获异常会被 Electron 弹成"一个技术性错误框"，但那个框里显示的堆栈是
+ * **被截断/省略过的** —— 2026-09-22 排查退出崩溃时用户能复制出来的只有
+ * `...\dist\main\in...:55`，行号根本对不上源码，只能靠"全仓只有一个叫 callback 的函数"
+ * 反推。日志是排查时唯一可靠的来源，所以这里补一份完整堆栈。
+ *
+ * **只记录，不做别的**：不调用 `process.exit`、不试图恢复状态 —— 修复根因是另一件事
+ * （ADR 035 的教训：**别把用户可见的崩溃降格成"日志噪音"**，这条日志是给排查用的补充，
+ * 不是"有日志就算处理过了"的许可证）。
+ */
+function setupCrashLog(): void {
+  process.on('uncaughtException', (e) => {
+    try {
+      appendFileSync(LOG_PATH,
+        `[pet][uncaught] ${(e && (e.stack || e.message)) || String(e)}\n`, 'utf8');
+    } catch { /* 日志写失败绝不能影响异常本身的处理 */ }
+  });
+}
+
 function boot(): void {
   setupFileLog();
+  setupCrashLog();
   bootMark('boot() 进入');
   // ══════════════════════════════════════════════════════════════════════
   // 装配索引（按执行顺序）
@@ -814,7 +836,18 @@ function boot(): void {
         window: bar.browserWindow,
         callback: () => {
           barMenuOpen = false;
-          if (!bar) return;
+          // 守卫必须落在**窗口的存活**上，不是包装对象非空 —— `bar` 是模块级变量，
+          // `destroy()` 之后它仍然非空（`quit()` 也从不把它置回 null），所以
+          // `if (!bar)` 等于没守卫。而 `BrowserWindow.isFocused()` 在窗口销毁后
+          // 抛的正是 `TypeError: Object has been destroyed`（实测），
+          // 也就是用户 2026-09-22 从这份菜单点「退出」时看到的那个框。
+          //
+          // 为什么它会落在"已销毁"状态：这条回调由 Electron 在**菜单关闭时**调用，
+          // 而「退出」这个菜单项干的正是把面板销毁掉 —— 两者谁先谁后由原生菜单的
+          // 关闭时机决定。本项目无法稳定复现（它的时序是竞态的，同 ADR 035），
+          // 所以这里按"最坏情况"守：**只做在当前状态下一定成立的事**。
+          // 这条与 ADR 035 的教训同形：**生命周期必须对齐，且守卫要守对那个对象**。
+          if (!bar || bar.browserWindow.isDestroyed()) return;
           const focused = bar.browserWindow.isFocused();
           dispatchBar({ kind: 'focus', hasFocus: focused });
         },

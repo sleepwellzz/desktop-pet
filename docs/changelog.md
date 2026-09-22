@@ -800,3 +800,55 @@
   症状很有欺骗性：工具回的是 "Successfully edited"，而 `tsc` 报的是一个看起来毫不相干的
   类型错误（`Property 'version' does not exist`）—— 因为接口那半边丢了、用它的那半边留下了。
   ⇒ 已写进 ADR 041 §9：**同一个文件的多处改动必须串行**，且改完 grep 复核。
+
+- **2026-09-22（第八次）**：**修掉退出时弹的 `Object has been destroyed`（ADR 042）—— 定位靠的是函数名**。
+  用户原话：「这一版很好，但出现了右键托盘按退出按键时候，A JavaScript error occurred in the main process
+  Uncaught Exception: TypeError: Object has been destroyed at callback(E:\ ...\dist-win\desktop-pet\
+  resources\ app\ dist\ main\ in...:55)」。
+  **他给的堆栈其实是被截断的**：路径里的行号根本对不上源码 —— 那个版本 `dist\main\index.js` 的第 55 行是
+  `function resolveStatusFile()`，不是任何回调。真正能用的只有函数名：**`callback`**。
+  于是对**整个编译产物**做了一次穷举：**`callback` 只出现一次** —— `dist/main/index.js:779`，
+  也就是 `'popup-menu'()` 里那条 `menu.popup({ window, callback })`。
+  （托盘右键与面板「⋯」共用**同一份**菜单模板、同一个 `actions.quit()`，所以用户说"右键托盘"
+  与实际走的面板「⋯」是同一份菜单。）
+  **根因是"写了一个守卫，但守的是错的对象"**：
+  回调里写的是 `if (!bar) return;` —— 而 `bar` 是模块级 `let`，`destroy()` 之后**仍然非空**
+  （`quit()` 也从不把它置回 `null`），所以这个守卫在真正危险的状态下**恒为假**，等于没守卫；
+  于是 `bar.browserWindow.isFocused()` 落在已销毁窗口上就抛。这条调用在窗口销毁后抛什么，
+  本轮单独实测过：`isFocused()` 抛 **`TypeError: Object has been destroyed`**、
+  `isDestroyed()` 返回 `true` 不抛、`destroy()` 二次调用不抛（幂等）—— 用户看到的那句话正好对上第一个。
+  **它的时序是竞态的**：这条回调由 Electron 在**菜单关闭时**调用，而「退出」这个菜单项干的正是
+  `bar?.destroy()`，谁先谁后由原生菜单的关闭时机决定。**五种复现方式全部失败**（合成点击后 quit、
+  **真实鼠标**点击后 quit、`tray.popUpContextMenu()` 后 quit、拦截 `Menu.prototype.popup` 抓到真实
+  menu 后销毁窗口再 `closePopup()`、直接调 `quit()`）—— 与 ADR 035 那个退出崩溃同一形状（那次三种
+  复现手段也全失败）。⇒ 照 ADR 035 §7 的规矩：**别把"没复现"说成"不存在"，也别把"测过了"说成"证明过了"。**
+  修复按"最坏情况"做：**只做在当前状态下一定成立的事**（`if (!bar || bar.browserWindow.isDestroyed()) return;`）。
+  **顺手堵掉同类第二处**：托盘的 `refresh()` 会调 `tray.setContextMenu` / `setToolTip`，
+  而**销毁后的 `Tray` 调它们会抛**（本轮实测 `Error: Tray is destroyed`）；而"销毁之后还会有人调
+  refresh"是真实存在的路径 —— 退出时 `quit()` 先 `void statusSource?.stop()`（异步），
+  随后就 `tray.destroy()`，一次迟到的状态推送仍会经 `refreshMenu()` 打到这里。
+  ⇒ 判据**下沉到资源自己身上**（`createTray` 内一个 `dead` 标志，`destroy()` 先置位再销毁），
+  **不放在每个调用点** —— 调用点会新增，资源只有一个。
+  （注意这条的报错文案是 `Tray is destroyed`，与用户的 `Object has been destroyed` 不同，
+  所以它**不是**用户那次崩溃的原因，是顺手堵掉的同类隐患。）
+  另加 `setupCrashLog()`：把**未捕获异常的完整堆栈**追加到 `~/.desktop-pet/pet.log`。
+  理由就在上面的定位过程里 —— 用户能从 Electron 那个错误框里复制出来的堆栈是**被截断的**，
+  本轮是靠在编译产物里穷举 `callback` 才定位到，**下次不该再这么费劲**。
+  **只记录，不做别的**：不 `process.exit`、不试图恢复状态。（ADR 035 的教训是"别把用户可见的崩溃
+  降格成日志噪音"；这条日志是**给排查用的补充**，不是"有日志就算处理过了"的许可证。）
+  **判据**（主判据**不赌时序**：把**真实回调**放到"窗口已销毁"状态下调用）：
+  `spikes/m2-control` 新增用例 ⑭ —— 先搭一个只做观测的 `Menu.prototype.popup` 补丁抓住 Electron
+  真正会调的那个函数，面板存活时调一次（基线），再 `bar.destroy()` 之后调一次。结果
+  `抓到 1 个｜面板存活时 ok=true｜面板已销毁时 ok=true`。
+  **它不是真空的**：把修复从 `dist` 里撤掉再跑一次 ⇒ `面板已销毁时 ok=false｜TypeError: Object has been
+  destroyed`，**红的正是用户看到的那句话**。单测 **408 → 413 项**（新增 ⑲ 节结构钉子：守卫在位、
+  托盘 `dead` 标志在位且 `destroy` 先置位、`uncaughtException` 落全量堆栈；这一节是 lint，
+  真正的机器判据是探针 ⑭，两者分工写进 ADR 免得后人把 lint 当成证明）。
+  `m2-menu/tray` 的退出用例通过、零 `[uncaught]`。
+  **一条可复用的自检**：本项目已经第二次栽在同一句话上 —— ADR 035 是"定时器越过了窗口"，
+  这次是"**守卫守错了对象**"。⇒ 落笔前问：**"我守的这个东西，会在危险发生时变吗？"**
+  **顺带发现一条判据自身的可靠性问题**（已记入 PLAN §4 的 #16，**不当作已通过**）：
+  本轮连续跑三轮 `m2-control`，一轮全绿、一轮**位置类断言红**、一轮 ⑫c 红。
+  红那轮的 `control.json` 摆在那里：宠物停在默认右下角 `1549,857`（**压根没被挪到屏幕中央**），
+  于是"面板上翻 + 被工作区右边缘夹住"这些**正确行为**被判成失败 —— 前置的真实鼠标拖动没生效。
+  **同一份代码有绿有红 ⇒ 判为前置偶发，不是回归**，但它意味着这条判据目前不够可靠。

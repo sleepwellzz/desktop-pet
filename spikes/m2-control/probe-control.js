@@ -20,6 +20,10 @@
  *  13. **走路时面板先收起、走完自己回来**（ADR 039）＋ **真实鼠标点击**这个面板
  *      （此前探针一律用 DOM 合成点击，绕过了 Windows 的输入路由；而 ADR 009 那条
  *      "hide 之后不再路由真实鼠标按钮事件"正好要靠这条路径才验得到）。
+ *  14. **退出路径：菜单关闭回调落在已销毁的面板上时不许抛**（ADR 042）。
+ *      用户从面板「⋯」点「退出」报 `Object has been destroyed at callback(...)`；
+ *      全仓编译产物里叫 `callback` 的只有这一处。它的时序是竞态的（本轮五种方式都没能
+ *      稳定复现），所以判据不赌时序 —— 直接把真实回调放到"窗口已销毁"的状态下调用。
  *
  * 用法：node spikes/m2-control/run.mjs control
  */
@@ -68,6 +72,23 @@ const hwndOf = (win) => {
 };
 
 try { fs.rmSync(STATUS_FILE, { force: true }); } catch (_) { /* ignore */ }
+
+// —— 用例 ⑭ 用的夹具：抓住**真实的**菜单关闭回调（ADR 042）——
+// 为什么要在启动应用**之前**打补丁：`menu.popup({callback})` 只在面板「⋯」那一条路径上
+// 注册回调，而我们没有任何别的方式拿到那个函数。
+// 注意这里**放行真实的 popup**（`origPopup.call`）——只做观测，不改行为，
+// 所以「⋯ 弹出菜单、面板不塌」那条既有用例仍然测的是真东西。
+const capturedPopups = [];
+{
+  const electron = require('electron');
+  const origPopup = electron.Menu.prototype.popup;
+  electron.Menu.prototype.popup = function patched(opts) {
+    const o = opts || {};
+    if (typeof o.callback === 'function') capturedPopups.push(o.callback);
+    return origPopup.call(this, o);
+  };
+}
+
 // 关掉自主行为层：宠物自己走动会把位置类断言搅乱（行为层有自己的探针 spikes/m3-behavior）。
 process.argv.push('--no-behavior');
 process.argv.push('--expose-actions');
@@ -615,6 +636,50 @@ app.whenReady().then(async () => {
     report.teardown = { petHidden, barAfterHidePet };
     log(`[probe] hide-pet → 宠物可见=${pet.isVisible()}（期望 false）面板可见=${barAfterHidePet}（期望 false）`);
 
+    // —— ⑭ 退出路径：菜单关闭回调落在**已销毁**的面板上时不许抛（ADR 042）——
+    // 用户 2026-09-22 报的就是它：从面板「⋯」那份菜单点「退出」，弹
+    // `A JavaScript error occurred in the main process / TypeError: Object has been destroyed
+    //  at callback (...\dist\main\index.js...)` —— 而全仓编译产物里叫 `callback` 的**只有这一处**。
+    //
+    // 这条回调由 Electron 在**菜单关闭时**调用，而「退出」这个菜单项干的正是把面板销毁掉；
+    // 谁先谁后由原生菜单的关闭时机决定 —— 本轮试了五种方式（真实鼠标、人为构造顺序、
+    // 直接调 quit、programmatic popup…）**都没能稳定复现**，它是竞态的（同 ADR 035）。
+    // ⇒ 所以判据不去赌时序，而是**把回调放到最坏的那个状态下调用**：窗口已销毁。
+    // 这不是真空断言：修之前这里必红（`isFocused()` 在窗口销毁后抛 `Object has been destroyed`，
+    // 已单独实测；而 `if (!bar)` 那种"守包装对象非空"的守卫在 destroy 之后恒为假）。
+    capturedPopups.length = 0;
+    if (!dbg.barVisible()) await dbg.barToggle();
+    await sleep(900);
+    await bar.webContents.executeJavaScript(
+      `document.querySelector('#actions button[data-cmd="popup-menu"]').click()`).catch(() => {});
+    await sleep(700);
+    const menuCb = capturedPopups[capturedPopups.length - 1];
+    const cbResult = {
+      captured: capturedPopups.length,
+      gotCallback: typeof menuCb === 'function',
+      aliveOk: false,
+      destroyedOk: false,
+      error: null,
+    };
+    if (cbResult.gotCallback) {
+      try { menuCb(); cbResult.aliveOk = true; }
+      catch (e) { cbResult.error = '面板存活时: ' + String(e); }
+      // 制造最坏状态：把面板窗口销毁（= 用户点「退出」那一刻它的状态），再叫一次回调。
+      // （`destroy()` 二次调用是安全的，本轮实测过 —— 探针收尾的 quit() 还会再 destroy 一次。）
+      try { bar.destroy(); } catch (_) { /* 见上 */ }
+      try { menuCb(); cbResult.destroyedOk = true; }
+      catch (e) {
+        cbResult.error = (cbResult.error ? cbResult.error + ' ｜ ' : '') + '面板已销毁时: ' + String(e);
+      }
+    }
+    report.menuCallback = cbResult;
+    log(`[probe] 菜单关闭回调：抓到 ${cbResult.captured} 个｜面板存活时 ok=${cbResult.aliveOk}`
+      + `｜面板已销毁时 ok=${cbResult.destroyedOk}（期望 true —— 用户报的就是这里抛）`
+      + (cbResult.error ? `｜${cbResult.error}` : ''));
+
+    // 顺带扫一遍日志：任何异步漏出来的未捕获异常也算失败（同步那些已被上面的 try 接住）
+    report.uncaughtCount = (fs.readFileSync(LOG, 'utf8').match(/\[uncaught\]/g) || []).length;
+
     // —— 判定 ——
     const fails = [];
     if (bb == null) fails.push('拿不到控制条矩形（右键宠物没有唤出面板）');
@@ -731,6 +796,20 @@ app.whenReady().then(async () => {
     }
     if (report.realClickAfterHideShow.postState !== 'waiting') {
       fails.push('❌ hide→show 之后真实鼠标点击没被路由到面板（ADR 009 在控制条上复现了）');
+    }
+    // —— ⑭ 退出路径：菜单关闭回调（ADR 042）——
+    if (!report.menuCallback.gotCallback) {
+      fails.push('没抓到「⋯」菜单的关闭回调（用例前置不成立，别当成通过）');
+    }
+    if (!report.menuCallback.aliveOk) {
+      fails.push('菜单关闭回调在面板**存活**时就抛了：' + report.menuCallback.error);
+    }
+    if (!report.menuCallback.destroyedOk) {
+      fails.push('菜单关闭回调在面板**已销毁**时抛异常（用户点「退出」看到的就是它）：'
+        + report.menuCallback.error);
+    }
+    if (report.uncaughtCount > 0) {
+      fails.push(`探针日志里有 ${report.uncaughtCount} 条未捕获异常`);
     }
     report.failures = fails;
     report.verdict = fails.length === 0 ? 'PASS' : 'FAIL';

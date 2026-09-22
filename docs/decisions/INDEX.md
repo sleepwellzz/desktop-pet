@@ -164,3 +164,19 @@
     四段数值版给系统与安装器比较大小，三段字符串版给人看。
     用户明确：**托盘的悬停提示不要出现版本号**（保持「淘淘 · 空闲」），改放菜单里一行。
     zip 名带版本、**目录名不带**（自启注册表记的是绝对路径，改名会让老用户条目失效）。（ADR 041）
+42. **退出时弹 `Object has been destroyed at callback(...)` ⇒ 面板「⋯」菜单的关闭回调守错了对象** ——
+    用户报的堆栈是**被截断**的（`...\dist\main\in...:55`，行号对不上源码），
+    能用的只有函数名 `callback`；而**整个编译产物里 `callback` 只出现一次** ⇒ 就是它。
+    根因是 `if (!bar) return` 守的是**包装对象**：`bar` 是模块级变量、`destroy()` 之后仍非空
+    ⇒ 守卫恒为假，于是 `bar.browserWindow.isFocused()` 落在已销毁窗口上抛
+    （实测：销毁后 `isFocused()` 抛 `Object has been destroyed`，而 `isDestroyed()` 不抛）。
+    这条回调由 Electron 在**菜单关闭时**调用，而「退出」干的正是销毁面板 —— 谁先谁后是竞态，
+    **本轮五种复现方式全部失败**（含真实鼠标、`tray.popUpContextMenu()`、构造顺序），
+    所以修复按"最坏情况"做，判据也不赌时序：**把真实回调放到"窗口已销毁"状态下调用**
+    （`spikes/m2-control` 用例 ⑭；**撤掉修复会精确红在那句报错上**）。
+    顺手堵掉同类第二处：**销毁后的 `Tray` 调 `setToolTip`/`setContextMenu` 会抛**
+    （实测 `Error: Tray is destroyed`），而"退出后迟到的状态推送"会打到它 ⇒
+    判据下沉到 `createTray` 内部（`dead` 标志，`destroy()` 先置位再销毁），
+    **不放调用点**：调用点会新增，资源只有一个。
+    另加 `setupCrashLog()`：未捕获异常的**完整堆栈**落 `pet.log` —— 就是为了下次不用再靠
+    "全仓只有一个 callback"反推。**只记录，不吞异常**（ADR 035 的教训：别把崩溃降格成日志噪音）。（ADR 042）

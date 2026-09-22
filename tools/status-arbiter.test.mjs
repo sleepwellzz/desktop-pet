@@ -1694,6 +1694,40 @@ section('⑰ 手动把玩：动作清单解析 + 演出时长 + 位移（纯函�
   eq('退出仍是最后一项（版本行不许挤到它后面）', vItems[vItems.length - 1].label, '退出');
 }
 
+// —— ⑲ 销毁之后不许再碰它（2026-09-22，ADR 042）——
+// 用户从面板「⋯」那份菜单点「退出」，弹出 `TypeError: Object has been destroyed
+// at callback(...)`。查下来：**全仓编译产物里叫 `callback` 的只有一处** —— 面板「⋯」的
+// 菜单关闭回调；而它的守卫写的是 `if (!bar) return`（守包装对象），
+// `bar` 是模块级变量、destroy 之后仍然非空 ⇒ 等于没守卫，于是
+// `bar.browserWindow.isFocused()` 落在已销毁窗口上就抛（该行为已单独实测）。
+//
+// 这一节是**结构性钉子**（防止守卫被后人"顺手简化掉"）；
+// 真正的机器判据在 `spikes/m2-control` 用例 ⑭ —— 把真实回调放到"窗口已销毁"的状态下调用。
+{
+  section('⑲ 销毁之后不许再碰它');
+  const mainRaw = stripComments(readFileSync(join(root, 'src/main/index.ts'), 'utf8'));
+  const trayRaw = stripComments(readFileSync(join(root, 'src/host/tray.ts'), 'utf8'));
+
+  // ① 菜单关闭回调的守卫必须落在**窗口存活**上，不是包装对象非空
+  check('菜单关闭回调用 isDestroyed() 守卫（`if (!bar)` 守不住任何东西）',
+    /if \(!bar \|\| bar\.browserWindow\.isDestroyed\(\)\) return;/.test(mainRaw));
+  check('回调里不再出现"只判包装对象"的写法',
+    !/callback: \(\) => \{\n\s*barMenuOpen = false;\n\s*if \(!bar\) return;/.test(mainRaw));
+
+  // ② 托盘这类"销毁后调用即抛"的资源（实测：`Tray is destroyed`），判据放在资源自己身上
+  check('托盘销毁后 refresh 直接返回（不再碰 setToolTip / setContextMenu）',
+    /let dead = false;/.test(trayRaw) && /if \(dead\) return;/.test(trayRaw));
+  check('托盘 destroy 先置位再销毁（反过来的话中间仍有缝）',
+    /destroy: \(\) => \{\s*dead = true;/.test(trayRaw));
+
+  // ③ 未捕获异常要把**完整堆栈**写进 pet.log —— Electron 那个错误框里的堆栈是被截断的
+  //    （用户能复制出来的只有 `...\dist\main\in...:55`，行号根本对不上源码，
+  //     这次只能靠"全仓只有一个 callback"反推）。这条断言是为了下次不用再反推。
+  check('未捕获异常会把完整堆栈写进 pet.log',
+    /process\.on\('uncaughtException'/.test(mainRaw)
+    && /\[pet\]\[uncaught\]/.test(mainRaw));
+}
+
 // —— ⑳ 定时器必须都能被关掉 ——
 // 起因：2026-09-22 用户在便携版点「退出宠物」弹出 `Object has been destroyed`。
 // 根因是两条 interval 的句柄从来没被接住（250ms 仲裁推进 + 600ms 全屏监听），

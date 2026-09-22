@@ -218,10 +218,10 @@
  },
  "manualWalk": {
   "clickedWalk": "clicked",
-  "targetX": 350,
+  "targetX": 425,
   "xBefore": 620,
-  "xAfter": 350,
-  "dx": -270,
+  "xAfter": 425,
+  "dx": -195,
   "walkedLeft": true,
   "withinDeclared": true,
   "released": true
@@ -241,10 +241,10 @@
  "walkBar": {
   "walkClick": "clicked",
   "hiddenDuringWalk": true,
-  "targetX": 75,
-  "petDx": -275,
+  "targetX": 194,
+  "petDx": -231,
   "barBack": true,
-  "centerDeltaBack": 1,
+  "centerDeltaBack": 0,
   "highlightCleared": true
  },
  "realClickAfterHideShow": {
@@ -256,6 +256,14 @@
   "petHidden": true,
   "barAfterHidePet": false
  },
+ "menuCallback": {
+  "captured": 1,
+  "gotCallback": true,
+  "aliveOk": true,
+  "destroyedOk": true,
+  "error": null
+ },
+ "uncaughtCount": 0,
  "failures": [],
  "verdict": "PASS"
 }

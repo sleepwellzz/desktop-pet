@@ -22,7 +22,22 @@ export function createTray(opts: {
   if (icon.isEmpty()) throw new Error(`托盘图标读不出来：${opts.iconPath}`);
   const tray = new Tray(icon);
 
+  /**
+   * 销毁之后不许再碰它。
+   *
+   * `Tray` 的 `setContextMenu` / `setToolTip` 在销毁后会抛
+   * `TypeError: Object has been destroyed`（同类坑见 ADR 035 / 042）。
+   * 而"销毁之后还会有人调 refresh"是**真实存在**的路径：退出时 `quit()` 先
+   * `void statusSource?.stop()`（异步），随后就 `tray.destroy()` —— 一次迟到的状态推送
+   * 仍会经 `refreshMenu()` 打到这里。
+   *
+   * 判据放在**资源自己身上**而不是每个调用点：谁拥有它，谁负责它的生命周期。
+   * 这与主进程里那些 `isDestroyed()` 守卫是同一条纪律。
+   */
+  let dead = false;
+
   const refresh = (): void => {
+    if (dead) return;
     const view = opts.getView();
     // 菜单每次重建而不是复用：勾选态（缩放档位、开机自启）与文案（隐藏/显示）都要现读，
     // 复用会让"点完之后勾没动"这类问题藏起来。
@@ -35,8 +50,17 @@ export function createTray(opts: {
   };
 
   // Windows 上左键单击托盘图标通常不弹菜单，正好用它做"收起/放出宠物"
-  tray.on('click', () => { (opts.onClick ?? opts.actions.toggleVisibility)(); });
+  tray.on('click', () => {
+    if (dead) return;
+    (opts.onClick ?? opts.actions.toggleVisibility)();
+  });
 
   refresh();
-  return { refresh, destroy: () => tray.destroy() };
+  return {
+    refresh,
+    destroy: () => {
+      dead = true;      // 先置位再销毁：反过来的话，销毁与"下一次 refresh"之间仍有缝
+      tray.destroy();
+    },
+  };
 }
