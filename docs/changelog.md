@@ -529,3 +529,28 @@
   被沙箱策略拦截（不绕过），字面值待用户勾一次「开机自启」确认。**待用户**：双击确认无控制台 + 关窗存活。
   顺带给 `boot()` 加了一行「打包态 isPackaged」日志 —— 它决定注册表命令形态，只能实测不能猜。
 
+
+- **2026-09-22**：**打包成品用户实测收口（ADR 034）—— #13 结项，拆出 #15。**
+  背景：#13 打包那轮的成品上一轮已产出（ADR 033），**最后一步只能由用户双击实测**：
+  「无控制台 + 关窗存活」是当初 ADR 028/029 折腾两轮没解决的根因，而打包成 GUI exe 后
+  由 explorer 直接启动，理论上不存在父控制台 —— 这条判断终于有机会由真实运行坐实。
+  同时用户顺手勾了开机自启，让「注册表值名复核」这半件上一轮没做到的事也一并有了数据。
+  **用户实测结果**：双击 exe 后**不弹控制台、没有需要关闭的窗口、宠物仍在系统托盘** ✅
+  ⇒ ADR 028/029 的根因（继承启动者的控制台）确认成立，**#13 核心目标达成，结项**。
+  **自启复核：一半好一半坏。** PowerShell（`Get-ItemProperty HKCU:...\Run`）读到
+  `electron.app.Electron = "...\dist-win\desktop-pet\desktop-pet.exe"`：
+  命令形态 ✅ —— `isPackaged=true` ⇒ 走无参分支，没踩「把自己的 exe 当成要打开的文件」那个坑，
+  指向的正是便携版，勾选后回读 `true`，**自启功能本身是好的**；
+  值名 ❌ —— 仍是开发态那个 `electron.app.Electron`。
+  **推翻一条推断**：ADR 033 与 `autostart.ts` 注释都写着「打包后值名会变成 productName」。
+  实测不成立 —— `resources/app/package.json` 里 `name: "desktop-pet"` **存在且正确却不起作用**。
+   ⇒ **`loginItem()` 的入参只决定命令、不决定值名**；值名来自别处。已在 `autostart.ts`
+   把那句会误导人的旧注释换成「已被实测推翻 + 指向 ADR 034」，避免下一轮沿推断走。
+  **拆出 #15**（🟡 Minor、不紧急）：三条修复候选 A（给 app package.json 加 `productName`）→
+   B（ready 前 `app.setName`，Electron 文档明说不影响 OS 侧名字，大概率无效）→
+   C（改 exe 版本资源 ProductName，Obsidian 那条路，最有可能是正解）+ 四条判据 + 旧条目迁移要求。
+  **顺带查清的副作用面**：全仓 `src/` 无任何 `getPath`/`userData`/`setName` 调用，
+   prefs 手写在 `~/.desktop-pet/prefs.json` ⇒ 即便用最激进的 B 方案也不会把用户偏好甩在旧目录。
+  **环境事实更正**：`reg.exe` 被沙箱拦（不绕过），但 **PowerShell `Get-ItemProperty` 可用**
+   —— 写法：`Out-File` 落文件再用 Read 读。这条已两次验证，`reg.exe` 上不要再浪费轮次。
+

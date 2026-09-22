@@ -16,7 +16,14 @@ import { app } from 'electron';
  *   - 已打包：只有应用自己的 exe，**不能再带参数**（带上反而会把它当成要打开的文件）。
  * 2026-09-16 实测写出的项形如：
  *   `electron.app.Electron = "...\electron.exe" "...\desktop-pet"`（撤销后条目消失）。
- * 值名里的 `Electron` 是未打包时的 app 名，打包后会变成 productName —— 打包那轮要复核一遍。
+ *
+ * **关于值名的那半句话已被实测推翻（ADR 034，2026-09-22）**：这里原本写着
+ * "值名里的 Electron 是未打包时的 app 名，打包后会变成 productName"。
+ * **不成立** —— 便携版实测写出的值名仍是 `electron.app.Electron`，而
+ * `resources/app/package.json` 里 `name: "desktop-pet"` 是**存在且正确**的，只是不起作用。
+ * 即：**这个函数的入参（`{path, args}`）只决定命令，不决定值名**；值名来自别处
+ * （大概率是 exe 的版本资源 ProductName，见 ADR 034 §4 的方案 C）。
+ * 修到一半别把它"顺手改回"上面那句旧注释 —— 那是推断，不是事实。
  */
 function loginItem(): { path: string; args: string[] } {
   return app.isPackaged
