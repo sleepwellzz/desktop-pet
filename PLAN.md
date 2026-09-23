@@ -183,26 +183,33 @@ hook 通道 71 条中位 61ms。取数：`node tools/measure-latency.mjs --since
 本轮产物已产出：`dist-win/desktop-pet/` + `dist-win/desktop-pet-1.0.0-win-x64.zip`
 （**zip 名从 `package.json` 的 `version` 派生**，改版本号即改名）。
 
-**GitHub 发布（2026-09-22 ✅ 已上线为私有仓库）** —— 详见 `docs/HANDOFF-2026-09-22.md`。
-- **仓库：<https://github.com/sleepwellzz/desktop-pet>（private）**，默认分支 `main`。
-- 上线后已核验（走 GitHub API，不信本地 git 的自述）：**306 个文件**、最新提交就是本地 HEAD、
+**GitHub 发布（2026-09-22 ✅ 已上线 · 已转公开）** —— 详见 `docs/HANDOFF-2026-09-22.md`。
+- **仓库：<https://github.com/sleepwellzz/desktop-pet>**，默认分支 `main`。
+- 上线与转公开都核验过（走 GitHub API，不信本地 git 的自述）：**306 个文件**、最新提交 = 本地 HEAD、
   远端**只有 `main` 一个分支**、`.workbuddy/` / `dist-win/` / `dist/` / `node_modules/` **各 0 个**。
 - **下次要推**：`git push`（凭据已由 `gh auth setup-git` 接管，走 gh 的 token，不再弹 GCM）。
-- **本机一个坑（已绕过，换机器不会有）**：`git fetch` 会报
-  `* [new branch] main -> origin/main` 且 exit 0，但 **`origin/main` 不落盘**（`show-ref` 查不到）。
+- **本机一个坑（已绕过，换机器不会有）**：`git fetch` / `git push` 会报成功，但
+  **`origin/main` 不落盘**（`show-ref` 查不到，于是 `git status` 假报 ahead）。
   **绕法：用 node 直写 `.git/refs/remotes/origin/main` 或 `.git/packed-refs`，git 就能正常读。**
-  注意：这条**不能**推广成"所有带斜杠的 ref 都建不了" —— `refs/original/refs/heads/main`
-  这种由 filter-branch 建的嵌套 ref 是**存在**的。早前那条结论已被收窄。
-- **身份**：`sleepwellzz` / `wenhaoling98@gmail.com`，**仓库级**（全局仍是空的，没污染别的项目）。
-- **历史署名已全部改写**（逐条验证过文件树 / 时间戳 / 提交信息**一字未动**，只有署名变）。
-  备份分支 **`backup-pre-author-rewrite`** 指向改写前（**不在远端**）—— **别推、别删**。
-- **`.workbuddy/` 不进仓库**（用户决定）：本地照常保留，已移出版本库**并从 main 历史中清掉**
-  （提交 68 → 65，剪掉 3 个"只改它"的提交）。`.gitignore` 改成整个目录。
-- **本机痕迹清理**：被跟踪文件命中 25 → 9 个（其余是脱敏后的假命中）。最值钱的是修掉
-  **4 处承重的硬编码绝对路径**（`run-build.cjs` 的 `root` 等 ⇒ 一律改为从脚本位置推导）——
-  那是真 bug 不只是痕迹。日志类（`spikes/**/*.out`）就地脱敏。
-- **转公开前必须再做一次历史级清理**：ADR / changelog / INDEX / 旧 HANDOFF 里仍有
-  `<工程目录>\...` 与用户名 —— 本轮**刻意没动**（"只增不改"的档案，且那里的路径**本身就是证据**）。
+  注意这条**不能**推广成"带斜杠的 ref 一概建不了" —— `refs/original/refs/heads/main` 就存在。
+- **提交身份（已换成不暴露邮箱的形式）**：
+  `sleepwellzz <143619986+sleepwellzz@users.noreply.github.com>`，**仓库级**（全局仍是空的）。
+  ⚠️ **以后在这个仓库里提交前，先确认 `git config --local user.email` 还是 noreply 那条** ——
+  否则新提交会重新写回真实邮箱。
+- **历史级清理已完成（公开前做的，用 `git-filter-repo` 一次改写）**：
+  ① 全历史里 39 个文件 / 67 个提交的本机路径与用户名 → `<工程目录>` / `<工作区>` / `<用户名>` / `<项目键>`；
+  ② **提交信息里的痕迹一并替换**（`--replace-message`）；③ 作者与提交者邮箱 → noreply。
+  **判据**：逐提交 `git grep` 核对，最终**内容残留 0、提交信息残留 0**；提交数 67、文件数 306 未变；
+  `git diff backup-pre-author-rewrite main` 只含预期改动。
+  **三个可复用的点**：filter-repo **8 秒**跑完 67 个提交（同样的事 filter-branch 要 **8 分钟**）；
+  `--refs` 是**选项**不是位置参数（传位置参数会报 `unrecognized arguments`）；
+  `git grep` 输出路径要配 `-c core.quotepath=false`，否则中文文件名被转义、pathspec 对不上。
+- **备份分支 `backup-pre-author-rewrite` 只在本地**（指向清理前的历史）—— **别推、别删**。
+  另有一份仓库外备份：`.workbuddy/backup-before-redact.bundle`（5.3 MB，`git bundle create --all`）。
+- **`.workbuddy/` 不进仓库**（用户决定）：本地照常保留，已移出版本库**并从历史中清掉**。
+- **本机痕迹清理（当前版本）**：最值钱的是修掉 **4 处承重的硬编码绝对路径**
+  （`run-build.cjs` 的 `root` 等 ⇒ 一律改为从脚本位置推导）—— 那是真 bug，不只是痕迹。
+  日志类（`spikes/**/*.out`）就地脱敏。
 - **CI 先不加**（用户决定）—— 没在本机以外验证过，加了红反而更糟。
 
 
