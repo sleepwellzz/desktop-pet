@@ -34,6 +34,9 @@ import {
   type ManualAction, type ManualPlay, type ManualPlayPolicy,
 } from '../kernel/manual-play';
 import {
+  describeMotionPolicy, parseMotionPolicy, type MotionPolicy,
+} from '../kernel/motion-policy';
+import {
   CH, type BarCommand, type BarCommandId, type BarView, type DragDelta, type DragState, type HitState,
   type PointerHint, type ReadyInfo, type RendererInit, type StatusPush,
 } from '../shared/ipc';
@@ -231,6 +234,7 @@ function boot(): void {
     warnings: pack.warnings,
     petId: pack.manifest.id,
     displayName: petName,
+    motionPolicy,
   });
 
   overlay.browserWindow.once('ready-to-show', () => {
@@ -595,6 +599,16 @@ function boot(): void {
     pack,
     (m) => console.warn('[pet][manual] ' + m),
   );
+  // —— 系统「减少动态效果」的应对策略（2026-09-23，ADR 043）——
+  //
+  // 边界要写清楚：**行为层**（自动漫游 / 微动作 / 踱步）继续尊重这个系统设置（ADR 018，不动）；
+  // 而**动画播放**默认照常 —— 用户主动打开一个桌宠、还点了"炒菜"，却看到一张不会动的图，
+  // 那叫产品坏了。以前渲染层直接读 matchMedia 把帧推进关掉，于是同一份代码在两台机器上
+  // 两种表现：一台正常，一台全是静态贴图（分发出去才暴露，本机永远复现不了）。
+  const motionPolicy: MotionPolicy = parseMotionPolicy(
+    (pack.runtime as unknown as Record<string, unknown>)['reducedMotion'],
+  );
+
   const manualActionByState = new Map(manualPolicy.actions.map((a) => [a.state, a]));
   /** 正在手动把玩的那一个；null = 没有。同一时刻最多一个（用户一次只点一个动作）。 */
   let manualPlay: ManualPlay | null = null;
@@ -890,6 +904,8 @@ function boot(): void {
   let behaviorState: BehaviorState = BEHAVIOR_IDLE;
   /** 渲染层上报的系统「减少动态效果」。主进程读不到这个偏好，只能由渲染层报到时带上。 */
   let rendererReducedMotion = false;
+  /** 「减少动态效果」那行日志只打一次（渲染层重载时会再报到一次）。 */
+  let motionLogged = false;
   /** 用户正抓着宠物（渲染层上报的拖动边沿）。行为层据此停手。 */
   let draggingPet = false;
   /** 全屏让位导致宠物当前是隐藏的（与"用户手动隐藏"分开记：全屏退出时要恢复显示）。 */
@@ -1207,7 +1223,18 @@ function boot(): void {
     // 页面重载后渲染层会再次报到：payload 复用缓存，自检只跑一次
     payload ??= buildPayload();
     // 「减少动态效果」只有渲染层读得到（matchMedia），行为层要靠它决定要不要漫游。
-    if (info && typeof info.reducedMotion === 'boolean') rendererReducedMotion = info.reducedMotion;
+    if (info && typeof info.reducedMotion === 'boolean') {
+      rendererReducedMotion = info.reducedMotion;
+      // **必须打这一行**。2026-09-23 那次事故里，唯一的症状是"动作不动"，而没有任何日志
+      // 说明原因 —— 排查时只能靠两台机器对照猜。现在这两行就能一眼看出是系统开关还是策略。
+      if (!motionLogged) {
+        motionLogged = true;
+        console.log(`[pet] 减少动态效果：系统开关=${rendererReducedMotion}`
+          + `｜策略=${motionPolicy.strategy}（${describeMotionPolicy(motionPolicy)}）`
+          + (rendererReducedMotion && motionPolicy.strategy === 'freeze-frame'
+            ? ' ⇒ 注意：动画会被冻结，只画一帧' : ''));
+      }
+    }
     // 新页面从"整窗穿透"起步，并立刻**强制**重报一次命中状态（见 ADR 009）
     overlay.resetToIgnore();
     overlay.browserWindow.webContents.send(CH.init, payload);

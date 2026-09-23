@@ -1,5 +1,6 @@
 // 主进程 ↔ 渲染层的 IPC 契约。通道名与载荷类型集中在此，避免两边各写一份。
 import type { ArbiterState, PetStatus, SessionView } from '../kernel/status';
+import type { MotionPolicy } from '../kernel/motion-policy';
 import type { ResolvedState } from '../kernel/types';
 
 export type { SessionView };
@@ -107,6 +108,14 @@ export interface RendererInit {
   warnings: string[];
   petId: string;
   displayName: string;
+  /**
+   * 系统「减少动态效果」的应对策略（`desktop-pet.json → reducedMotion`）。
+   *
+   * 注意与 `ReadyInfo.reducedMotion` 区分：那个是**系统开关本身**（渲染层读 matchMedia 后上报，
+   * 主进程读不到，行为层靠它决定要不要自动漫游）；这个是**我们怎么应对它**（策略，可被用户改）。
+   * 混成一件事是 2026-09-23 那次事故的成因 —— 见 ADR 043。
+   */
+  motionPolicy: MotionPolicy;
 }
 
 /** 渲染层 → 主进程：拖动增量（DIP，与 Electron 窗口坐标同一坐标系）。 */

@@ -180,3 +180,34 @@
     **不放调用点**：调用点会新增，资源只有一个。
     另加 `setupCrashLog()`：未捕获异常的**完整堆栈**落 `pet.log` —— 就是为了下次不用再靠
     "全仓只有一个 callback"反推。**只记录，不吞异常**（ADR 035 的教训：别把崩溃降格成日志噪音）。（ADR 042）
+43. **系统「减少动态效果」只停自主行为，不再冻结动画** —— 用户分发给朋友后回报
+    「**所有动作都是静态贴图：点哪个动作都是一张图、炒菜站着不动、左右走只是平移**」，
+    而另一个朋友那台一切正常 ⇒ **不是缺依赖**，而是渲染层读了 `matchMedia('(prefers-reduced-motion)')`
+    之后**直接关掉了帧推进**（`if (player && !reducedMotion) player.update(dt)`），
+    把用户**显式点击**的动作也一起吞了。**这个缺陷在单台机器上根本看不出来**，
+    只有"两台系统设置不同的机器对照"才暴露 —— 本轮用 Electron 的
+    `--force-prefers-reduced-motion` 在本机复现：`idle` 序列 `AABBBBB…`（变一次后冻死）、
+    手动动作序列 `AAAAAAAA…`（一动不动），而正常机器是 `ABCCDDEEFFGGCCDDEEFFGG`（8 种循环）。
+    决定：**把尊重这个开关的范围收窄到"未经请求的动画"**（自主漫游 / 微动作，ADR 018 那条不动），
+    **状态动画与手动把玩一律照常播**。判据下沉到新的纯函数模块 `kernel/motion-policy.ts`
+    （`parseMotionPolicy` / `shouldAdvanceFrames` / `describeMotionPolicy`）；
+    渲染层不再自己读 `matchMedia` 来决定"要不要推进帧"（**但仍要上报给主进程** ——
+    行为层靠它决定要不要漫游）。sidecar 的 `reducedMotion.strategy` 默认 **`animate`**，
+    确实需要完全静止的人可改成 `freeze-frame`（默认值本身就是"别变成石头"）。
+    启动横幅会打印 `减少动态效果：系统开关=…｜策略=…` ⇒ 下次一眼看出原因，不用两台机器对照。（ADR 043）
+44. **打包压 zip 改用工程自带实现；守门不再依赖外部程序** —— 交付 ADR 043 的修复时，
+    打包先炸了，而且**炸得没有声音**：`tar -a -c -f x.zip` **exit 0、脚本还打印"zip 完成
+    （373 MB）"，实际产物是一个 tar**（头部是 tar 的文件名而不是 `PK\x03\x04`）—— `-a`
+    没生效，对方拿到的是改名为 `.zip` 的 tar，**双击解不开**；而"373 MB"恰好等于未压缩体积，
+    看着毫无破绽。⇒ 新增 `tools/zip-dir.mjs`（纯 Node：`zlib.deflateRawSync` + 手写
+    ZIP 结构 + CRC-32），`make-portable.mjs --zip` 改调它，并且**压完回读魔数**：
+    `if (magic !== '504b0304') die(...)`。实测 372.6 MB → **156.8 MB / 10.1 秒**。
+    同批第二处同形问题：单测第 ⑳ 节用 `spawnSync` 起 node 跑 `check-timers.mjs`，
+    而本机沙箱会间歇 `EBUSY` ⇒ **一条与定时器无关的断言被环境判红**。
+    改成 `check-timers.mjs` 导出纯函数 `checkTimers()`、单测直接调用（CLI 用法不变）。
+    判据：新增单测第 ㉒ 节（结构性 + 真压一个小目录后**自己解析中央目录并 `inflateRawSync`
+    读回内容**）；单测 433 → **446 项全绿**；真产物另用 Windows `Expand-Archive` 独立解压，
+    与源目录做 **236/236 文件 SHA-256 全量比对，0 处不同**。
+    ⇒ 两条可复用结论：**"打包成功"必须回读产物本身（体积 / 退出码 / 日志文案都会说谎）**；
+    **判据不该被它测以外的东西判红**。（ADR 044）
+

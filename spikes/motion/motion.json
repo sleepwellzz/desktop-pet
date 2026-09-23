@@ -1,0 +1,23 @@
+{
+ "forceReduce": true,
+ "cases": {
+  "A-idle": {
+   "samples": 24,
+   "valid": 24,
+   "distinct": 8,
+   "switches": 12,
+   "series": "ABCCDDEEFFGGHHCCDDEEFFGG"
+  },
+  "B-play": {
+   "samples": 24,
+   "valid": 24,
+   "distinct": 8,
+   "switches": 23,
+   "series": "ABCDEFGABCDHEFGABCHEFGAB"
+  }
+ },
+ "mediaMatches": true,
+ "playedAction": "running-left",
+ "fails": [],
+ "verdict": "PASS"
+}

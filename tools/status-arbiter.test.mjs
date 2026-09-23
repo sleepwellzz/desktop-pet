@@ -6,16 +6,21 @@
 //
 // 跑法：node tools/status-arbiter.test.mjs   （需先 npm run build，测的是 dist 产物）
 import { createRequire } from 'node:module';
-import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { inflateRawSync } from 'node:zlib';
+import { checkTimers } from './check-timers.mjs';
+import { zipDirectory } from './zip-dir.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const { StatusArbiter, resolveAnimation, isAckable, PET_STATUSES } = require(join(root, 'dist/kernel/status.js'));
 const { PetPlayer } = require(join(root, 'dist/kernel/player.js'));
+const {
+  DEFAULT_MOTION_POLICY, describeMotionPolicy, parseMotionPolicy, shouldAdvanceFrames,
+} = require(join(root, 'dist/kernel/motion-policy.js'));
 const { createStatusFileSource } = require(join(root, 'dist/source/status-file.js'));
 // 用真实运行参数做断言，而不是测试里另写一份映射表 —— 否则测的是测试自己的假设。
 const runtimeManifest = require(join(root, 'desktop-pet.json'));
@@ -1734,10 +1739,139 @@ section('⑰ 手动把玩：动作清单解析 + 演出时长 + 位移（纯函�
 // 退出时清理不到，窗口销毁后又 tick 了一次。详见 ADR 035。
 // 这个缺陷**跑测试抓不稳**（它是竞态，本轮写了三版探针都没能确定性复现），
 // 但在代码里一眼可见 ⇒ 把它变成静态规则：不但修这一次，也挡住下一次。
+//
+// 直接调函数、**不起子进程**：2026-09-23 之前这里 spawnSync 一个 node 去跑 check-timers，
+// 结果本机沙箱间歇性 `EBUSY` ⇒ 一条与定时器无关的断言被环境判红。
+// 断言不该被它测以外的东西判红（同源纪律：判据要纯）。
 {
-  const r = spawnSync(process.execPath, [join(root, 'tools/check-timers.mjs')], { encoding: 'utf8' });
-  const out = ((r.stdout || '') + (r.stderr || '')).trim();
-  check('每一个定时器都能被关闭（setInterval / *Watch 的句柄都被接住）', r.status === 0, out.slice(0, 400));
+  const { violations, checked } = checkTimers(root);
+  check('每一个定时器都能被关闭（setInterval / *Watch 的句柄都被接住）',
+    violations.length === 0 && checked > 0, violations.join('\n').slice(0, 400));
+}
+
+// —— ㉒ 打包产物必须是**真 ZIP**，不是改名的 tar（ADR 044）——
+//
+// 起因（2026-09-23）：`tar -a -c -f x.zip` 在打包机上**静默产出了一个 tar**
+// （体积等于原始 372 MB、头部是 tar 的文件名而不是 `PK\x03\x04`），而**退出码 0**、
+// 脚本照样打印"zip 完成"。对方拿到的是改名为 .zip 的 tar，**解不开**。
+// 这个失败最危险的地方是它没有任何声音 —— 自动化的"打包成功"日志完全看不出来。
+// ⇒ 换成工程自带的纯 Node 实现，并把"它到底是不是 zip"变成一条断言。
+{
+  // ① 结构性：打包脚本不许再去调外部的 tar
+  const mpRaw = stripComments(readFileSync(join(root, 'tools/make-portable.mjs'), 'utf8'));
+  check('打包脚本不再调用外部 tar（那个 -a 会静默失效）', !/spawnSync\(\s*'tar'/.test(mpRaw));
+  check('打包脚本压完会回读魔数（只看体积会被静默失败骗过去）',
+    /!==\s*'504b0304'/.test(mpRaw));
+
+  // ② 功能性：真压一次小目录，再**自己解析 zip** 把内容读回来
+  const dir = mkdtempSync(join(tmpdir(), 'dp-zip-'));
+  try {
+    mkdirSync(join(dir, 'sub'), { recursive: true });
+    const text = 'desktop-pet zip 往返测试\n' + 'A'.repeat(5000);
+    writeFileSync(join(dir, 'hello.txt'), text, 'utf8');
+    writeFileSync(join(dir, 'sub', 'nested.bin'), Buffer.from([0, 1, 2, 250, 251, 252]), 'binary');
+
+    const out = join(dir, '..', `${basename(dir)}.zip`);
+    const res = zipDirectory(dir, out);
+
+    const buf = readFileSync(out);
+    check('产物头部是 PK\\x03\\x04（真 ZIP，不是 tar）', buf.subarray(0, 4).toString('hex') === '504b0304');
+
+    // EOCD：从尾部往前找签名，拿到中央目录的偏移与条目数
+    let eocd = -1;
+    for (let i = buf.length - 22; i >= 0 && i > buf.length - 22 - 65536; i--) {
+      if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+    }
+    check('找得到 EOCD（结构完整，不是被截断的半成品）', eocd >= 0);
+    eq('中央目录里的条目数 = 顶层目录 + 子目录 + 2 个文件', buf.readUInt16LE(eocd + 10), 4);
+    eq('zipDirectory 报的条目数一致', res.entries, 4);
+
+    // 逐个把中央目录条目读出来，并用 inflateRaw 还原内容
+    const found = new Map();
+    let p = buf.readUInt32LE(eocd + 16);
+    for (let i = 0; i < buf.readUInt16LE(eocd + 10); i++) {
+      eq(`第 ${i + 1} 个中央目录条目签名正确`, buf.readUInt32LE(p), 0x02014b50);
+      const method = buf.readUInt16LE(p + 10);
+      const compSize = buf.readUInt32LE(p + 20);
+      const nameLen = buf.readUInt16LE(p + 28);
+      const extraLen = buf.readUInt16LE(p + 30);
+      const cmtLen = buf.readUInt16LE(p + 32);
+      const localOffset = buf.readUInt32LE(p + 42);
+      const name = buf.subarray(p + 46, p + 46 + nameLen).toString('utf8');
+
+      // 顺着本地头算出数据起点（本地头的 extra 长度可能与中央目录不同，必须现读）
+      const lNameLen = buf.readUInt16LE(localOffset + 26);
+      const lExtraLen = buf.readUInt16LE(localOffset + 28);
+      const dataStart = localOffset + 30 + lNameLen + lExtraLen;
+      const raw = buf.subarray(dataStart, dataStart + compSize);
+      const content = method === 8 ? inflateRawSync(raw) : raw;
+      found.set(name, content);
+
+      p += 46 + nameLen + extraLen + cmtLen;
+    }
+
+    const prefix = basename(dir);
+    eq('条目名保留了顶层目录（解压出来是一个目录，不是散落一地）',
+      [...found.keys()].sort().join('|'),
+      `${prefix}/|${prefix}/hello.txt|${prefix}/sub/|${prefix}/sub/nested.bin`);
+    check('文本内容往返一致（deflate 正确）',
+      found.get(`${prefix}/hello.txt`)?.toString('utf8') === text);
+    check('二进制内容往返一致（含 0x00 与 >0x7f 的字节）',
+      Buffer.compare(found.get(`${prefix}/sub/nested.bin`), Buffer.from([0, 1, 2, 250, 251, 252])) === 0);
+
+    rmSync(out, { force: true });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// —— ㉑ 系统「减少动态效果」的应对策略（ADR 043）——
+//
+// 起因：2026-09-23 分发给朋友后回报"**所有动作都是静态图、炒菜站着不动、走路只是平移**"，
+// 而另一个朋友的机器一切正常。不是依赖缺失 —— 渲染层读 `matchMedia` 后直接关掉了帧推进，
+// 把用户**显式触发**的动画也一起吞了。
+// 这个缺陷**在单台机器上根本看不出来**：只有开关取值不同的两台机器对照才暴露。
+// 所以这里既有纯函数断言（策略解析），也有结构性断言（防止有人把判据接回 matchMedia）。
+section('㉑ 减少动态效果：策略解析 + 动画不该被系统开关冻住');
+{
+  eq('缺省 → animate（宠物包漏配也必须动起来）', parseMotionPolicy(undefined).strategy, 'animate');
+  eq('显式 animate', parseMotionPolicy({ strategy: 'animate' }).strategy, 'animate');
+  eq('显式 freeze-frame', parseMotionPolicy({ strategy: 'freeze-frame' }).strategy, 'freeze-frame');
+  eq('写错的策略回落 animate（不会因为手误变成石头）',
+    parseMotionPolicy({ strategy: 'xxx' }).strategy, 'animate');
+  eq('策略写成数字这种离谱值也回落', parseMotionPolicy({ strategy: 42 }).strategy, 'animate');
+
+  eq('frameIndex 缺省 0', parseMotionPolicy({}).frameIndex, 0);
+  eq('frameIndex 照抄', parseMotionPolicy({ strategy: 'freeze-frame', frameIndex: 3 }).frameIndex, 3);
+  eq('frameIndex 小数取整', parseMotionPolicy({ frameIndex: 2.7 }).frameIndex, 2);
+  eq('frameIndex 负数回落 0', parseMotionPolicy({ frameIndex: -1 }).frameIndex, 0);
+  eq('frameIndex NaN 回落 0', parseMotionPolicy({ frameIndex: NaN }).frameIndex, 0);
+
+  // 核心语义：**默认策略下帧推进必须照跑**，不管系统开关是什么值。
+  check('animate 下推进帧', shouldAdvanceFrames(parseMotionPolicy({})));
+  check('animate 下推进帧（系统开关开着的情形也一样）',
+    shouldAdvanceFrames({ strategy: 'animate', frameIndex: 0 }));
+  check('freeze-frame 下才不推进帧', !shouldAdvanceFrames({ strategy: 'freeze-frame', frameIndex: 0 }));
+  check('说明文案不是空话（日志里要能看懂它意味着什么）',
+    /动画照常/.test(describeMotionPolicy(DEFAULT_MOTION_POLICY)));
+
+  // —— 结构性断言：挡住"有人又把判据接回 matchMedia"——
+  const rendererRaw = stripComments(readFileSync(join(root, 'src/renderer/renderer.ts'), 'utf8'));
+  check('tick 不再用 `!reducedMotion` 关帧推进（那会让用户点动作却看到静态图）',
+    !/if \(player && !reducedMotion\)/.test(rendererRaw));
+  check('帧推进由策略判据决定', /if \(player && !frozen\(\)\) player\.update\(dt\)/.test(rendererRaw));
+  // 注意别把类型注解漏在正则外：源码里是 `((): boolean => ...)` 这种带注解的写法。
+  check('判据下沉在策略模块里，渲染层不自己发明一套',
+    /const frozen = \(\)(: boolean)? => !shouldAdvanceFrames\(motionPolicy\)/.test(rendererRaw));
+  check('系统开关仍然上报给主进程（行为层要靠它决定要不要漫游，ADR 018 这条不动）',
+    /window\.pet\.ready\(\{\s*reducedMotion\s*\}\)/.test(rendererRaw));
+
+  // sidecar 的默认值：必须是 animate，否则又会变成石头
+  eq('sidecar 默认策略是 animate', runtimeManifest.reducedMotion.strategy, 'animate');
+
+  const mainRaw = stripComments(readFileSync(join(root, 'src/main/index.ts'), 'utf8'));
+  check('启动日志会打出系统开关与策略（下次一眼看出原因，不用两台机器对照）',
+    /减少动态效果：系统开关=/.test(mainRaw) && /策略=/.test(mainRaw));
 }
 
 // —— 汇总 ——

@@ -4,6 +4,7 @@
 //   1. 想让点击穿透的区域，alpha 必须严格为 0 —— 所以每帧先 clearRect，绝不画背景。
 //   2. 内核不 import electron，所以播帧循环放在这里，避免每帧走 IPC。
 import { PetPlayer } from '../kernel/player';
+import { DEFAULT_MOTION_POLICY, shouldAdvanceFrames, type MotionPolicy } from '../kernel/motion-policy';
 import type { ResolvedState } from '../kernel/types';
 import type { RendererInit, StatusPush } from '../shared/ipc';
 
@@ -57,12 +58,31 @@ function applyAlphaThreshold(
   return { canvas: c, image, cleared };
 }
 
-// 系统「减少动态效果」：只画第 0 帧（desktop-pet.json reducedMotion 策略）
+/**
+ * 系统「减少动态效果」的**开关本身** —— 只有渲染层读得到（matchMedia），
+ * 所以要上报给主进程：行为层靠它决定要不要自动漫游（ADR 018）。
+ *
+ * ⚠️ 它**不再**用来决定"动画播不播"。以前是（`tick()` 里 `!reducedMotion` 直接关掉帧推进），
+ * 结果同一份代码在两台机器上两种表现：一台正常，一台所有动作都是静态贴图 ——
+ * 因为"减少动画"的本意是**减少它自作主张的运动**，不是让它变成一块石头。
+ * 现在动画播不播由**策略**决定（见下），而策略是可配置的。ADR 043。
+ */
 const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+
+/**
+ * 「减少动态效果」的应对策略，来自 `desktop-pet.json → reducedMotion`（主进程解析后下发）。
+ * 默认 `animate`：动画照常。**只画一帧**（`freeze-frame`）是用户主动选的行为，不是默认。
+ */
+let motionPolicy: MotionPolicy = DEFAULT_MOTION_POLICY;
+
+/** 这一策略下要不要推进帧。判据在策略自己身上，调用点只问它（调用点会新增，策略只有一个）。 */
+const frozen = (): boolean => !shouldAdvanceFrames(motionPolicy);
 
 window.pet.onInit((payload) => {
   if (init) return;            // init 只处理一次
   init = payload;
+  // 策略来自主进程（它读 sidecar）；缺省就按默认走，渲染层不自己发明一套。
+  motionPolicy = payload.motionPolicy ?? DEFAULT_MOTION_POLICY;
   const cssW = Math.round(payload.cell.width * payload.scale);
   const cssH = Math.round(payload.cell.height * payload.scale);
   const dpr = window.devicePixelRatio || 1;
@@ -99,7 +119,7 @@ window.pet.onInit((payload) => {
 function tick(ts: number): void {
   const dt = lastTs ? ts - lastTs : 0;
   lastTs = ts;
-  if (player && !reducedMotion) player.update(dt);
+  if (player && !frozen()) player.update(dt);
   draw();
   reconcileStatus();
   // 每帧用"最近一次已知的光标位置"复评命中。
@@ -153,8 +173,9 @@ window.pet.onStatus((p) => {
   );
 
   if (!player) return;                    // init 还没到；tick 里的 reconcile 会补上
-  if (reducedMotion) {
-    // 「减少动态效果」下帧推进被关闭，一次性状态会卡在首帧不回落，所以直接落到静止落点。
+  if (frozen()) {
+    // 帧推进被关闭时，一次性状态会卡在首帧回不去，所以直接落到静止落点。
+    // 只有策略是 `freeze-frame` 才会走到这里（默认 `animate` 不走）。
     player.setState(restingState(p), { then: p.animation.then });
     return;
   }
@@ -322,8 +343,8 @@ canvas.addEventListener('pointerup', (e) => {
     // （见 docs/status-reference.png，别按状态名猜外观）。
     // 单击**不唤出控制条**：那是右键宠物的事（ADR 016），左键只做"陪一下"。
     window.pet.ack();
-    // 「减少动态效果」下不播一次性动作：帧推进被关闭，它会卡在首帧回不到静止状态。
-    if (!reducedMotion && !player.setState('waving')) player.setState('idle');
+    // 帧推进被关闭时不播一次性动作（否则它会卡在首帧回不到静止状态）。
+    if (!frozen() && !player.setState('waving')) player.setState('idle');
   }
   evaluateHit(e.clientX, e.clientY);   // 拖完可能已不在实体像素上，立刻复评
 });

@@ -852,3 +852,83 @@
   红那轮的 `control.json` 摆在那里：宠物停在默认右下角 `1549,857`（**压根没被挪到屏幕中央**），
   于是"面板上翻 + 被工作区右边缘夹住"这些**正确行为**被判成失败 —— 前置的真实鼠标拖动没生效。
   **同一份代码有绿有红 ⇒ 判为前置偶发，不是回归**，但它意味着这条判据目前不够可靠。
+
+- **2026-09-23（第九次）**：**① 朋友那台机器上"所有动作都是静态贴图"（ADR 043）；② 打包静默产出 tar（ADR 044）。**
+  两件事一件是用户报的产品缺陷，一件是我自己在交付时撞上的工具缺陷 —— 后者的教训比前者更值得记。
+
+  ① **症状与排除**：用户把 `desktop-pet-1.0.0-win-x64.zip` 发给朋友，对方（Windows 11 25H2）回报
+  「**不管在悬浮条里点哪个动作，都是一种静态图片的展示，并没有动起来；左走右走都是简单的图像平移；
+  炒菜就是一个站立不动的贴图**」，而另一个朋友那台一切正常。
+  先把不可能的方向划掉：**不是缺运行库、不是显卡、不是打包漏文件** —— 宠物**窗口在动**
+  （走路那一段窗口真的位移了），说明主进程与窗口层是好的，**只有帧索引不动**。
+
+  ② **根因（代码级确定）**：`src/renderer/renderer.ts` 里一行
+  `const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches ?? false`
+  —— 它读的是 Windows「设置 → 辅助功能 → 视觉效果 → **动画效果**」这个系统开关。
+  而 `tick()` 里写的是 `if (player && !reducedMotion) player.update(dt);` ⇒ **开关打开时帧推进被整个关掉**，
+  于是 `setState` 换了行、帧永远停在第 0 帧 —— 正好就是"一张静态图""站在不动的贴图"。
+  另外两处也挂着同一个开关：`reconcileStatus()` 直接落到静止落点（不播），左键「拜一下」也不播。
+  **问题不在于"尊重这个设置"，而在于这个尊重被扩大到了用户显式点击的动作上** ——
+  那些恰恰**不是**"未经请求的动画"。ADR 018 里为行为层（自主漫游/微动作）写的理由，
+  被顺手用到了整个渲染层。
+
+  ③ **复现手段（值得复用）**：Electron 有 `--force-prefers-reduced-motion`，能在**本机**造出那台机器的
+  条件，不用真的去改系统设置。新增探针 `spikes/motion/`（`run.mjs` 驱动 + `probe-motion.js`），
+  它采样**渲染层实际画面**（对每帧取指纹）而不是问代码"你打算演什么"：
+  正常机器 `idle` 序列 `ABCCDDEEFFGGHHCCDDEEFFGG`（8 种在循环）、手动动作 `ABCDEFGABCDHEFG…`；
+  强制 reduce 时 **`AABBBBBBBBBBBB…`（开头变一次后冻死）/ `AAAAAAAAAAAA…`（一动不动）**
+  —— 与用户描述的三种症状完全对上。**修复前跑出的这份序列，就是这次的"复现"证据。**
+
+  ④ **决定**：把尊重这个开关的范围**收窄到"未经请求的动画"**（自主漫游 / 微动作，ADR 018 那条不动），
+  **状态动画与手动把玩一律照常播**。判据下沉到新的纯函数模块 `src/kernel/motion-policy.ts`
+  （`parseMotionPolicy` / `shouldAdvanceFrames` / `describeMotionPolicy`），由主进程随 init 下发；
+  渲染层**不再自己读 `matchMedia` 去决定"要不要推进帧"**（但仍要把它**上报**给主进程 ——
+  行为层要靠它决定要不要漫游）。sidecar 的 `reducedMotion.strategy` 默认改成 **`animate`**，
+  确实需要完全静止的人可以改 `freeze-frame`（**默认值本身就是"别变成石头"**；
+  并且顺手补掉了 sidecar 里那个"写着 `strategy` 但代码从来没读过它"的文档腐化）。
+  启动横幅现在会打印 `减少动态效果：系统开关=…｜策略=…` ⇒ 下次一眼看出原因，不用再拿两台机器对照。
+
+  ⑤ **判据**：单测新增 **㉑ 节**（策略解析真值表 + "animate 下必须推进帧" + 结构性断言
+  "帧推进由 `shouldAdvanceFrames` 决定""渲染层不再用 `!reducedMotion` 关帧"）；
+  `spikes/motion` 两轮 **PASS**（第二轮与正常机器完全一致）；并**按纪律把策略改回 `freeze-frame`
+  跑一次，确认断言真的会红** —— 否则不知道断言是不是真空的。
+
+  ⑥ **打包时撞上的第二件事（ADR 044）**：交付上面这个修复时，`make-portable.mjs --zip` 先炸了，
+  而且**炸得没有声音**：`tar -a -c -f desktop-pet-1.0.0-win-x64.zip desktop-pet` **退出码 0**、
+  脚本照样打印「zip 完成：…（373 MB）」，**实际产物是一个 tar**（头部是 tar 的文件名而不是
+  `PK\x03\x04`）—— `-a`（按后缀自动选格式）没生效。对方拿到的是改名为 `.zip` 的 tar，**双击解不开**；
+  而日志上那一栏"373 MB"**恰好等于未压缩体积**，从任何一处都看不出破绽。
+  ⇒ 新增 **`tools/zip-dir.mjs`**（纯 Node：`zlib.deflateRawSync` + 手写 ZIP 结构 + 自带 CRC-32 +
+  逐条目流式写盘），`make-portable.mjs` 的 `--zip` 段改为 import 调用它，并且
+  **压完回读头部魔数**：`if (magic !== '504b0304') die('压缩产物不是 ZIP —— 别把它发出去')`。
+  实测 236 个文件 / 372.6 MB → **156.8 MB / 10.1 秒**（与 ADR 037 记的 153 MB 一致）。
+
+  ⑦ **同一批里的第二处同形问题**：单测第 ⑳ 节用 `spawnSync` 起一个 node 去跑 `tools/check-timers.mjs`，
+  而本机沙箱会**间歇性**让 `spawnSync` 返回 `EBUSY` ⇒ **"每一个定时器都能被关闭"这条断言变红了，
+  而它要测的东西根本没问题**。⇒ 把 `check-timers.mjs` 拆成
+  `export function checkTimers(rootDir)`（不打印、不退出、返回 `{ violations, checked }`）
+  + 一层 CLI（`basename(process.argv[1]) === 'check-timers.mjs'` 时才跑），单测直接 `import` 调用。
+  **命令行用法不变**（`npm run check:timers` 仍是那个退出码判据）。
+
+  ⑧ **判据汇总**：单测 **433 → 446 项全绿**（新增 ㉒ 节：结构性两条 + 真压一个小目录后
+  **自己解析中央目录并用 `inflateRawSync` 把文本与二进制内容读回来**；第 ⑳ 节不再因环境变红）。
+  真产物另做**独立验收**（不只用自家代码看自家产物）：用 Windows 的 `Expand-Archive` 解压
+  → **236 个文件 / 390749855 字节 / 顶层 `desktop-pet/`**；再与源目录做
+  **236/236 个文件的 SHA-256 全量比对，0 处不同**；解出来的 `desktop-pet.exe` 版本资源仍是
+  `FileVersion=ProductVersion=1.0.0`、`CompanyName=desktop-pet`、`OriginalFilename=desktop-pet.exe`。
+  便携版走双击路径启动：日志横幅 `==== 启动 v1.0.0 ====`、`isPackaged=true`、
+  **`减少动态效果：系统开关=false｜策略=animate（动画照常（只停自主漫游/微动作））`**、
+  手动把玩 9 个动作、窗口/精灵图/托盘/控制条就绪、**零 `[uncaught]`**。
+
+  ⑨ **两条可复用的结论**（都写进 ADR 044 了）：
+  **（a）"打包成功"必须回读产物本身** —— 体积、退出码、日志文案**都会说谎**，
+  尤其是"改个名字就能冒充"的格式（tar ↔ zip）**必须验魔数**；
+  **（b）判据不该被它测以外的东西判红** —— 一条断言被 `EBUSY`、缺依赖、PATH 上的同名程序判红，
+  会让人开始怀疑断言本身，最后把真问题一起忽略掉。
+
+  ⑩ **一处如实交代**：`make-portable.mjs` 里**改 exe 版本资源那一步仍然 `spawnSync` 调 `rcedit`**
+  （原生 exe，没有等价的 JS 实现），本机沙箱会拒它 ⇒ 本轮是**分步跑完**的（复制 → rcedit →
+  README → zip）。这一处**没有改**：它失败时会报错，不是静默的，风险等级与 tar 那条不同。
+  另外，**本沙箱里无法验证便携版"长期驻留"**：`spawn(detached)` 起的进程会被沙箱回收
+  （日志写完了但进程查不到），`explorer.exe` 时灵时不灵 ⇒ 能验的只有"它完整启动并初始化完成"，
+  **长期驻留仍需用户双击确认**。

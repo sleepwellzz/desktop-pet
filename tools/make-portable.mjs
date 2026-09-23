@@ -15,6 +15,7 @@ import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { zipDirectory } from './zip-dir.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../', import.meta.url)));
 const OUT = join(ROOT, 'dist-win', 'desktop-pet');
@@ -170,12 +171,19 @@ if (process.argv.includes('--zip')) {
   // **目录名保持不带版本** —— 自启注册表里记的是绝对路径，目录改名会让老用户的条目失效。
   const zipPath = join(ROOT, 'dist-win', `desktop-pet-${VERSION}-win-x64.zip`);
   rmSync(zipPath, { force: true });
-  console.log('[打包] 压缩成单个 zip（分发用，约 1-2 分钟）…');
-  // 用系统自带的 bsdtar（Win10 1803+）而不是 PowerShell Compress-Archive：快得多，
-  // 且 `-a` 会按 .zip 后缀自动选 zip 格式。从 dist-win 里压，解出来就是一个 desktop-pet/ 目录。
-  const z = spawnSync('tar', ['-a', '-c', '-f', zipPath, '-C', join(ROOT, 'dist-win'), 'desktop-pet'],
-    { encoding: 'utf8', shell: false });
-  if (z.status !== 0) die('压缩失败：' + ((z.stdout || '') + (z.stderr || '')).trim());
-  console.log('[打包] zip 完成：' + zipPath + '（' + (statSync(zipPath).size / 1048576).toFixed(0) + ' MB）');
+  console.log('[打包] 压缩成单个 zip（分发用，约 1 分钟）…');
+  // 用工程自带的 `tools/zip-dir.mjs`（纯 Node，zlib deflate + 手写 ZIP 结构），不用系统 tar。
+  //
+  // 为什么不再用 bsdtar（2026-09-23 实测）：`tar -a -c -f x.zip` 在一次运行里**静默产出了一个 tar**
+  // （体积等于原始体积、头部是 tar 的文件名而不是 `PK\x03\x04`），但**退出码 0**、脚本照样打印
+  // "zip 完成"。也就是说 `-a` 没生效，而失败毫无声音 —— 对方拿到的是改名为 .zip 的 tar，解不开。
+  // 这个坑不值得赌：PATH 上的 `tar` 是哪一个、支不支持 `-a`，各台机器都可能不同。
+  // 自带的实现是确定性的，而且**可以直接断言魔数**（见单测与打包后的核对）。
+  const zr = zipDirectory(OUT, zipPath);
+  // 回读魔数：这是"它到底是不是一个 zip"的唯一可靠判据（只看体积会被静默失败骗过去）
+  const magic = readFileSync(zipPath).subarray(0, 4).toString('hex');
+  if (magic !== '504b0304') die(`压缩产物不是 ZIP（头部 ${magic}）—— 别把它发出去`);
+  console.log('[打包] zip 完成：' + zipPath + '（' + (statSync(zipPath).size / 1048576).toFixed(0) + ' MB，'
+    + zr.entries + ' 个条目）');
   console.log('[打包] 分发方式：把这**一个** zip 发出去；对方解压后双击里面的 desktop-pet.exe');
 }
