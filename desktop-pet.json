@@ -3,7 +3,7 @@
   "note": "自研运行时的扩展清单。pet.json 保持与 Codex/ChatGPT 原生格式完全一致，本文件仅承载原生格式不支持的渲染与行为参数，互不污染。",
   "pack": {
     "id": "taotao-new",
-    "displayName": "淘淘 New",
+    "displayName": "淘淘",
     "sourceManifest": "pet.json",
     "behaviorMap": "behavior-map.json",
     "spritesheetPath": "spritesheet.webp",

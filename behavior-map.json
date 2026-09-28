@@ -2,7 +2,7 @@
   "schema": "codex-pet-behavior-map/v1",
   "pet": {
     "id": "taotao-new",
-    "displayName": "淘淘 New",
+    "displayName": "淘淘",
     "manifestPath": "pet.json",
     "spritesheetPath": "spritesheet.webp",
     "spriteVersionNumber": 1,
