@@ -25,6 +25,16 @@ spikes/**/live-sample.jsonl
 spikes/**/startup-timing.json
 spikes/**/startup-cost.json
 
+# 探针抓的**全屏截图**。2026-09-28 入库：原生托盘菜单抓不到，探针用 desktopCapturer
+# 截全屏，写完**没有任何代码或文档读它**（真证据在 menu-native.json / run-tray.out）。
+# 问题是它会把整块桌面拍进去 —— 账号名、对话标题、本机路径、任务栏全都在里面。
+# 曾经误提交并在公开仓库挂了 12 天（commit 8f682f5）。
+#
+# ⚠️ 只精确匹配这一张，**不要**用 `*-shot.png` 通配 —— 那会连带盖掉
+# control-shot.png / bubble-shot.png / m1-shot/*.png 等**组件截图**（它们是安全且有价值的）。
+# 判断标准：**只要是整屏/整窗口捕获，一律不入库**；组件抠图可以入。
+spikes/**/menu-shot.png
+
 # 一次性脚本与临时提交信息
 .tmp-*
 

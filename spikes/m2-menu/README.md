@@ -17,6 +17,12 @@ node spikes/m2-menu/check-autostart-registry.mjs   # 自启是否真写进注册
 - **菜单**：`desktopCapturer` 抓全屏截图（看菜单到底出现没有）+ 在光标附近的若干偏移注入
   **真实点击**，看哪个菜单项回调被触发 + 交互后再点宠物确认输入通路没坏。
   探针会打印每轮的前台窗口类名/标题/尺寸 —— 这个顺带抓出了"桌面被误判成全屏"的缺陷。
+
+  > ⚠️ **那张全屏截图落在 `menu-shot.png`，已 gitignore，不入库**（2026-09-28 加的规则）。
+  > 它会把整块桌面拍进去 —— 账号名、对话标题、本机路径、任务栏全都在里面。
+  > 它曾经被误提交、在公开仓库挂了 12 天。**它也不是证据**：真证据是同目录的
+  > `menu-native.json` / `run-tray.out` / `tray.json`，探针写完这张图**从不读它**。
+  > 探针仍会正常重新生成它（`fs.writeFileSync` 会重建），不影响取证流程。
 - **托盘动作**：主进程提供 `--expose-actions` 接缝把动作表挂到 `globalThis.__petActions`，
   探针直接调它，再用真实点击/拖动、窗口 bounds、`tasklist` 核对 PID 来判定结果。
 - **自启**：`getLoginItemSettings` 回读 + PowerShell 直读 `HKCU\...\Run` 做第二来源
