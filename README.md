@@ -6,13 +6,13 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-0078D4?style=flat-square">
-  <img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v1.0.1-6E7781?style=flat-square">
-  <img src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-MIT-8A8A8A?style=flat-square">
+  <img alt="仅支持 Windows 10 / 11 x64" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-0078D4?style=flat-square">
+  <img alt="当前版本 1.0.1" src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v1.0.1-6E7781?style=flat-square">
+  <img alt="许可证 MIT" src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-MIT-8A8A8A?style=flat-square">
 </p>
 
 <p align="center">
-  <img src="spikes/m1-shot/shot-a.png" width="250" alt="淘淘">
+  <img alt="淘淘，一只黄白长毛的胖狗" src="spikes/m1-shot/shot-a.png" width="250">
 </p>
 
 ---
@@ -30,7 +30,7 @@
 - **你点了全屏** —— 它自己藏起来，退出全屏再回来
 
 <p align="center">
-  <img src="docs/status-reference.png" width="620" alt="淘淘的全部状态">
+  <img alt="淘淘的全部状态对照卡" src="docs/status-reference.png" width="620">
   <br>
   <sub>它的全部状态。缩略图按应用真实绘制方式渲染，卡上看到的就是屏幕上看到的。</sub>
 </p>
