@@ -135,7 +135,7 @@ DEFAULT_SCOPES = [SettingsScope.USER, SettingsScope.PROJECT, SettingsScope.PROJE
 
 | # | 事实 | 证据 |
 |---|---|---|
-| 1 | 桌面应用在 `D:\Program\WorkBuddy`（Electron），内嵌 agent 运行时 = **`@genie/agent-cli`**，入口 `resources/app.asar.unpacked/cli/bin/codebuddy`（bins：`codebuddy` / `codebuddy-code` / `cbc` / `cbc-prewarm`） | `cli/package.json` |
+| 1 | 桌面应用在 `D:\<本地安装路径>\WorkBuddy`（Electron），内嵌 agent 运行时 = **`@genie/agent-cli`**，入口 `resources/app.asar.unpacked/cli/bin/codebuddy`（bins：`codebuddy` / `codebuddy-code` / `cbc` / `cbc-prewarm`） | `cli/package.json` |
 | 2 | **hook 引擎完整存在**：`executeHook`×32、`hookSpecificOutput`×50、`permissionDecision`×56、`additionalContext`×40、`disableAllHooks`、`allowManagedHooksOnly` | 扫 `cli/dist/codebuddy.js`（23 MB） |
 | 3 | **事件表就在代码里**（14 个）：`PreToolUse` `PostToolUse` `PostToolUseFailure` `Notification` `UserPromptSubmit` `SessionStart` `SessionEnd` `Stop` `SubagentStart` `SubagentStop` `PreCompact` `PermissionRequest` `WorktreeCreate` `WorktreeRemove`；且 `hook_event_name` 出现 49 次 = **与 Claude/Codex 同一套 stdin 契约** | 同上，字面量数组直接可读 |
 | 4 | hook 是**真的 spawn 子进程**：日志串 `[HookExecutor] spawn pid=… shell=… timeout=…ms cmd=…`，另有 `buildChildContextEnv` 与 Windows 分支（`isWindows() && shell !== …`） | 同上 |
