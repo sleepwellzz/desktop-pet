@@ -17,6 +17,14 @@
 | `src/kernel/behavior.ts` / `desktop-pet.json → behavior` | `docs/constraints/behavior.md` | `node tools/status-arbiter.test.mjs` + `node spikes/m3-behavior/run.mjs`（**不带** `--no-behavior`） |
 | renderer / preload / 构建链 / 新写探针 / 量渲染结果 / `喂状态.bat` | `docs/constraints/build-probe.md` | **完整 `npm run build`**（只跑 `tsc` 不够） |
 
+**每轮开工先确认三件事**（2026-09-28 补，都是本项目真实踩过的）：
+
+- **`dist` 是不是本轮的** ⇒ `node tools/stamp-build.mjs --check`。不是就先 `node tools/run-build.cjs`。
+  主单测的 ⓪ 节会替你拦，但**你会在被拦之前浪费一轮**。
+- **刚删掉的功能，有没有探针还在调它的钩子** ⇒ `node tools/check-probe-hooks.mjs`。
+- **要改的文件，有没有 ADR 说过"不要动"** ⇒ 查 `docs/decisions/INDEX.md`（它明确规定检索入口），
+  再查对应 ADR 全文。**已决策的事不要再讨论。**
+
 **两条跨主题的通用纪律**（不看上面也该记住）：
 
 1. **平台行为一律用探针实测，不要推断** —— 本项目已有六次推断被实测推翻。
@@ -49,6 +57,33 @@
    `Tray.setToolTip` / `setContextMenu` → `Tray is destroyed`。
    另附一条排查方法：**堆栈被截断时，用函数名的出现次数反推定义点**
    （用户从 Electron 的错误框里能复制出来的行号对不上源码；本轮全靠"全仓只有一个 `callback`"定位）。
+
+**第五条是 2026-09-28 补的，关于"判据报通过不需要真的验过"：**
+
+5. **一份判据报"通过"，得能回答"它验的是哪一次"。** 审计（`docs/reviews/2026-09-28-全面代码复核.md`）
+   查出三条同源的病：① `tools/status-arbiter.test.mjs` 的行为断言跑在 `dist/` 上，
+   而**没有任何守卫保证 `dist/` 是本轮构建的** ⇒ 改完 `src` 不 rebuild 会得到
+   「结构性断言全绿（新源码）+ 行为断言全绿（旧 dist）」的假全绿；
+   ② 删功能时**调试钩子被静默删掉**，调用它的探针不是报红而是**跑不出任何证据**；
+   ③ 入库证据里存在**内含 `[uncaught]` 却报 `PASS`** 的自相矛盾文件。
+   ⇒ 主单测现有三道闸门（**前两道硬失败，退出码 2；第三道只 warn**）：
+
+   | 节 | 查什么 | 失败时 |
+   |---|---|---|
+   | **⓪** | `dist/.build-stamp.json` 的 `src/` 内容哈希是否与当前 `src` 相符 | **拒绝运行** |
+   | **⓪b** | 探针用到的每个 `dbg.*` 是否还在 `__petDebug` 桥上 | **拒绝运行** |
+   | **⓪c** | 入库证据是否"内含未捕获异常却报 PASS" | **只 warn**（已列 §4 #17） |
+
+   - **⓪ 用内容哈希而不是 mtime** —— mtime 在本项目骗过人一次
+     （那批证据内容是 09-18 的、mtime 是 09-22 的），且 `git checkout` 会重写它。
+     纪律 3(b) 问的是"这是不是**本次**产生的"，mtime 答不了，哈希能。
+   - **⓪c 刻意不阻断**：已入库的污染证据只能靠**重跑探针**修（会启动 Electron，需用户确认）；
+     做成硬失败会让主测试长期亮红，而**长期亮红的判据会被习惯性忽略**（§4 #16 记的就是这个过程）。
+     ⇒ 判别标准：**能立即修的才做成阻断闸门，历史遗留的只做成提醒。**（ADR 048）
+   - **删了功能就顺手跑 `node tools/check-probe-hooks.mjs`** —— 它不启动 Electron，比跑探针便宜得多。
+     实测它当场多抓出一处审计漏掉的（`m2-control/probe-key-path.js`）。
+   - **⚠️ 验证驱动脚本能否解析，用 `node --check`，不要 `import` 它** ——
+     `spikes/*/run.mjs` 顶层就 `spawn` 了 `electron.exe`。2026-09-28 因此误跑过一次 GUI 探针。
 
 ## 知识与文档在哪（不要再重新调研）
 
