@@ -5,7 +5,7 @@
    "visible": true,
    "text": "运行中",
    "badge": 0,
-   "hideAt": 1789728403481,
+   "hideAt": 1790638719471,
    "rendered": {
     "hidden": false,
     "text": "运行中",
@@ -24,7 +24,7 @@
    "visible": true,
    "text": "运行中",
    "badge": 0,
-   "hideAt": 1789728403481,
+   "hideAt": 1790638719471,
    "rendered": {
     "hidden": false,
     "text": "运行中",
@@ -70,13 +70,6 @@
   }
  ],
  "debugAvailable": true,
- "hotkey": {
-  "accelerator": "Control+Alt+P",
-  "visBefore": true,
-  "barOn1": false,
-  "barOn2": false,
-  "visAfter": true
- },
  "textGeometry": {
   "text": "需要输入",
   "fontSize": "13px",
@@ -130,12 +123,10 @@
   "followed": true
  },
  "petClickDuringBubble": {
-  "before": 2,
-  "after": 4,
+  "before": 1,
+  "after": 2,
   "works": true
  },
- "failures": [
-  "快捷键没有唤出/收起控制条"
- ],
- "verdict": "FAIL"
+ "failures": [],
+ "verdict": "PASS"
 }

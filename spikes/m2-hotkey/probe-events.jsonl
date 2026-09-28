@@ -58,3 +58,7 @@
 {"sessionId":"a","status":"running","title":"a","ts":1789728402097,"origin":"file"}
 {"sessionId":"a","status":"running","title":"a","ts":1789728404144,"origin":"file"}
 {"sessionId":"b","status":"needs-input","title":"b","ts":1789728404144,"origin":"file"}
+{"sessionId":"a","status":"running","title":"a","ts":1790638717401,"origin":"file","recvAt":1790638717464}
+{"sessionId":"a","status":"running","title":"a","ts":1790638718109,"origin":"file","recvAt":1790638718168}
+{"sessionId":"a","status":"running","title":"a","ts":1790638720135,"origin":"file","recvAt":1790638720197}
+{"sessionId":"b","status":"needs-input","title":"b","ts":1790638720135,"origin":"file","recvAt":1790638720197}

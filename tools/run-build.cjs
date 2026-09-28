@@ -45,5 +45,23 @@ for (const [label, entry, out, extra] of esbuildTargets) {
 
 ok = run('copy-assets', NODE, ['tools/copy-assets.mjs']) && ok;
 
-console.log(ok ? 'BUILD OK' : 'BUILD FAILED');
-process.exit(ok ? 0 : 1);
+// 写构建戳（ADR 047）。**必须在全部编译步骤都成功之后写** ——
+// 提前写戳等于给一次失败的构建发通行证，而"dist 是本轮产物"正是行为测试可信的前提。
+//
+// 注意这是异步 import：run-build.cjs 是 .cjs，同步 require 一个 .mjs 会抛。
+// 因此**收尾的 process.exit 必须落进 then 里** —— 放在外面会在 import 兑现前就退出，
+// 表现为"构建全绿但没有戳"，而那正是本条纪律要防的状态。
+(async () => {
+  if (!ok) { console.log('BUILD FAILED'); process.exit(1); }
+  try {
+    const { writeStamp } = await import('./stamp-build.mjs');
+    const s = writeStamp();
+    console.log(`[ OK ] build-stamp      srcHash=${s.srcHash}`);
+    console.log('BUILD OK');
+    process.exit(0);
+  } catch (e) {
+    console.error('[FAIL] build-stamp      ' + (e && e.message));
+    console.error('BUILD FAILED');
+    process.exit(1);
+  }
+})();

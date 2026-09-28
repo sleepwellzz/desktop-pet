@@ -25,6 +25,12 @@
   HTML 是 `copy-assets` 直接复制的、不经过 esbuild，**中文原样保留** —— 两者表现不同。
 - 这个环境的 Bash shim **没有 npm**：用 `node tools/npm-run.mjs build`（或 `typecheck` / `start`）。
   完整类型检查是 `npm run typecheck`（跑两份 tsconfig）。
+- **构建成功后会写一个构建戳**（ADR 047）：`dist/.build-stamp.json` 记下当时 `src/` 的内容哈希。
+  `tools/status-arbiter.test.mjs` 的 ⓪ 节会核对它 —— **改完 `src` 不重新构建，测试直接拒绝运行**
+  （退出码 2），而不是给出一份“结构性断言新、行为断言旧”的假全绿。
+  单独查：`node tools/stamp-build.mjs --check`。
+  ⚠️ 用**内容哈希**而不是 mtime：mtime 在本项目骗过人一次（六份入库探针证据内容是 09-18 的、
+  mtime 是 09-22 的，“比 src 新”成立而“是这次跑的”不成立）。git checkout 也会重写 mtime。
 
 ## 探针纪律
 
@@ -57,9 +63,19 @@
   自己的交接文档，不只是平台行为）。
   拿不准就写个最小探针跑一遍，并区分报告里的"实测"与"推测"。
 - **要量渲染结果，就量渲染本身**（截屏差分 / DOM 盒子几何），不要用另一套引擎算出的近似值当判据
-  （ADR 013：用 canvas 的 `fontBoundingBox*` 反推"文字被裁了多少"，实测给出假阴性 —— 算出 0，
+  （ADR 013：用 canvas 的 `fontBoundingBox*` 反推“文字被裁了多少”，实测给出假阴性 —— 算出 0，
   而像素证据显示字下缘被切）。**改了气泡外观（`renderer/bubble.html` / `bubble.ts`）必须跑**
-  `node spikes/m2-hotkey/run.mjs` —— 其中的差分截屏会把"被裁了几像素、左右余量差多少"直接量出来。
+  `node spikes/m2-hotkey/run.mjs` —— 其中的差分截屏会把“被裁了几像素、左右余量差多少”直接量出来。
+  ⚠️ **该探针原有个“快捷键唤出控制条”用例，已随 ADR 032 整块删除**（全局快捷键功能本身没了，
+  对应的 `__petDebug.hotkey()` 钩子也没了 ⇒ 留着必然抛 `TypeError` 且走不到写报告那步）。
+  控制条的键盘/焦点行为由 `spikes/m2-control/probe-key-path.js` 负责，**不要再把快捷键用例搬回气泡探针**。
+- **探针调用的调试钩子会被静默删掉**（2026-09-28 补，与上面同族）：删功能时钩子会没，
+  而调用它的探针**收不到任何通知**，表现是“跑不出证据”而不是“报红”；
+  再加上多数 `run.mjs` 在 spawn 前 `rmSync` 掉上一轮已入库的证据 ⇒
+  **“照必跑清单跑一次”的净效果是既没验成、又丢了历史证据**。
+  ⇒ 已加静态守卫 `tools/check-probe-hooks.mjs`（不启动 Electron，逐个核 `dbg.*` 是否还在
+  `__petDebug` 桥上），并接进 `tools/status-arbiter.test.mjs` 的 ⓪b 节。
+  **探针删用例后顺手跑一次 `node tools/check-probe-hooks.mjs`**，比跑探针便宜得多。
 - **改了 `喂状态.bat` 必须跑** `node spikes/m2-hotkey/check-feed-bat.mjs`；
   测这类交互菜单不能用 `spawnSync(..., {input})`（写完就关 stdin，等价于立刻 EOF），
   要 `spawn` + 延时逐行写 stdin 且先不关。

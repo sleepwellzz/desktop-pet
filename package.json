@@ -6,8 +6,9 @@
   "description": "自研 Windows 桌面宠物运行时：解析 Codex/ChatGPT 宠物包，把 agent 活动状态可视化为可交互桌宠",
   "main": "dist/main/index.js",
   "scripts": {
-    "build": "npm run build:main && npm run build:preload && npm run build:preload-bubble && npm run build:preload-bar && npm run build:renderer && npm run build:bubble && npm run build:bar && node tools/copy-assets.mjs",
+    "build": "npm run build:main && npm run build:preload && npm run build:preload-bubble && npm run build:preload-bar && npm run build:renderer && npm run build:bubble && npm run build:bar && node tools/copy-assets.mjs && node tools/stamp-build.mjs",
     "build:main": "tsc -p tsconfig.json",
+    "dist:check": "node tools/stamp-build.mjs --check",
     "build:preload": "esbuild src/main/preload.ts --bundle --outfile=dist/main/preload.js --format=cjs --platform=node --external:electron",
     "build:preload-bubble": "esbuild src/main/preload-bubble.ts --bundle --outfile=dist/main/bubble-preload.js --format=cjs --platform=node --external:electron",
     "build:preload-bar": "esbuild src/main/preload-bar.ts --bundle --outfile=dist/main/bar-preload.js --format=cjs --platform=node --external:electron",
@@ -20,6 +21,7 @@
     "start": "electron .",
     "dev": "npm run build && electron .",
     "test:status": "node tools/status-arbiter.test.mjs",
+    "pretest:status": "node tools/stamp-build.mjs --check",
     "e2e:status": "node spikes/m2-status/run-status-e2e.mjs",
     "pet:validate": "python tools/validate_pet.py",
     "check:timers": "node tools/check-timers.mjs",

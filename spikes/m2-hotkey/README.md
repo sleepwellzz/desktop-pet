@@ -1,24 +1,45 @@
-# spikes/m2-hotkey —— 气泡层 / 全局快捷键 / 文字观感的取证工程
+# spikes/m2-hotkey —— 气泡层 / 文字观感的取证工程
 
-结论已回写到 ADR 012（气泡层与快捷键）与 ADR 013（文字裁切与居中修正）。
-本目录可丢弃，但**建议留着**：改了气泡外观或快捷键时用它做回归（PLAN §4 已把它列为必跑项）。
+结论已回写到 ADR 012（气泡层）、ADR 013（文字裁切与居中修正）。
+本目录可丢弃，但**建议留着**：改了气泡外观时用它做回归（PLAN §4 已把它列为必跑项）。
+
+## ⚠️ 原“全局快捷键”用例已删除（ADR 032，2026-09-28 补记）
+
+本目录原名含 `hotkey`，原探针第一个用例是“注入真实击键验快捷键唤出/收起控制条”。
+**全局快捷键已随 ADR 032 整块删除**，对应的 `__petDebug.hotkey()` 钩子也没了 ——
+留着会在该行抛 `TypeError`、**走不到写报告那步**，而 `run.mjs` 又会在 spawn 前清掉上一轮
+已入库的 `bubble-hotkey.json` ⇒ “照必跑清单跑一次”的净效果是**既没验成、又丢了历史证据**。
+那个用例已删，连带清掉不再使用的 `keybd_event` / `VK_*` 声明。
+控制条的键盘与焦点行为由 `spikes/m2-control/probe-key-path.js` 负责，不要搬回这里。
+
+删完用例顺手跑 `node tools/check-probe-hooks.mjs` —— 静态核对探针用到的每个 `dbg.*`
+是否还在主进程 `__petDebug` 桥上，比跑探针便宜得多（该检查也已接进 `tools/status-arbiter.test.mjs` ⓪b 节）。
+
+## 证据不会被探针失败销毁
+
+`run.mjs` 通过 `PROBE_LOG` / `PROBE_REPORT` 环境变量把探针的输出指到临时文件，
+**确认真的拿到新报告后才 `rename` 覆盖入库文件**；探针中途抛错时旧证据原封不动，
+并打印「已入库的旧证据保持原样未动」+ 退出码 1。
+
 
 ## 怎么跑
 
 ```bash
-node spikes/m2-hotkey/run.mjs                    # 主探针：气泡 + 快捷键 + 文字几何 + 文字裁切差分
-node spikes/m2-hotkey/probe-hotkey.js            # 单跑：本机哪些候选快捷键可用（需 electron 启动）
-node spikes/m2-hotkey/probe-keyinject.js         # 单跑：分离实验 —— 注入击键能否触发全局快捷键
+node spikes/m2-hotkey/run.mjs                    # 主探针：气泡 + 文字几何 + 文字裁切差分
 node spikes/m2-hotkey/check-feed-bat.mjs         # 检查 喂状态.bat 的交互菜单（含第二会话/角标）
 ```
 
-`run.mjs` 每次会重置 `bubble-hotkey.log` / `bubble-hotkey.json` / `bubble-shot.png`。
+`run.mjs` 跑完会覆盖 `bubble-hotkey.log` / `bubble-hotkey.json` / `bubble-shot.png`；
+**覆盖只在探针真的产出报告时发生**（见上）。
+
+原 `probe-hotkey.js` / `probe-keyinject.js` 验的是全局快捷键本身（哪些组合在本机可用、
+注入击键能否触发），**功能已随 ADR 032 删除，这两个脚本已无判据意义**，保留仅为历史。
 
 ## 主探针验什么（都用可观测结果判定）
 
 | 用例 | 判据 |
 |---|---|
-| 快捷键 | **注入真实击键**（`keybd_event`）后宠物可见性翻转，不是调内部函数 |
+| 快捷键 | ~~**注入真实击键**（`keybd_event`）后宠物可见性翻转~~ **已随 ADR 032 删除，勿恢复** |
 | 气泡显示 | 读气泡页面里**真实渲染出的文本**，不是"窗口存在" |
 | 心跳 | 同状态再推一次，`hideAt` 必须不变（否则 hook 每次心跳都把气泡刷出来） |
 | 常驻 | `needs-input` 2.5 秒后仍可见、`hideAt === null` |

@@ -5,14 +5,21 @@
 // （少一次限流只是画面抖一下），只有把它们钉在断言里才能防止后续改动悄悄破坏。
 //
 // 跑法：node tools/status-arbiter.test.mjs   （需先 npm run build，测的是 dist 产物）
+//
+// ⚠️ 本文件的行为断言 require 的是 dist/**.js，而 dist 被 gitignore。
+//    改完 src 不重新构建就跑这里，会得到「结构性断言全绿（新源码）+ 行为断言全绿（旧 dist）」
+//    的假全绿 —— 而现行判据没有一条会在那条路径上变红。所以第 ⓪ 节把这件事变成硬失败。
 import { createRequire } from 'node:module';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 import { checkTimers } from './check-timers.mjs';
 import { zipDirectory } from './zip-dir.mjs';
+import { REQUIRED_DIST, verifyDist } from './stamp-build.mjs';
+import { checkProbeHooks } from './check-probe-hooks.mjs';
+import { checkEvidence } from './check-evidence.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
@@ -61,6 +68,84 @@ function makeRng(seed = 12345) {
     s = (s * 1664525 + 1013904223) >>> 0;
     return s / 4294967296;
   };
+}
+
+// —— ⓪ 被测产物的新鲜度（ADR 047）——
+//
+// 放在最前面且**直接退出**，而不是记一条断言：若 dist 是旧的，后面 446 项会全绿，
+// 而那份「全绿」没有任何意义。所以这里不能只让计数 +1，必须让整份测试**不成立**。
+// 这正是 AGENTS.md 纪律 4「我守的这个东西，会在危险发生时变吗」的形状 ——
+// src 内容就是那个会变的东西，而守卫的方向性是对的。
+{
+  const { ok, reasons } = verifyDist();
+  if (!ok) {
+    process.stderr.write('\n' + '='.repeat(56) + '\n');
+    process.stderr.write('⓪ 拒绝运行：被测的 dist/ 不是当前 src/ 的产物\n\n');
+    for (const r of reasons) process.stderr.write(`  - ${r}\n`);
+    process.stderr.write('\n修复：node tools/run-build.cjs（或 node tools/npm-run.mjs build）后重跑。\n');
+    process.stderr.write('='.repeat(56) + '\n');
+    process.exit(2);
+  }
+  section('⓪ dist 新鲜度（本次测试测的是哪一份构建）');
+  check('dist 与当前 src 内容一致（有构建戳且哈希相符）', ok);
+  check('dist 必备产物齐全（构建没跑完）',
+    REQUIRED_DIST.every((f) => existsSync(join(root, 'dist', f))),
+    `缺：${REQUIRED_DIST.filter((f) => !existsSync(join(root, 'dist', f))).join('、')}`);
+}
+
+// —— ⓪b 探针静态一致性（ADR 047）——
+//
+// 放在这里而不是 tools/ 里单独跑：它防的是“判据自己失效却还挂在必跑清单上”，
+// 而判据失效的**典型信号**（探针调用的调试钩子已被删掉）**不需要启动 Electron 就能发现**。
+// 只放在独立脚本里 = 需要人记得跑；接进主测试 = 每次跑测试都会撞上它。
+//
+// 这一节的失败**同样不进 failures 计数**而是硬失败：一份声称必跑的判据若调不到钩子，
+// 它报出来的任何结论都不成立，而“有一条 FAIL 混在 448 项里”是最容易被滑过去的信号。
+{
+  const r = checkProbeHooks();
+  if (!r.ok) {
+    process.stderr.write('\n' + '='.repeat(56) + '\n');
+    process.stderr.write('⓪b 拒绝运行：探针引用了不存在的调试钩子\n\n');
+    for (const p of r.problems) process.stderr.write(`  - ${p}\n`);
+    process.stderr.write(
+      '\n这类不一致的后果不是“报红”，而是**判据跑不出任何证据**：\n'
+      + '  探针会在那一行抛 TypeError，走不到写报告那步；\n'
+      + '  而多数 run.mjs 在 spawn 前会 rmSync 掉上一轮已入库的证据，\n'
+      + '  ⇒ “照必跑清单跑一次”的净效果是既没验成、又丢了历史证据。\n');
+    process.stderr.write('='.repeat(56) + '\n');
+    process.exit(2);
+  }
+  section('⓪b 探针静态一致性（必跑判据现在还调得到主进程的钩子吗）');
+  check('探针用到的每个 dbg.* 钩子都还在 __petDebug 桥上', r.ok, r.problems.join('；'));
+  check('确实核到了探针调用（否则这一节是真空的）', r.checked.length > 0, `核到 ${r.checked.length} 处`);
+}
+
+// ⓪c 探针证据的卫生检查（ADR 048）——
+//
+// ⚠️ **本节刻意不计入失败、不阻断**。原因：那三份“内含未捕获异常却报 PASS”的证据
+// 已经入库并被 ADR 引用，它们只能靠**重跑探针**才能修好（会启动 Electron，
+// 需用户确认）；而在修好之前，把它做成硬失败只会让主测试**长期亮红**，
+// 而长期亮红的判据会被习惯性忽略（PLAN §4 #16 记的就是“偶发失败”如何被磨成“待观察”）。
+// 长期亮红 ⇒ 判据被忽略 ⇒ 判据彻底失效，这比“少一条检查”更坏。
+//
+// 所以：**报出来、写进挂起清单、不阻断**。真正阻断的是 ⓪ 与 ⓪b ——
+// 那两条防的是“此刻正在发生的错误判断”，这一条防的是“已入库的历史污染”，性质不同。
+// **能立即修的才做成阻断，历史遗留的只做成提醒。**
+{
+  const r = checkEvidence();
+  section('⓪c 入库探针证据的卫生检查（不阻断，只提醒）');
+  const errs = r.findings.filter((f) => f.severity === 'error');
+  const warns = r.findings.filter((f) => f.severity === 'warn');
+  check('扫到证据文件（为 0 则本节真空）', r.scanned > 0, `扫了 ${r.scanned} 份`);
+  if (errs.length === 0) {
+    check('没有“内含未捕获异常却报通过”的证据', true);
+  } else {
+    process.stdout.write(`  warn ${errs.length} 份证据内含未捕获异常却报 PASS —— 已列入 PLAN §4；\n`);
+    process.stdout.write('        需重跑对应探针才能修（会启动 Electron，需用户确认）。**本节不阻断。**\n');
+    for (const f of errs) process.stdout.write(`        - ${f.file}\n`);
+    if (warns.length) process.stdout.write(`  warn 另有 ${warns.length} 份含异常但未声称通过（可能是有意留证的失败现场）\n`);
+    passed += 1; // 明确记一条通过：检查确实执行了，结论是“有待清理”
+  }
 }
 
 // —— ① 真实宠物包的 statusMap 解析契约 ——

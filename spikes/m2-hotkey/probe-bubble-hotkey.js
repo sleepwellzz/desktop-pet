@@ -16,8 +16,10 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const DIST = path.join(ROOT, 'dist');
-const LOG = path.join(__dirname, 'bubble-hotkey.log');
-const REPORT = path.join(__dirname, 'bubble-hotkey.json');
+// 证据写到哪里：默认写同目录的入库文件名；run.mjs 会用环境变量把它们指到临时文件，
+// 确认拿到新报告后再 rename 覆盖（ADR 047 —— 判据失败时不该毁掉上一轮的已入库证据）。
+const LOG = process.env.PROBE_LOG || path.join(__dirname, 'bubble-hotkey.log');
+const REPORT = process.env.PROBE_REPORT || path.join(__dirname, 'bubble-hotkey.json');
 const STATUS_FILE = path.join(__dirname, 'probe-status.json');
 const EVENT_LOG = path.join(__dirname, 'probe-events.jsonl');
 
@@ -39,9 +41,11 @@ const POINT_SIZE = koffi.sizeof('B_POINT');
 const GetCursorPos = user32.func('bool GetCursorPos(B_POINT *pt)');
 const GetSystemMetrics = user32.func('int GetSystemMetrics(int index)');
 const mouse_event = user32.func('void mouse_event(uint flags, uint dx, uint dy, uint data, uint64_t extra)');
-const keybd_event = user32.func('void keybd_event(uint vk, uint scan, uint flags, uint64_t extra)');
-const LEFT_DOWN = 0x0002, LEFT_UP = 0x0004, MOVE = 0x0001, ABSOLUTE = 0x8000, KEYUP = 0x0002;
-const VK_LWIN = 0x5B, VK_MENU = 0x12, VK_P = 0x50;
+// keybd_event / VK_* 已随 ADR 032（全局快捷键整块删除）移除 —— 唯一用它们的是
+// 「注入真实击键验快捷键」那个用例，那个用例已删。留着会让人以为这条路径还在。
+// 控制条仍需要的键盘行为（Esc、右键、hide→show 后还能不能收键盘）走真实事件，
+// 由 spikes/m2-control/probe-key-path.js 负责，不靠注入击键。
+const LEFT_DOWN = 0x0002, LEFT_UP = 0x0004, MOVE = 0x0001, ABSOLUTE = 0x8000;
 const VX = GetSystemMetrics(76), VY = GetSystemMetrics(77), VW = GetSystemMetrics(78), VH = GetSystemMetrics(79);
 const moveTo = (x, y) => mouse_event(MOVE | ABSOLUTE,
   Math.round(((x - VX) * 65535) / Math.max(1, VW - 1)),
@@ -93,7 +97,7 @@ app.whenReady().then(async () => {
     const dbg = globalThis.__petDebug;
     report.debugAvailable = !!dbg;
     if (!dbg) throw new Error('拿不到 __petDebug（--expose-actions 没生效？）');
-    log(`[probe] 宠物窗=${!!pet} 气泡窗=${!!bubbleWindow()} 快捷键=${dbg.hotkey()} DPR=${dpr}`);
+    log(`[probe] 宠物窗=${!!pet} 气泡窗=${!!bubbleWindow()} DPR=${dpr}`);
 
     /** 读气泡**页面里真实渲染出的文本**（不是"窗口存在"这种弱证据）。 */
     const bubbleText = async () => {
@@ -106,34 +110,21 @@ app.whenReady().then(async () => {
     const injectPet = async () => { await pet.webContents.executeJavaScript(INJECT).catch(() => {}); };
     await injectPet();
 
-    // —— 用例 1：快捷键唤出/收起控制条 ——
-    // **语义在 M2 ④ 改了**（ADR 014）：从"切换宠物显示/隐藏"改为"唤出/收起控制条"，
-    // 按规格 §3.4。所以这里验的不再是宠物隐藏，而是控制条的出现与收起 ——
-    // 并且要确认宠物**没有**被顺手隐藏（那会是语义改动的副作用）。
-    const pressHotkey = async () => {
-      keybd_event(VK_LWIN, 0, 0, 0);
-      keybd_event(VK_MENU, 0, 0, 0);
-      keybd_event(VK_P, 0, 0, 0);
-      await sleep(70);
-      keybd_event(VK_P, 0, KEYUP, 0);
-      keybd_event(VK_MENU, 0, KEYUP, 0);
-      keybd_event(VK_LWIN, 0, KEYUP, 0);
-      await sleep(1200);
-    };
-    const visBefore = pet.isVisible();
-    await pressHotkey();
-    const barOn1 = dbg.barVisible();
-    await pressHotkey();
-    await sleep(1200);
-    const barOn2 = dbg.barVisible();
-    const visAfter = pet.isVisible();
-    await injectPet();
-    // 把光标移开，免得悬停把控制条又叫回来干扰后面的气泡用例
+    // —— 原用例 1（快捷键唤出/收起控制条）已随全局快捷键一并删除（ADR 032，2026-09-21）——
+    //
+    // 它的钩子 `dbg.hotkey()` 也已从 __petDebug 桥移除 ⇒ 这段代码跑起来会在
+    // `dbg.hotkey()` 处抛 TypeError，**走不到写报告那步** ⇒ 判据既跑不出新证据，
+    // 而 run.mjs 又在 spawn 前 rmSync 掉上一轮已入库的 bubble-hotkey.json
+    // ⇒ “照 build-probe.md 跑一次必跑判据”的净效果是**既没验成、又丢了历史证据**。
+    //
+    // 本探针剩下的价值全在气泡与文字（build-probe.md 点名要用的就是它）：
+    // 差分截屏量文字裁切、canvas 字体度量量居中。控制条的键盘/焦点路径另有
+    // `spikes/m2-control/probe-key-path.js` 在管，不要把快捷键用例搬回这里。
+    //
+    // 防复发：tools/check-probe-hooks.mjs 静态核对探针用到的每个 dbg.* 是否还在桥上。
+    // 把光标移开，免得后续用例被悬停干扰。
     moveTo(px(60, 60).x, px(60, 60).y);
     await sleep(900);
-    report.hotkey = { accelerator: dbg.hotkey(), visBefore, barOn1, barOn2, visAfter };
-    log(`[probe] 快捷键 ${dbg.hotkey()}：宠物可见 ${visBefore} → 按一次控制条=${barOn1} → 再按控制条=${barOn2}`
-      + ` ｜ 宠物仍可见=${visAfter}`);
 
     // —— 用例 2：气泡按策略显示 / 常驻 / 到期收起 ——
     const bubbleCase = async (label, sessions, waitMs) => {
@@ -313,8 +304,6 @@ app.whenReady().then(async () => {
 
     // —— 判定 ——
     const fails = [];
-    if (!(report.hotkey.barOn1 && !report.hotkey.barOn2)) fails.push('快捷键没有唤出/收起控制条');
-    if (!report.hotkey.visAfter) fails.push('快捷键把宠物隐藏了（M2 ④ 起语义应为唤出控制条，见 ADR 014）');
     const s1 = report.steps[0];
     if (!s1.visible || s1.rendered?.hidden || s1.rendered?.text !== '运行中') fails.push('running 气泡没显示或页面文本不对');
     if (s1.overlapsPet) fails.push('气泡与宠物重叠');
