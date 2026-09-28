@@ -11,7 +11,7 @@
 //
 // 用法：node tools/make-portable.mjs
 //   产物：<工程>/dist-win/desktop-pet/（约 370 MB，已 gitignore）
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -50,6 +50,25 @@ function windowsVersion(v) {
 const RUNTIME_DEPS = ['koffi', '@koromix'];
 
 function die(msg) { console.error('[打包] 失败：' + msg); process.exit(1); }
+
+/**
+ * 跑一个外部程序并等它结束，返回 `{ code, out }`（**不抛异常**，把失败留给调用方决定怎么说）。
+ *
+ * 为什么不用 `spawnSync`：2026-09-23 实测，在带沙箱的环境里 `spawnSync` 起 exe 会**间歇性**
+ * 直接返回 `EBUSY`（进程根本没起来），而**异步 `spawn` 在同一环境里正常**。
+ * 打包脚本不该因为"环境不让同步起进程"就整个跑不动 —— 何况它本来就要跑一个原生的 `rcedit`
+ * （改 exe 版本资源，没有等价的 JS 实现）。顺带的好处：异步版本还能把 stdout/stderr 收全。
+ */
+function runExe(exe, args, cwd) {
+  return new Promise((resolve) => {
+    const c = spawn(exe, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    let out = '';
+    c.stdout.on('data', (d) => { out += d.toString(); });
+    c.stderr.on('data', (d) => { out += d.toString(); });
+    c.on('error', (e) => resolve({ code: null, out: out + `spawn error: ${e.code} ${e.message}` }));
+    c.on('close', (code) => resolve({ code, out }));
+  });
+}
 
 if (!existsSync(ELECTRON_DIST)) die('找不到 Electron 运行时：' + ELECTRON_DIST);
 if (!existsSync(join(ROOT, 'dist', 'main', 'index.js'))) die('dist/ 没构建好，先跑 npm run build');
@@ -94,7 +113,7 @@ renameSync(exeFrom, exeTo);
 // 顺带改 FileDescription：**这个 exe 在任务管理器里显示什么**也跟着变成 desktop-pet。
 const RCEDIT = join(ROOT, 'node_modules', 'rcedit', 'bin', 'rcedit.exe');
 if (!existsSync(RCEDIT)) die('缺 node_modules/rcedit（它是打包期依赖）：npm i -D rcedit');
-const rc = spawnSync(RCEDIT, [exeTo,
+const rc = await runExe(RCEDIT, [exeTo,
   '--set-version-string', 'ProductName', 'desktop-pet',
   // **值一律用 ASCII**：中文写进版本资源在部分读取路径上会变乱码（本轮实测
   // FileDescription 读到的是问号），跟 .bat 必须纯 ASCII 是同一类坑（ADR 029）。
@@ -113,8 +132,8 @@ const rc = spawnSync(RCEDIT, [exeTo,
   '--set-version-string', 'CompanyName', 'desktop-pet',
   '--set-version-string', 'LegalCopyright', 'desktop-pet',
   '--set-version-string', 'OriginalFilename', EXE_NAME],
-{ encoding: 'utf8', shell: false });   // 含空格路径**不要** shell:true，参数会被截断
-if (rc.status !== 0) die('rcedit 改版本资源失败：' + ((rc.stdout || '') + (rc.stderr || '')).trim());
+process.cwd());   // 含空格路径**不要** shell:true，参数会被截断（spawn 默认 shell:false）
+if (rc.code !== 0) die('rcedit 改版本资源失败：' + rc.out.trim());
 console.log(`[打包] exe 版本资源：ProductName=desktop-pet（决定自启值名）｜版本 ${VERSION}`);
 
 // 留一份说明，免得几个月后面对一个 370MB 目录不知道它是什么。
