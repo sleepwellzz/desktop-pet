@@ -3,11 +3,14 @@
 """生成"业务状态 → 动画状态 → 精灵图行 → 屏幕上实际长什么样"的对照卡。
 
 为什么需要：人工验收时，说明文字里的"跑动"这类措辞很容易和这只包作者的实际作画对不上
-（淘淘 New 的第 7 行 `running` 画的是生日姿态，不是跑动 —— 我们已经在验收说明里写错过一次）。
+（第 7 行 `running` 画的是生日姿态，不是跑动 —— 我们已经在验收说明里写错过一次）。
 对照卡按**应用真实绘制方式**（0.75 缩放 + 行级 offsetY 锚点补偿）渲染缩略图，
 所以卡上看到的就是屏幕上看到的。
 
 用法：python tools/make-status-reference.py   → docs/status-reference.png
+
+宠物名从 `desktop-pet.json → pack.displayName` 读（ADR 046 定了单一名源），
+**不再硬编码** —— 之前这里写死了旧名，改名后卡片标题与实际显示名对不上。
 """
 import json
 import os
@@ -72,7 +75,7 @@ def main():
     img = Image.new("RGBA", (W, H), BG)
     d = ImageDraw.Draw(img)
 
-    d.text((28, 26), "桌宠状态对照卡 · 淘淘 New", font=f_title, fill=INK)
+    d.text((28, 26), "桌宠状态对照卡 · " + runtime["pack"]["displayName"], font=f_title, fill=INK)
     d.text((28, 68),
            "业务状态 → 动画状态 → 精灵图行。缩略图按应用真实绘制方式（0.75 缩放 + 行级锚点补偿）渲染。",
            font=f_sub, fill=MUTED)
