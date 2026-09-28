@@ -1,4 +1,4 @@
-<h1 align="center">淘淘</h1>
+<h1 align="center">桌面宠物软件 - 淘淘</h1>
 
 <p align="center">
   <b>一只住在 Windows 桌面上的狗，替你盯着 AI agent 干到哪一步了。</b><br>
@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img alt="淘淘，一只黄白长毛的胖狗" src="spikes/m1-shot/shot-a.png" width="250">
+  <img alt="淘淘，一只黄白相间、长毛、胖乎乎又有点严肃的狗" src="spikes/m1-shot/shot-a.png" width="250">
 </p>
 
 ---
