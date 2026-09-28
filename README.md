@@ -21,18 +21,23 @@
 
 你同时开着几个 agent 的时候，最烦的不是等，是**不知道自己在等哪个**。
 
-淘淘看你的 agent 状态，然后待在桌面上用动作告诉你：
+淘淘看你的 agent 状态，待在桌面上用动作告诉你：
 
-- **在跑** —— 它端着蛋糕到处晃（就是它画在图里的「运行中」，见下方对照卡）
-- **等你回话** —— 它举手，冒一个气泡，多个会话同时等就显示 `+N`
-- **卡住了** —— 它趴下
-- **没事干** —— 它打盹
-- **你点了全屏** —— 它自己藏起来，退出全屏再回来
+<table>
+  <tr>
+    <td width="20%" align="center"><img src="docs/states/idle.png" width="150" alt="空闲"><br><b>空闲</b><br><sub>没人管就打盹</sub></td>
+    <td width="20%" align="center"><img src="docs/states/running.png" width="150" alt="运行中"><br><b>运行中</b><br><sub>端着蛋糕到处晃</sub></td>
+    <td width="20%" align="center"><img src="docs/states/needs-input.png" width="150" alt="需要输入"><br><b>需要输入</b><br><sub>举手等你回话</sub></td>
+    <td width="20%" align="center"><img src="docs/states/blocked.png" width="150" alt="已受阻"><br><b>已受阻</b><br><sub>卡住了，趴下</sub></td>
+    <td width="20%" align="center"><img src="docs/states/ready.png" width="150" alt="就绪"><br><b>就绪</b><br><sub>挥手，然后去做饭</sub></td>
+  </tr>
+</table>
+
+等你回话时，除了动作还会**冒一个气泡**，多个会话同时等就显示 `+N`。你打开全屏，它自己藏起来，退出全屏再回来。
 
 <p align="center">
-  <img alt="淘淘的全部状态对照卡" src="docs/status-reference.png" width="620">
-  <br>
-  <sub>它的全部状态。缩略图按应用真实绘制方式渲染，卡上看到的就是屏幕上看到的。</sub>
+  <sub>以上都是真实运行截图。想看每个状态对应图集的哪一行 →
+  <a href="docs/status-reference.png">状态对照卡</a></sub>
 </p>
 
 ## 三个让你愿意一直开着的细节
@@ -142,6 +147,9 @@ npm run check:timers   # 定时器生命周期静态检查
 - 校验：`python tools/validate_pet.py`
 - 生成空白模板：`python tools/make_pet_template.py`
 - 重新生成上面那张状态对照卡：`python tools/make-status-reference.py`
+- 重新生成 README 里那排状态小图：`python tools/make-state-gallery.py`
+  （输出到 `docs/states/`。两张生成器共用同一套渲染口径，但用途不同：
+  对照卡把图和文字焊在一起、给验收查行号用；小图只管形象、说明交给 Markdown。）
 
 改完记得让图集尺寸与 `pet.json` 里的 `spriteVersionNumber` 对得上。
 
