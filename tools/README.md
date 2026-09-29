@@ -27,11 +27,13 @@
 | `check-timers.mjs` | 定时器登记守门（ADR 035） | 改了主进程任何定时器 |
 | `check-probe-hooks.mjs` | 探针调用的 `dbg.*` 是否还在 `__petDebug` 桥上 | **删了功能之后**（ADR 047） |
 | `check-evidence.mjs` | 入库证据是否"内含崩溃却报 PASS" | 常态（接进主单测 ⓪c，**不阻断**） |
+| `check-pet-swap.mjs` | **宠物包合规体检**（换宠物前必跑） | 换包、改配置后；工程根自己由 ⓪d 常态跑 |
 | `measure-latency.mjs` | 事件端到端延迟（`--since=60`） | 改状态源接线后取客观数字 |
 
-⚠️ **前三道闸门在主单测里是硬失败**（`⓪` dist 新鲜度、`⓪b` 探针钩子、
+⚠️ **前四道闸门在主单测里是硬失败**（`⓪` dist 新鲜度、`⓪b` 探针钩子、
 以及 dist 缺产物）—— 改完 `src` 不重新构建会**直接拒绝运行**（退出码 2）。
-`⓪c` 证据卫生**刻意不阻断**（历史污染只能靠重跑探针修，长期亮红反而会被忽略，见 ADR 048）。
+`⓪c` 证据卫生与 `⓪d` 宠物包体检里**不阻断**的部分只提醒。
+详见 `docs/pet-pack-guide.md`（换宠物）与 ADR 047 / 048 / 049。
 
 ## 三、宠物包规格（权威来源是用户级技能 `codex-pet-pack`）
 
@@ -50,7 +52,7 @@
 
 | 脚本 | 产出 |
 |---|---|
-| `make-tray-icon.py` | `assets/tray.ico` + `tray.png` |
+| `make-tray-icon.py` | `tray.ico` + `tray.png`。**给了包目录就写进那个包**（读该包 `pet.json` 的 `spritesheetPath`）；不给参数则写工程 `assets/`（向后兼容） |
 | `anchor_calibrate.py` | `anchor-report.txt` / `anchor-report.json`（读 `spritesheet.webp`） |
 | `make-row-compare.py` | 第 7 行 vs 第 8 行逐帧对照图 |
 | `make-state-gallery.py` | 各状态透明底小图（文档展示用） |

@@ -9,7 +9,8 @@
 
 | 你要动的东西 | 读哪份约束 | 必跑的判据 |
 |---|---|---|
-| `pet.json` / `behavior-map.json` / 精灵图 / 行语义 / 动作外观 | `docs/constraints/pet-pack.md` | — |
+| `pet.json` / `behavior-map.json` / 精灵图 / 行语义 / 动作外观 | `docs/constraints/pet-pack.md` | `node tools/check-pet-swap.mjs <包目录>`（**换宠物必跑**；工程根自己的由 ⓪d 自动跑） |
+| **要做一只新宠物 / 换宠物包** | `docs/pet-pack-guide.md`（可执行的操作路径） | `python tools/make-tray-icon.py <包目录>` + `node tools/check-pet-swap.mjs <包目录>` |
 | 窗口创建·显示·隐藏·移动·缩放、命中判定、控制条、定时器、指针事件 | `docs/constraints/window.md` | `spikes/m2-hittest`（**第二参数不能省**）/ `spikes/m2-menu/run-tray.mjs` / `spikes/m2-control/run.mjs` |
 | 面板动作排 / 手动把玩（`kernel/manual-play.ts`、`desktop-pet.json → actions`） | `docs/constraints/behavior.md`（末节）+ `docs/constraints/window.md`（控制条那节） | `node tools/status-arbiter.test.mjs`（第 ⑰ 节）+ `spikes/m2-control/run.mjs control` |
 | `src/kernel/status.ts` / `src/source/*` / 确认与消解 / `ready`·`needs-input` | `docs/constraints/status.md` | `node tools/status-arbiter.test.mjs` + `spikes/m3-ready-ack/probe-ack-revival.mjs`；动了出口再跑 `spikes/m3-ready-exit/run.mjs` |
@@ -84,6 +85,21 @@
      实测它当场多抓出一处审计漏掉的（`m2-control/probe-key-path.js`）。
    - **⚠️ 验证驱动脚本能否解析，用 `node --check`，不要 `import` 它** ——
      `spikes/*/run.mjs` 顶层就 `spawn` 了 `electron.exe`。2026-09-28 因此误跑过一次 GUI 探针。
+
+**第六条是 2026-09-29 补的，关于"可塑性"：**
+
+6. **换宠物是正式目标（ADR 049，取代 ADR 046 后半句）。** 用户要工程「完备且可塑性」。
+   动手前核实发现**基础已经很齐**：`loadPack(packDir)` 收目录参数、`--pet=` 启动参数已存在、
+   网格规格由 `spriteVersionNumber` 推导、**行号零硬编码**（全走 `behavior-map.json`）、
+   路径穿越防护与契约校验器都在。⇒ **成本不在功能，在规范与判据。**
+   已修的真 bug：**托盘图标原写死工程根**（而 `make-tray-icon.py` 开头就写着
+   "换一只宠物包就该换一次图标"）⇒ 换包后托盘还是旧的脸**且无报错**。
+   **新的静默失败点是 `loadPack` 自己的行为**：少配一个状态时它只 `warnings.push` 后跳过
+   （`pack.ts:87`）⇒ **宠物静默少一个动作**；而它只强制要求 `idle`，
+   **5 个业务状态**与**面板动作**全靠 `statusMap`/`actions` 指过去，少配同样不报错。
+   ⇒ 新增 `tools/check-pet-swap.mjs`（不启动 Electron）专门堵这四个洞，接进主单测 ⓪d，
+   **工程根自己也被体检** —— **自己过不了的判据没资格要求别人过。**
+   **换宠物前先跑它，别用双击试错。**
 
 ## ⚠️ 看到“杂乱”想整理之前，先读这一段（2026-09-29 补）
 
