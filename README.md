@@ -7,7 +7,7 @@
 
 <p align="center">
   <img alt="仅支持 Windows 10 / 11 x64" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-0078D4?style=flat-square">
-  <img alt="当前版本 1.0.1" src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v1.0.1-6E7781?style=flat-square">
+  <img alt="当前版本 1.0.2" src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v1.0.2-6E7781?style=flat-square">
   <img alt="许可证 MIT" src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-MIT-8A8A8A?style=flat-square">
 </p>
 
@@ -50,7 +50,7 @@
 
 ## 装上它
 
-**Windows x64，直接下载：** [**desktop-pet-1.0.1-win-x64.zip**](https://github.com/sleepwellzz/desktop-pet/releases/download/v1.0.1/desktop-pet-1.0.1-win-x64.zip)（157 MB · [Release 页](https://github.com/sleepwellzz/desktop-pet/releases/tag/v1.0.1)）
+**Windows x64，直接下载：** [**desktop-pet-1.0.2-win-x64.zip**](https://github.com/sleepwellzz/desktop-pet/releases/download/v1.0.2/desktop-pet-1.0.2-win-x64.zip)（157 MB · [Release 页](https://github.com/sleepwellzz/desktop-pet/releases/tag/v1.0.2)）
 
 1. 拿到压缩包，**整个解压**到一个固定位置 —— 别放「下载」文件夹，也别放会被系统清理的临时目录
 2. 双击里面的 `desktop-pet.exe`
