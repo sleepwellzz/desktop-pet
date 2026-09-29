@@ -39,7 +39,7 @@
 | **上一个会话交接（最新）** | `docs/HANDOFF-2026-09-28-夜-判据可信度与结构整理.md`（判据可信度：构建戳 + 探针钩子静态守卫 + 证据口径；**含「我误跑了一次 GUI 探针」的如实记录**。更早：`docs/HANDOFF-2026-09-28.md`） |
 | **工程级代码审查报告**（2026-09-28 全量复核：**12 条 P0 / 20 条 P1 / 27 条 P2**） | `docs/reviews/2026-09-28-全面代码复核.md`（更早一轮：`docs/reviews/2026-09-18-工程级审查.md`，其两条 Major 已在本轮确认修复） |
 | **脚本索引**（tools/ 五类分类，什么什么时候跑） | `tools/README.md`（**只建索引、不搬文件** —— 分类收益小于引用网断裂风险） |
-| **spikes/ 产物为什么不能删** | `docs/decisions/048-入库探针证据的归属与卫生.md`（ADR 008/014/023/035/038/039 逐一点名了具体证据文件；`spikes/` 文件数不减少是**结论不是遗漏**） |
+| **spikes/ 产物为什么不能删** | `docs/decisions/048-入库探针证据的归属与卫生.md`（ADR 008/014/023/035/038/039 逐一点名了具体证据文件；`spikes/` 文件数不减少是**结论不是遗漏**。**根目录同理** —— `PLAN.md` §5 有完整推导） |
 | **怎么跑起来、怎么操作**（启动/构建/喂状态/托盘/气泡/控制条/快捷键） | `docs/how-to-run.md` |
 | **人工验收清单**（每个里程碑走一遍） | `docs/acceptance.md` |
 | **M3 各块的详细说明**（状态源生态、状态↔动作复核、缺陷修复） | `docs/status/m3.md` |
@@ -364,6 +364,10 @@ M2 ⑤ 多宠物切换（ADR 015，缺素材与规格）｜行为层的"忙碌�
 
 ## 5. 目录地图
 
+> **2026-09-29 更新**：新增 `tools/README.md`（五类脚本索引）、ADR 047/048。
+> **根目录文件数与 `spikes/` 文件数都是有意保持不变的**，
+> 理由见下方两段 ⚠️ —— **不要在没有读完那两段之前动它们**。
+
 ```
 desktop-pet/
 ├── PLAN.md / AGENTS.md        入口（本文件 = 状态索引；AGENTS.md = 约束路由表）
@@ -379,11 +383,42 @@ desktop-pet/
 ├── journal/                   会话日志，按日期追加
 ├── spikes/                    技术验证工程（各目录有 README）
 ├── src/                       运行时代码（kernel / source / host / main / renderer / shared）
-├── tools/                     脚本（构建辅助 / 状态层单测 / hook 客户端与安装器 / 资产分析）
+├── tools/                     脚本（**先读 tools/README.md** —— 五类分类：构建 / 判据 / 规格 / 资产 / 测试覆盖）
 ├── 启动桌宠.bat / 喂状态.bat   一键启动 / 人工验收时喂状态
 ├── pet.json / spritesheet.webp / behavior-map.json / desktop-pet.json   数据契约与资产（引用网，勿移动）
 └── assets/ / examples/        模板底稿与图标 / demo 与非法样例（回归用）
 ```
+
+### ⚠️ 一、根目录 23 个文件是**有意不动**的，不是没整理
+
+它们看着杂，但已逐条核实过**真实依赖**（ADR 003 于 2026-09-15 定，2026-09-28 重新核实后**仍然成立**）：
+
+| 文件 | 被谁依赖 |
+|---|---|
+| `Windows桌面宠物开发方案.html` | AGENTS.md / PLAN §0 路由表；**内部 `<img src="atlas-map.png">`** |
+| `动画映射验证器.html` | AGENTS.md / 开发方案正文；**CSS `background-image: spritesheet.webp`** |
+| `spritesheet.webp` / `pet.json` / `behavior-map.json` / `desktop-pet.json` | 互相引用 + `src/` 运行时读取 |
+| `pet-spec.html` | README 两处链接（内部只有 `#anchor`，技术上可搬，但收益小于风险） |
+| `anchor-report.txt` / `.json` | `tools/anchor_calibrate.py` 写、`docs/asset-facts.md` 引用 |
+| 三个 `.bat` | **用户可见的交付面**（双击即用），不属于「杂乱」 |
+
+⇒ 三个 `.bat` 是给人用的；其余是**互相咬住的引用网**。搬动 = 改引用 = 风险大于收益。
+完整推导见 `docs/decisions/048-入库探针证据的归属与卫生.md` 末节。
+
+### ⚠️ 二、`spikes/` 118 个入库文件是**决策链的一部分**，不能删
+
+看起来像「跑测试留下的垃圾」，但其中 42 份是判据产物，且：
+**ADR 008 / 014 / 023 / 035 / 038 / 039 逐一点名了具体文件**作论证依据，
+`docs/constraints/window.md` 也直接读 `m2-hittest/fs-verify.json`。
+
+**「把可重跑产物移出版本库」不是清理，是切断决策链** ——
+`fs-verify.json` 一删，ADR 023 的「实测过了」就变成一句没人能复核的话。
+
+已经 gitignore 的是**该 gitignore 的**：整屏截图（会拍进桌面、账号名、对话标题 ——
+曾误提交并在公开仓库挂了 12 天，commit `8f682f5`）与可重跑的原始时序 payload。
+**不要再往 `.gitignore` 里加 `spikes/**/*.json` / `*.out` / `*.log`。**
+
+⇒ 下一个 agent 若再看到这些数字而想清理，**先读 ADR 048**。
 
 ## 6. 关键风险（未解除的）
 
