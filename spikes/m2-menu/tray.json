@@ -65,17 +65,17 @@
    "regOn": {
     "out": "",
     "err": "",
-    "status": 0
+    "status": null
    },
    "authOff": false,
    "regOff": {
     "out": "",
     "err": "",
-    "status": 0
+    "status": null
    }
   }
  ],
- "pid": 231824,
+ "pid": 330244,
  "actionsAvailable": true,
  "trayCreated": true,
  "cursorBeforeQuit": {

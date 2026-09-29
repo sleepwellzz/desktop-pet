@@ -56,16 +56,33 @@ try { fs.rmSync(LOG, { force: true }); } catch { /* ignore */ }
 const RUN = `${Date.now()}-${process.pid}`;
 const env = { ...process.env, PET_E2E_RUN: RUN };
 delete env.ELECTRON_RUN_AS_NODE;      // 宿主注入，否则 Electron 退化成纯 Node
+env.PET_ALLOW_MULTI = '1';   // 单实例锁的逃生开关：探针要能独立起实例（P0-6）
 const child = spawn(EXE, [PROBE], { cwd: ROOT, detached: true, stdio: 'ignore', env, windowsHide: true });
 child.unref();
 console.log(`已启动桌宠（pid=${child.pid}，run=${RUN}），等待状态源就绪 …`);
 
 const failures = [];
-function runHook(step) {
+/**
+ * 调一次真实 hook CLI（这就是"扮演 agent"的那一半：写状态的进程与看状态的进程分开）。
+ *
+ * ⚠️ **2026-09-29 从 `spawnSync` 改成异步 `spawn`**：本机沙箱会**间歇性**直接拒绝同步起进程
+ * （`spawnSync` 返回 `status: null`，进程根本没起来），于是一次重跑把六个步骤全判成
+ * `hook 调用失败（…）：null` ⇒ **整条判据 FAIL，而它要测的东西根本没被触发**。
+ * 这正是 ADR 044 §2 那条纪律的现场："断言不该被它测以外的东西判红"。
+ * 异步 `spawn` 在同一环境里正常（`make-portable.mjs` 的 `rcedit` 也是因此从 spawnSync 换过来的）。
+ */
+async function runHook(step) {
   const args = [HOOK, ...(step.status ? [step.status] : []), `--file=${STATUS_FILE}`];
   if (step.clear) args.push('--clear');
-  const r = spawnSync(process.execPath, args, { encoding: 'utf8' });
-  if (r.status !== 0) failures.push(`hook 调用失败（${step.status ?? '--clear'}）：${r.stderr || r.status}`);
+  const r = await new Promise((resolve) => {
+    const c = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '';
+    c.stdout.on('data', (d) => { out += d.toString(); });
+    c.stderr.on('data', (d) => { out += d.toString(); });
+    c.on('error', (e) => resolve({ code: null, out: `spawn error: ${e.code} ${e.message}` }));
+    c.on('close', (code) => resolve({ code, out }));
+  });
+  if (r.code !== 0) failures.push(`hook 调用失败（${step.status ?? '--clear'}）：${r.out.trim() || r.code}`);
 }
 
 try {
@@ -80,7 +97,7 @@ try {
   const timeline = [];
   for (const step of STEPS) {
     const at = Date.now();
-    runHook(step);
+    await runHook(step);
     timeline.push({ ...step, at, from: at + 400, to: at + STEP_GAP_MS });
     console.log(`  → 注入 ${step.clear ? '--clear' : step.status}（${step.why}）`);
     await sleep(STEP_GAP_MS);

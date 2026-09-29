@@ -44,6 +44,7 @@ async function runCase(name, args) {
   for (const f of [outFile, path.join(HERE, 'probe.log')]) { try { fs.rmSync(f, { force: true }); } catch { /* ignore */ } }
   const env = { ...process.env, PET_AUTOSTART_OUT: outFile };
   delete env.ELECTRON_RUN_AS_NODE;
+  env.PET_ALLOW_MULTI = '1';   // 单实例锁的逃生开关：探针要能独立起实例（P0-6）
   const child = spawn(EXE, [path.join(HERE, 'probe.js'), ...args], {
     cwd: ROOT, env, stdio: 'ignore', detached: true, windowsHide: true,
   });

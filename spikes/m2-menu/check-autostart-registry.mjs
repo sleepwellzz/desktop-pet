@@ -27,6 +27,7 @@ console.log('写入前的 Run 项：', query());
 try { fs.rmSync(LOG, { force: true }); } catch { /* ignore */ }
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
+env.PET_ALLOW_MULTI = '1';   // 单实例锁的逃生开关：探针要能独立起实例（P0-6）
 const child = spawn(EXE, [HOLD], { cwd: ROOT, detached: true, stdio: 'ignore', env, windowsHide: true });
 child.unref();
 

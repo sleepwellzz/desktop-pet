@@ -49,8 +49,8 @@
    0
   ],
   "cursor": {
-   "x": 1868,
-   "y": 1450
+   "x": 2124,
+   "y": 1245
   }
  },
  "drag": {
@@ -89,14 +89,14 @@
   "margin": 36,
   "everyN": 1,
   "counts": {
-   "pet": 42,
-   "bg": 114,
+   "pet": 38,
+   "bg": 118,
    "none": 0,
    "both": 0,
-   "fp": 0,
-   "fn": 2,
-   "tp": 42,
-   "tn": 112
+   "fp": 1,
+   "fn": 3,
+   "tp": 37,
+   "tn": 115
   },
   "points": [
    {
@@ -404,7 +404,7 @@
     "y": 1298,
     "cssX": 72,
     "cssY": 8,
-    "alpha": 254,
+    "alpha": 185,
     "expectedHit": true,
     "gotPet": true,
     "gotBg": false
@@ -734,8 +734,8 @@
     "y": 1370,
     "cssX": 24,
     "cssY": 56,
-    "alpha": 31,
-    "expectedHit": true,
+    "alpha": 0,
+    "expectedHit": false,
     "gotPet": false,
     "gotBg": true
    },
@@ -864,7 +864,7 @@
     "y": 1394,
     "cssX": 40,
     "cssY": 72,
-    "alpha": 255,
+    "alpha": 254,
     "expectedHit": true,
     "gotPet": true,
     "gotBg": false
@@ -904,10 +904,10 @@
     "y": 1394,
     "cssX": 104,
     "cssY": 72,
-    "alpha": 255,
-    "expectedHit": true,
-    "gotPet": true,
-    "gotBg": false
+    "alpha": 0,
+    "expectedHit": false,
+    "gotPet": false,
+    "gotBg": true
    },
    {
     "x": 2504,
@@ -974,7 +974,7 @@
     "y": 1418,
     "cssX": 24,
     "cssY": 88,
-    "alpha": 253,
+    "alpha": 252,
     "expectedHit": true,
     "gotPet": true,
     "gotBg": false
@@ -984,7 +984,7 @@
     "y": 1418,
     "cssX": 40,
     "cssY": 88,
-    "alpha": 255,
+    "alpha": 144,
     "expectedHit": true,
     "gotPet": true,
     "gotBg": false
@@ -1024,10 +1024,10 @@
     "y": 1418,
     "cssX": 104,
     "cssY": 88,
-    "alpha": 255,
-    "expectedHit": true,
-    "gotPet": true,
-    "gotBg": false
+    "alpha": 0,
+    "expectedHit": false,
+    "gotPet": false,
+    "gotBg": true
    },
    {
     "x": 2504,
@@ -1094,7 +1094,7 @@
     "y": 1442,
     "cssX": 24,
     "cssY": 104,
-    "alpha": 46,
+    "alpha": 122,
     "expectedHit": true,
     "gotPet": true,
     "gotBg": false
@@ -1104,10 +1104,10 @@
     "y": 1442,
     "cssX": 40,
     "cssY": 104,
-    "alpha": 255,
+    "alpha": 18,
     "expectedHit": true,
-    "gotPet": true,
-    "gotBg": false
+    "gotPet": false,
+    "gotBg": true
    },
    {
     "x": 2408,
@@ -1254,8 +1254,8 @@
     "y": 1466,
     "cssX": 88,
     "cssY": 120,
-    "alpha": 255,
-    "expectedHit": true,
+    "alpha": 6,
+    "expectedHit": false,
     "gotPet": true,
     "gotBg": false
    },
@@ -1364,8 +1364,8 @@
     "y": 1490,
     "cssX": 72,
     "cssY": 136,
-    "alpha": 0,
-    "expectedHit": false,
+    "alpha": 99,
+    "expectedHit": true,
     "gotPet": false,
     "gotBg": true
    },
@@ -1374,10 +1374,10 @@
     "y": 1490,
     "cssX": 88,
     "cssY": 136,
-    "alpha": 255,
-    "expectedHit": true,
-    "gotPet": true,
-    "gotBg": false
+    "alpha": 0,
+    "expectedHit": false,
+    "gotPet": false,
+    "gotBg": true
    },
    {
     "x": 2480,
@@ -1672,11 +1672,21 @@
     "gotBg": true
    },
    {
-    "x": 2360,
-    "y": 1370,
-    "cssX": 24,
-    "cssY": 56,
-    "alpha": 31,
+    "x": 2384,
+    "y": 1442,
+    "cssX": 40,
+    "cssY": 104,
+    "alpha": 18,
+    "expectedHit": true,
+    "gotPet": false,
+    "gotBg": true
+   },
+   {
+    "x": 2432,
+    "y": 1490,
+    "cssX": 72,
+    "cssY": 136,
+    "alpha": 99,
     "expectedHit": true,
     "gotPet": false,
     "gotBg": true
@@ -1695,14 +1705,14 @@
   "margin": 36,
   "everyN": 1,
   "counts": {
-   "pet": 42,
-   "bg": 114,
+   "pet": 40,
+   "bg": 116,
    "none": 0,
    "both": 0,
-   "fp": 0,
+   "fp": 1,
    "fn": 2,
-   "tp": 42,
-   "tn": 112
+   "tp": 39,
+   "tn": 114
   },
   "points": [
    {
@@ -2000,7 +2010,7 @@
     "y": 938,
     "cssX": 56,
     "cssY": 8,
-    "alpha": 246,
+    "alpha": 54,
     "expectedHit": true,
     "gotPet": true,
     "gotBg": false
@@ -2010,7 +2020,7 @@
     "y": 938,
     "cssX": 72,
     "cssY": 8,
-    "alpha": 254,
+    "alpha": 185,
     "expectedHit": true,
     "gotPet": true,
     "gotBg": false
@@ -2340,8 +2350,8 @@
     "y": 1010,
     "cssX": 24,
     "cssY": 56,
-    "alpha": 31,
-    "expectedHit": true,
+    "alpha": 0,
+    "expectedHit": false,
     "gotPet": false,
     "gotBg": true
    },
@@ -2470,7 +2480,7 @@
     "y": 1034,
     "cssX": 40,
     "cssY": 72,
-    "alpha": 255,
+    "alpha": 254,
     "expectedHit": true,
     "gotPet": true,
     "gotBg": false
@@ -2510,10 +2520,10 @@
     "y": 1034,
     "cssX": 104,
     "cssY": 72,
-    "alpha": 255,
-    "expectedHit": true,
-    "gotPet": true,
-    "gotBg": false
+    "alpha": 0,
+    "expectedHit": false,
+    "gotPet": false,
+    "gotBg": true
    },
    {
     "x": 2006,
@@ -2580,7 +2590,7 @@
     "y": 1058,
     "cssX": 24,
     "cssY": 88,
-    "alpha": 253,
+    "alpha": 252,
     "expectedHit": true,
     "gotPet": true,
     "gotBg": false
@@ -2590,7 +2600,7 @@
     "y": 1058,
     "cssX": 40,
     "cssY": 88,
-    "alpha": 255,
+    "alpha": 144,
     "expectedHit": true,
     "gotPet": true,
     "gotBg": false
@@ -2630,10 +2640,10 @@
     "y": 1058,
     "cssX": 104,
     "cssY": 88,
-    "alpha": 255,
-    "expectedHit": true,
-    "gotPet": true,
-    "gotBg": false
+    "alpha": 0,
+    "expectedHit": false,
+    "gotPet": false,
+    "gotBg": true
    },
    {
     "x": 2006,
@@ -2700,7 +2710,7 @@
     "y": 1082,
     "cssX": 24,
     "cssY": 104,
-    "alpha": 46,
+    "alpha": 122,
     "expectedHit": true,
     "gotPet": true,
     "gotBg": false
@@ -2710,10 +2720,10 @@
     "y": 1082,
     "cssX": 40,
     "cssY": 104,
-    "alpha": 255,
+    "alpha": 18,
     "expectedHit": true,
-    "gotPet": true,
-    "gotBg": false
+    "gotPet": false,
+    "gotBg": true
    },
    {
     "x": 1910,
@@ -2860,8 +2870,8 @@
     "y": 1106,
     "cssX": 88,
     "cssY": 120,
-    "alpha": 255,
-    "expectedHit": true,
+    "alpha": 6,
+    "expectedHit": false,
     "gotPet": true,
     "gotBg": false
    },
@@ -2970,10 +2980,10 @@
     "y": 1130,
     "cssX": 72,
     "cssY": 136,
-    "alpha": 0,
-    "expectedHit": false,
-    "gotPet": false,
-    "gotBg": true
+    "alpha": 99,
+    "expectedHit": true,
+    "gotPet": true,
+    "gotBg": false
    },
    {
     "x": 1958,
@@ -3278,11 +3288,11 @@
     "gotBg": true
    },
    {
-    "x": 1862,
-    "y": 1010,
-    "cssX": 24,
-    "cssY": 56,
-    "alpha": 31,
+    "x": 1886,
+    "y": 1082,
+    "cssX": 40,
+    "cssY": 104,
+    "alpha": 18,
     "expectedHit": true,
     "gotPet": false,
     "gotBg": true

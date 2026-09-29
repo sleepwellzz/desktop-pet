@@ -22,7 +22,7 @@
 
 | 脚本 | 作用 | 触发时机 |
 |---|---|---|
-| `status-arbiter.test.mjs` | **主单测**，452 项断言 | 改了 `kernel/` / `source/` / `host/` / `main/` |
+| `status-arbiter.test.mjs` | **主单测**，481 项断言 | 改了 `kernel/` / `source/` / `host/` / `main/` |
 | `codebuddy-hook.test.mjs` | hook 映射层单测（70 项） | 改了 `pet-hook*.mjs` 或映射层 |
 | `check-timers.mjs` | 定时器登记守门（ADR 035） | 改了主进程任何定时器 |
 | `check-probe-hooks.mjs` | 探针调用的 `dbg.*` 是否还在 `__petDebug` 桥上 | **删了功能之后**（ADR 047） |

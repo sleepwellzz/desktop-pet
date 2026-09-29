@@ -129,7 +129,7 @@ Windows 上也可以双击 `喂状态.bat`。真实接入有两条通道 —— 
 
 ```bash
 npm run typecheck      # 主进程 + preload 双份类型检查
-npm run test:status    # 行为与判据：446 项断言
+npm run test:status    # 行为与判据：481 项断言
 npm run check:timers   # 定时器生命周期静态检查
 ```
 

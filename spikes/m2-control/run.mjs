@@ -31,6 +31,7 @@ for (const name of names) {
 
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;      // 宿主是 Electron：这个变量会让 electron.exe 退化成纯 node
+  env.PET_ALLOW_MULTI = '1';   // 单实例锁的逃生开关：探针要能独立起实例（P0-6）
   const child = spawn(EXE, [path.join(DIR, p.file)], { cwd: ROOT, detached: true, stdio: 'ignore', env, windowsHide: true });
   child.unref();
   console.log(`\n=== ${name} ===\nspawned electron pid=${child.pid} probe=${p.file}`);

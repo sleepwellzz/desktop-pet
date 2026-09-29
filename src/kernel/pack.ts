@@ -37,6 +37,45 @@ function resolveInside(packDir: string, rel: string, label: string): string {
   return full;
 }
 
+/**
+ * 自研 sidecar 的**顶层键白名单**（2026-09-29，审计 P1-7）。
+ *
+ * 为什么需要它：`readJson` 只是 `JSON.parse(...) as T` —— 类型断言是**编译期**的东西，
+ * 运行时一个字段都不查。于是顶层的键名拼错（`stausMap` / `statusMap ` / `StatuMap`）
+ * 会被**静默忽略**：整段配置不生效，而屏幕上只表现为"宠物不按我想的动"，
+ * 没有任何报错可循。这与 ADR 020 记的"两个 agent 分不清谁是谁"是同一类陷阱。
+ *
+ * 边界（**刻意不做的事**）：
+ *   - **`pet.json` 不在白名单内** —— 它是 Codex / ChatGPT 的官方格式（ADR 002），
+ *     官方将来加字段时必须还能加载，用它做严格校验等于把别人的规范冻结在某个版本上。
+ *   - **只查顶层**，不做递归白名单。嵌套的 `note` / `*Note` 是**契约允许的内嵌文档**
+ *     （本工程大量使用），逐层枚举它们只会让"加一行说明"变成"改一次校验代码"。
+ *     而真正会静默失效的是顶层键写错 —— 那正是这里挡的。
+ */
+const RUNTIME_TOP_KEYS = new Set([
+  'schema', 'note', 'pack', 'render', 'anchor', 'states',
+  'reducedMotion', 'statusMap', 'statusTimeouts', 'behavior',
+  'bubble', 'controlBar', 'interaction', 'extraAssets', 'actions',
+]);
+const BEHAVIOR_TOP_KEYS = new Set([
+  'schema', 'note', 'pet', 'rendererContract', 'contentBounds', 'semanticAliases', 'states',
+]);
+
+function assertKnownTopKeys(raw: unknown, allowed: Set<string>, label: string, path: string): void {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new PetPackError(`${label} 的顶层必须是一个对象`, path);
+  }
+  const unknown = Object.keys(raw as Record<string, unknown>).filter((k) => !allowed.has(k));
+  if (unknown.length) {
+    throw new PetPackError(
+      `${label} 里有未知字段：${unknown.join('、')}`,
+      `允许的顶层键是：${[...allowed].join('、')}。`
+      + '字段名写错时它不会报错、只会**整段静默失效**，所以这里直接拒绝。'
+      + '要写备注请用 `note`（契约允许）。'
+    );
+  }
+}
+
 export function loadPack(packDirInput: string): PetPack {
   const dir = resolve(packDirInput);
   if (!existsSync(dir)) throw new PetPackError('宠物包目录不存在', dir);
@@ -48,8 +87,14 @@ export function loadPack(packDirInput: string): PetPack {
   const warnings: string[] = [];
 
   // sidecar：文件名按约定取
-  const runtime = readJson<RuntimeManifest>(resolve(dir, 'desktop-pet.json'), 'desktop-pet.json');
-  const behavior = readJson<BehaviorMap>(resolve(dir, 'behavior-map.json'), 'behavior-map.json');
+  const runtimePath = resolve(dir, 'desktop-pet.json');
+  const behaviorPath = resolve(dir, 'behavior-map.json');
+  const runtime = readJson<RuntimeManifest>(runtimePath, 'desktop-pet.json');
+  const behavior = readJson<BehaviorMap>(behaviorPath, 'behavior-map.json');
+  // 顶层键白名单（P1-7）：类型断言是编译期的，运行时一个字段都不查 ——
+  // 键名拼错会静默失效，这里把它变成一条明确的错误。
+  assertKnownTopKeys(runtime, RUNTIME_TOP_KEYS, 'desktop-pet.json', runtimePath);
+  assertKnownTopKeys(behavior, BEHAVIOR_TOP_KEYS, 'behavior-map.json', behaviorPath);
 
   const sheetPath = resolveInside(dir, manifest.spritesheetPath, 'spritesheetPath');
   if (!existsSync(sheetPath)) throw new PetPackError('精灵图不存在', sheetPath);

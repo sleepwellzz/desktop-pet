@@ -17,6 +17,10 @@
 | `tools/pet-hook*.mjs` / hook 映射层与安装器 / 状态源接线 | `docs/constraints/sources-hooks.md` | `node tools/codebuddy-hook.test.mjs`（70 项） |
 | `src/kernel/behavior.ts` / `desktop-pet.json → behavior` | `docs/constraints/behavior.md` | `node tools/status-arbiter.test.mjs` + `node spikes/m3-behavior/run.mjs`（**不带** `--no-behavior`） |
 | renderer / preload / 构建链 / 新写探针 / 量渲染结果 / `喂状态.bat` | `docs/constraints/build-probe.md` | **完整 `npm run build`**（只跑 `tsc` 不够） |
+| **打包 / 发布 / 版本号 / `make-portable.mjs` / zip / tag** | `docs/constraints/release.md` | `node tools/run-build.cjs` → `node tools/make-portable.mjs --zip`（**打包前先关掉运行中的桌宠**）；产物回读核验 |
+| **换宠物（做新包 / 换包）** | `docs/pet-pack-guide.md` + `docs/constraints/pet-pack.md` | `node tools/check-pet-swap.mjs <包目录>` |
+| **UI 主题 / 面板配色 / 布局**（**尚未实现，只有方案**） | `docs/design/ui-theme.md` | 暂无（方案阶段） |
+| **在软件里换宠物**（**尚未实现，只有方案**） | `docs/design/pet-switching.md` | 暂无（方案阶段） |
 
 **每轮开工先确认三件事**（2026-09-28 补，都是本项目真实踩过的）：
 

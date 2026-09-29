@@ -11,6 +11,7 @@ import { join, resolve, dirname } from 'node:path';
 import { loadPack } from '../kernel/pack';
 import { StatusArbiter, type PetStatus, type StatusEvent } from '../kernel/status';
 import { createStatusFileSource } from '../source/status-file';
+import { createEventLogWriter } from '../source/event-log';
 import type { StatusSource } from '../source/types';
 import { createOverlayWindow } from '../host/overlay-window';
 import { detectFullscreen, startFullscreenWatch, fullscreenUnavailableReason } from '../host/fullscreen';
@@ -198,6 +199,21 @@ function boot(): void {
   console.log(`[pet] ${petName} · ${pack.sheet.width}x${pack.sheet.height} ` +
     `· ${pack.grid.columns}x${pack.grid.rows} @ ${pack.cell.width}x${pack.cell.height} · ${Object.keys(pack.states).length} 个状态`);
 
+  // —— 系统「减少动态效果」的应对策略（2026-09-23，ADR 043）——
+  //
+  // 边界要写清楚：**行为层**（自动漫游 / 微动作 / 踱步）继续尊重这个系统设置（ADR 018，不动）；
+  // 而**动画播放**默认照常 —— 用户主动打开一个桌宠、还点了"炒菜"，却看到一张不会动的图，
+  // 那叫产品坏了。以前渲染层直接读 matchMedia 把帧推进关掉，于是同一份代码在两台机器上
+  // 两种表现：一台正常，一台全是静态贴图（分发出去才暴露，本机永远复现不了）。
+  //
+  // **声明位置刻意放在这一行**（2026-09-29，审计 P1-20）：它原在 600 多行处，而
+  // `buildPayload()` 定义在它**之前**、函数体里却读 `motionPolicy` —— 运行期安全，
+  // 但那份安全**只靠调用顺序**维系，而那是个既不在类型系统里、也不在任何断言里的事实。
+  // 任何人加一个更早的调用点就会撞上
+  // `ReferenceError: Cannot access 'motionPolicy' before initialization`。
+  // 这里只依赖宠物包（纯静态），提前没有任何代价。
+  const motionPolicy: MotionPolicy = parseMotionPolicy(pack.runtime.reducedMotion);
+
   // —— 缩放：宠物包默认值 + 用户偏好（prefs），并夹进宠物包声明的可用区间 ——
   const render = pack.runtime.render;
   const scaleRange: [number, number] = render.scaleRange ?? [0.5, 1.5];
@@ -269,13 +285,11 @@ function boot(): void {
   const statusFile = resolveStatusFile();
   // 状态层的到点收敛参数从宠物包读（ADR 021）：不写死在内核里，因为"60 秒够不够"
   // 是观感取舍，换宠物包/换使用节奏时可能要调；而它在屏幕上完全看不出对错，所以必须可配 + 可单测。
-  const statusTimeouts = (pack.runtime as unknown as {
-    statusTimeouts?: {
-      stickyMs?: number; readyMs?: number; reAskMinIntervalMs?: number; sessionStaleMs?: number;
-      /** 双通道逐出（ADR 027）：hook 优先于被动源，低优先级上报被丢弃。 */
-      dominance?: { enabled?: boolean; holdMs?: number };
-    };
-  }).statusTimeouts ?? {};
+  //
+  // 类型来自 `kernel/types.ts` 的 `RuntimeManifest.statusTimeouts`（2026-09-29，审计 P1-7 撤掉了
+  // 原先这里那段 `as unknown as {...}` 的**局部重复声明** —— 局部声明与真实契约漂开时，
+  // 类型检查会放行一个并不存在的字段）。
+  const statusTimeouts = pack.runtime.statusTimeouts ?? {};
   /**
    * `--ready-ms=<毫秒>`：**给探针用的接缝**（与 `--no-status-source` / `--no-behavior` 同一套路）。
    *
@@ -316,13 +330,17 @@ function boot(): void {
    * 拿它算端到端延迟会**严重低估** —— ADR 020 实测两者只差 2ms，那只是 hook 进程内
    * "落 payload → 写状态文件"的间隔，根本没算上"文件监听 → 主进程读到"这一段。
    * **端到端延迟 = `recvAt - ts`（判据 6）**，这是目前唯一可用的时间基准。
+   *
+   * 实现收在 `source/event-log.ts`（2026-09-29，审计 P1-6 / P1-10）：原先是这里一行
+   * `appendFileSync` —— 同步阻塞主进程、无上限、且 `recvAt` 的语义没有任何自动化覆盖。
+   * 现在轮转与 `recvAt` 都是可注入、可单测的。
    */
+  const eventLog = createEventLogWriter({
+    path: eventLogPath,
+    onError: (m) => console.warn('[pet] ' + m),
+  });
   function recordEvent(e: StatusEvent): void {
-    try {
-      appendFileSync(eventLogPath, JSON.stringify({ ...e, recvAt: Date.now() }) + '\n', 'utf8');
-    } catch (e) {
-      console.warn('[pet] 事件日志写入失败（不影响运行）：' + String(e));
-    }
+    eventLog.append({ ...e } as { ts?: number } & Record<string, unknown>);
   }
 
   /**
@@ -377,6 +395,23 @@ function boot(): void {
     overlay.show();
     overlay.reload();
   }
+
+  /**
+   * 第二个实例的启动请求 ⇒ 把宠物叫出来（P0-6，2026-09-29）。
+   *
+   * 两种情况**不能都用 `show()`**：隐藏状态下必须走 `resumePet()`（它含重载 —— 见上面 ADR 009
+   * 那段，直接 `show()` 会留下"看着正常但点不动"的窗口）；已可见时则**不要**重载，
+   * 否则宠物会闪一下并把当前动作重播成 idle —— 用户只是双击了一下图标，不该有别的副作用。
+   */
+  revealExistingPet = (): void => {
+    if (overlay.browserWindow.isDestroyed()) return;
+    if (overlay.isVisible()) {
+      console.log('[pet] 第二实例请求：宠物本就在显示中，不做任何事（不重载、不重播）');
+      return;
+    }
+    resumePet();
+    console.log('[pet] 第二实例请求：宠物原本是隐藏的，已把它叫回来');
+  };
 
   /**
    * 清空状态文件里的全部会话（菜单项「清空状态会话」）。
@@ -612,18 +647,9 @@ function boot(): void {
   //
   // 状态放这里（而不是行为层内部）是因为 `barView()` 要读它做高亮，而 `barView` 比行为层先装配。
   const manualPolicy: ManualPlayPolicy = parseManualPlayPolicy(
-    (pack.runtime as unknown as Record<string, unknown>)['actions'],
+    pack.runtime.actions,
     pack,
     (m) => console.warn('[pet][manual] ' + m),
-  );
-  // —— 系统「减少动态效果」的应对策略（2026-09-23，ADR 043）——
-  //
-  // 边界要写清楚：**行为层**（自动漫游 / 微动作 / 踱步）继续尊重这个系统设置（ADR 018，不动）；
-  // 而**动画播放**默认照常 —— 用户主动打开一个桌宠、还点了"炒菜"，却看到一张不会动的图，
-  // 那叫产品坏了。以前渲染层直接读 matchMedia 把帧推进关掉，于是同一份代码在两台机器上
-  // 两种表现：一台正常，一台全是静态贴图（分发出去才暴露，本机永远复现不了）。
-  const motionPolicy: MotionPolicy = parseMotionPolicy(
-    (pack.runtime as unknown as Record<string, unknown>)['reducedMotion'],
   );
 
   const manualActionByState = new Map(manualPolicy.actions.map((a) => [a.state, a]));
@@ -1048,6 +1074,18 @@ function boot(): void {
    * （此时面板也必然已收起，不存在"宠物藏着、把玩还在走"）。
    */
   function tickBehaviorLayer(): void {
+    // ⚠️ 窗口销毁之后**必须立刻变成空操作**（2026-09-29 实测抓到）。
+    //
+    // 探针 `spikes/m3-ready-exit` 的新证据里出现了
+    // `[uncaught] TypeError: Object has been destroyed at Timeout.tickBehaviorLayer`
+    // —— 而它出现在判定 PASS **之后**，也就是说功能全对、退出路径崩了一次。
+    // 两条独立原因，**必须两道都堵**：
+    //   ① 停表挂的是窗口的 **`hide`** 事件，而**窗口销毁不触发 `hide`**、只触发 `closed`
+    //      ⇒ 从"窗口关闭"到 `will-quit` 那次兜底清理之间存在一个窗口期（下面已补 `closed` 监听）；
+    //   ② 即便 `clearInterval` 执行了，**已经在定时器队列里排期的那一次回调仍会跑**。
+    // ⇒ 判据用 `isDestroyed()`：它**会在危险发生时变**，属于 ADR 042 认定的那类正确守卫
+    //（相对的反面教材是 `if (!bar) return` —— 守一个永不变化的包装对象）。
+    if (overlay.browserWindow.isDestroyed()) return;
     behaviorTicks += 1;
     const pet = overlay.browserWindow.getContentBounds();
     const area = screen.getDisplayNearestPoint({
@@ -1183,6 +1221,10 @@ function boot(): void {
   // 首次显示要显式起一次：`show` 事件只在**之后**的隐藏/恢复往返里才来。
   overlay.browserWindow.on('show', startTimers);
   overlay.browserWindow.on('hide', stopTimers);
+  // **窗口销毁**（而不只是隐藏）时也必须停表 —— `hide` 事件不会来，只来 `closed`。
+  // 这是 2026-09-29 那个 `tickBehaviorLayer` 退出崩溃的第一条成因；第二条（已排期的回调）
+  // 由 tickBehaviorLayer 自己的 `isDestroyed()` 守卫兜住。
+  overlay.browserWindow.on('closed', stopTimers);
 
   refreshMenu();
 
@@ -1231,6 +1273,8 @@ function boot(): void {
     // （自检截图那个分支、`window-all-closed`），它们不经过上面的菜单动作。
     stopTimers();
     stopProcessTimers();
+    // 事件流水是流式写（非阻塞），退出时要显式收尾，否则最后几条留在缓冲里。
+    eventLog.close();
     void statusSource?.stop();
     bubble?.destroy();
     bar?.destroy();
@@ -1427,6 +1471,45 @@ function boot(): void {
   }, 600);
   processTimerDisposers.push(stopFullscreenWatch);
   bootMark('boot() 返回（全屏监听已启动）');
+}
+
+// ═══ 单实例锁（P0-6，2026-09-29）═══
+//
+// 为什么必须要它（真实损害，不是"多了一只宠物不好看"）：
+//   - `setupFileLog()` 每次启动 `writeFileSync` **截断**同一份 `pet.log` ⇒ 多实例下
+//     **只有最后一个实例的日志留存**，而那条横幅的用途恰恰是"排查时第一眼知道对方跑的是哪一版"
+//     —— 这个能力直接归零；
+//   - 两个仲裁器同时读写同一份 `~/.desktop-pet/status.json`；
+//   - `fs.watch` 在 Windows 上对高频写入本就漏事件，双写会放大抖动。
+//
+// **位置必须在最前面**：第二个实例要在建窗口、写日志、碰状态文件**之前**就退出。
+//
+// 探针例外：`spikes/*/run*.mjs` 需要独立起实例做对照，而它们**不带**自己的 `--user-data-dir`
+// ⇒ 单实例锁会把它们互相挡死。所以留一个显式逃生开关（CLI 或环境变量），
+// 名字写成"我知道我在做什么"，而不是一个看起来无害的 flag。
+const PET_ALLOW_MULTI =
+  process.argv.includes('--multi-instance') || process.env.PET_ALLOW_MULTI === '1';
+
+/** 把已存在的宠物叫出来（`second-instance` 用）。boot() 装配完才可用，之前是 null。 */
+let revealExistingPet: (() => void) | null = null;
+
+if (PET_ALLOW_MULTI) {
+  console.warn('[pet] 单实例锁已跳过（--multi-instance / PET_ALLOW_MULTI）—— 仅探针与排查使用');
+} else if (!app.requestSingleInstanceLock()) {
+  // 第二个实例：**什么都不碰**就退出。这条日志写在 setupFileLog 之前，只会到 stdout。
+  console.warn('[pet] 已有实例在运行 ⇒ 本次启动直接退出（未建窗口、未写日志、未碰状态文件）');
+  app.quit();
+}
+
+// ⚠️ **启动装配必须在锁的分支之外**。第一版把 `whenReady` 写进了 `else` 里，
+// 于是"跳过锁"那条路径**根本没有注册启动逻辑** —— 宠物窗口从未被创建，
+// 表现为探针报 `未等到桌宠窗口`。探针当场抓到了它（这正是不用"看一眼屏幕"当判据的理由）。
+if (!PET_ALLOW_MULTI) {
+  app.on('second-instance', () => {
+    // 用户又双击了一次图标。合理期望是"把宠物叫出来"，而不是"什么都没发生"。
+    console.warn('[pet] 收到第二个实例的启动请求 ⇒ 把已有宠物叫出来');
+    revealExistingPet?.();
+  });
 }
 
 app.whenReady().then(() => {

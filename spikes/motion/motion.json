@@ -6,14 +6,14 @@
    "valid": 24,
    "distinct": 8,
    "switches": 12,
-   "series": "ABCCDDEEFFGGHHCCDDEEFFGG"
+   "series": "ABCCDDDEEFFGGHHCCDDEEFFG"
   },
   "B-play": {
    "samples": 24,
    "valid": 24,
    "distinct": 8,
    "switches": 23,
-   "series": "ABCDEFGABCDHEFGABCHEFGAB"
+   "series": "ABCDEFGABHCDEFABHCDEFGAB"
   }
  },
  "mediaMatches": true,

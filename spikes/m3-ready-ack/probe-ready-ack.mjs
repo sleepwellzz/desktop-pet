@@ -107,9 +107,19 @@ console.log('\n=== 场景 2：内核侧 ack 是否真的能消解 ready ===');
   const changed = arbiter.ack();
   check('ack() 返回 true（输出有变化）', changed, true);
   check('ack() 后主状态 = idle', arbiter.state.status, 'idle');
-  const v = arbiter.viewSessions()[0];
-  check('会话原始 status 仍如实保留为 ready', v.status, 'ready');
-  check('会话 expired 标记为 true', v.expired, true);
+  // —— 2026-09-29 更新断言（**判据过期，不是产品回归**）——
+  // 原断言是 `const v = arbiter.viewSessions()[0]` 然后查 `v.status` / `v.expired`，
+  // 即"过期的会话仍留在面板视图里、只是打个标记"。而 **ADR 024 修 #14 时改的正是这件事**：
+  // 过期的通报要**同时从仲裁输出与面板视图退场** —— 否则面板会长期挂着一条
+  // 「（已过期）」的僵尸行（那正是用户当时报的现象）。
+  // ⇒ 断言改为反映现行设计；原意图（"原始记录别被误杀"）换成一条更强的判据：
+  //   上游改口 running 时，这一行必须能回来。
+  check('已确认的 ready 不再挂在面板视图里（ADR 024：过期项同时从输出与视图退场）',
+    arbiter.viewSessions().length, 0);
+  clock += 1000;
+  arbiter.ingest({ sessionId: 'wb:1', status: 'running', ts: clock });
+  check('原始记录仍保留：上游改口 running 时主状态回到 running', arbiter.state.status, 'running');
+  check('…而且这一行重新出现在面板视图里（防误杀）', arbiter.viewSessions().length, 1);
 }
 
 console.log('\n=== 场景 3：渲染层在"一次性动作播放中"收到 ack 的状态推送 ===');

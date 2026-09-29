@@ -1,39 +1,45 @@
+// ran-at: 2026-09-29T20:39:52+00:00
+// git-head: a8e6498df7fa1756827ad76e88f5f42e557c1372
+// cmd: node spikes/m2-control/run.mjs
+
 
 === key-path ===
-spawned electron pid=202644 probe=probe-key-path.js
-[pet] 加载宠物包：<工程目录>
+spawned electron pid=327812 probe=probe-key-path.js
+[WARN] [pet] 单实例锁已跳过（--multi-instance / PET_ALLOW_MULTI）—— 仅探针与排查使用
+[pet] 打包态 isPackaged=false｜版本 v44.4.0｜应用路径=E:\Possesions\Agent Base\WorkBuddy\desktop-pet\spikes\m2-control
+[pet] 加载宠物包：E:\Possesions\Agent Base\WorkBuddy\desktop-pet
 [pet] 淘淘 · 1536x1872 · 8x9 @ 192x208 · 9 个状态
-[pet] 状态源：状态文件 <工程目录>\spikes\m2-control\probe-status.json（监听目录 + 1000ms 轮询兜底）
-[pet] 快捷键已注册：Super+Alt+P（由 Win+Alt+P 归一化而来）
-[pet] 托盘已创建：<工程目录>\assets\tray.ico
+[pet] 状态源：状态文件 E:\Possesions\Agent Base\WorkBuddy\desktop-pet\spikes\m2-control\probe-status.json（监听目录 + 1000ms 轮询兜底）
+[pet] 托盘图标来自工程默认（包内无 tray.ico）：E:\Possesions\Agent Base\WorkBuddy\desktop-pet\assets\tray.ico —— 换宠物包时记得重新生成
+[pet] 托盘已创建：E:\Possesions\Agent Base\WorkBuddy\desktop-pet\assets\tray.ico
 [pet] 气泡层已创建（常态整窗穿透，不参与命中判定）
-[pet] 控制条已创建（宽 260，可聚焦）—— 唤出：右键宠物 / Super+Alt+P / 托盘菜单；失焦 200ms 后收起
+[pet] 手动把玩：9 个动作（待机=idle / 左走=running-left / 右走=running-right / 拜一拜=waving / 跳一下=jumping / 趴下=failed / 等一等=waiting / 过生日=running / 炒菜=review），循环动作演 6s，位移 180–300px
+[pet] 控制条已创建（宽 260，可聚焦）—— 唤出：右键宠物 / 托盘菜单「控制条」；失焦 200ms 后收起
 [WARN] [pet] 行为层已由 --no-behavior 关闭（探针/排查用）
 [pet] 行为层：停用（behavior.enabled=false），漫游 开（每 25–90s 走 80–320px，96px/s @缩放1.0），微动作 waving/jumping，任务中踱步 开（每 60–180s 走 60–300px，锚在进入任务状态时的位置附近），打盹 300s → failed｜位移姿态 running-left/running-right
 [pet] --expose-actions：动作表与只读探针已挂到 globalThis（仅供探针）
 [pet] 窗口已显示，位置 {"x":1549,"y":857}
+[pet] 减少动态效果：系统开关=false｜策略=animate（动画照常（只停自主漫游/微动作））
 [pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
 [pet][renderer] 精灵图就绪 1536x1872，DPR=1.5；按 alpha<16 清空 2000388 个空白像素
 [pet][renderer] 命中评估 css=(-295,-258) → 空白 ｜ 帧 row=0 col=0 ｜ 换算 local=(-422,-371) scale=0.7
 [pet][renderer] 状态 idle → idle rev=0（重载补推）
-[probe] 宠物窗=true 控制条窗=true 快捷键=Super+Alt+P DPR=1.5
+[probe] 宠物窗=true 控制条窗=true DPR=1.5
 [probe] 初始（未唤出）：visible=false focused=false keys={"down":0,"esc":0,"last":""}
-[pet][renderer] 命中评估 css=(67,73) → 实体 ｜ 帧 row=0 col=4 ｜ 换算 local=(95,102) scale=0.7
+[pet][renderer] 命中评估 css=(67,73) → 实体 ｜ 帧 row=0 col=5 ｜ 换算 local=(95,102) scale=0.7
 [pet] 命中状态 → 可交互（光标在宠物实体上）
 [probe] 光标停在宠物中心 1.8 秒（期望：什么都不发生）：visible=false focused=false keys={"down":0,"esc":0,"last":""}
 [pet] 控制条显示（唤出即抢焦点；Esc 或点到别处可收）
 [probe] 右键宠物（期望可见且抢到焦点）：visible=true focused=true keys={"down":0,"esc":0,"last":""}
 [probe] 唤出后按 A（预期收得到）：visible=true focused=true keys={"down":1,"esc":0,"last":"a"}
-[pet] 全局快捷键触发：唤出/收起控制条
 [pet] 控制条收起
-[probe] 按快捷键收起：visible=false focused=false keys={"down":1,"esc":0,"last":"a"}
-[pet] 全局快捷键触发：唤出/收起控制条
+[probe] 右键再次点击收起：visible=false focused=false keys={"down":1,"esc":0,"last":"a"}
 [pet] 控制条显示（唤出即抢焦点；Esc 或点到别处可收）
-[probe] 再次唤出（hide→show 往返后）：visible=true focused=true keys={"down":3,"esc":0,"last":"Alt"}
-[probe] 往返后按 A：visible=true focused=true keys={"down":4,"esc":0,"last":"a"}
+[probe] 再次唤出（hide→show 往返后）：visible=true focused=true keys={"down":1,"esc":0,"last":"a"}
+[probe] 往返后按 A：visible=true focused=true keys={"down":2,"esc":0,"last":"a"}
 [pet] 控制条收起
-[probe] 按 Esc（期望收起）：visible=false focused=false keys={"down":5,"esc":1,"last":"Escape"}
-[probe] Esc 收起后停留 0.8 秒（期望仍不可见）：visible=false focused=false keys={"down":5,"esc":1,"last":"Escape"}
+[probe] 按 Esc（期望收起）：visible=false focused=false keys={"down":3,"esc":1,"last":"Escape"}
+[probe] Esc 收起后停留 0.8 秒（期望仍不可见）：visible=false focused=false keys={"down":3,"esc":1,"last":"Escape"}
 [probe] 判定：PASS
 [probe] 摘要：悬停唤出=false（应 false）｜右键唤出抢焦点=true（应 true）｜键盘增量 右键唤出=1 往返后=1｜Esc 收起=true 收回后不自动重现=true
 [pet] 用户从菜单退出
@@ -41,27 +47,35 @@ spawned electron pid=202644 probe=probe-key-path.js
 探针判定：PASS
 
 === control ===
-spawned electron pid=195336 probe=probe-control.js
-[pet] 加载宠物包：<工程目录>
+spawned electron pid=325904 probe=probe-control.js
+[WARN] [pet] 单实例锁已跳过（--multi-instance / PET_ALLOW_MULTI）—— 仅探针与排查使用
+[pet] 打包态 isPackaged=false｜版本 v44.4.0｜应用路径=E:\Possesions\Agent Base\WorkBuddy\desktop-pet\spikes\m2-control
+[pet] 加载宠物包：E:\Possesions\Agent Base\WorkBuddy\desktop-pet
 [pet] 淘淘 · 1536x1872 · 8x9 @ 192x208 · 9 个状态
-[pet] 状态源：状态文件 <工程目录>\spikes\m2-control\probe-status.json（监听目录 + 1000ms 轮询兜底）
-[pet] 快捷键已注册：Super+Alt+P（由 Win+Alt+P 归一化而来）
-[pet] 托盘已创建：<工程目录>\assets\tray.ico
+[pet] 状态源：状态文件 E:\Possesions\Agent Base\WorkBuddy\desktop-pet\spikes\m2-control\probe-status.json（监听目录 + 1000ms 轮询兜底）
+[pet] 托盘图标来自工程默认（包内无 tray.ico）：E:\Possesions\Agent Base\WorkBuddy\desktop-pet\assets\tray.ico —— 换宠物包时记得重新生成
+[pet] 托盘已创建：E:\Possesions\Agent Base\WorkBuddy\desktop-pet\assets\tray.ico
 [pet] 气泡层已创建（常态整窗穿透，不参与命中判定）
-[pet] 控制条已创建（宽 260，可聚焦）—— 唤出：右键宠物 / Super+Alt+P / 托盘菜单；失焦 200ms 后收起
+[pet] 手动把玩：9 个动作（待机=idle / 左走=running-left / 右走=running-right / 拜一拜=waving / 跳一下=jumping / 趴下=failed / 等一等=waiting / 过生日=running / 炒菜=review），循环动作演 6s，位移 180–300px
+[pet] 控制条已创建（宽 260，可聚焦）—— 唤出：右键宠物 / 托盘菜单「控制条」；失焦 200ms 后收起
 [WARN] [pet] 行为层已由 --no-behavior 关闭（探针/排查用）
 [pet] 行为层：停用（behavior.enabled=false），漫游 开（每 25–90s 走 80–320px，96px/s @缩放1.0），微动作 waving/jumping，任务中踱步 开（每 60–180s 走 60–300px，锚在进入任务状态时的位置附近），打盹 300s → failed｜位移姿态 running-left/running-right
 [pet] --expose-actions：动作表与只读探针已挂到 globalThis（仅供探针）
-[pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
 [pet] 窗口已显示，位置 {"x":1549,"y":857}
+[pet] 减少动态效果：系统开关=false｜策略=animate（动画照常（只停自主漫游/微动作））
+[pet][status] 推送 idle → idle rev=0（重载补推，不重播一次性动作）
 [pet][renderer] 精灵图就绪 1536x1872，DPR=1.5；按 alpha<16 清空 2000388 个空白像素
 [pet][renderer] 命中评估 css=(67,73) → 实体 ｜ 帧 row=0 col=0 ｜ 换算 local=(95,102) scale=0.7
 [pet] 命中状态 → 可交互（光标在宠物实体上）
 [pet][renderer] 状态 idle → idle rev=0（重载补推）
 [pet][behavior] 用户抓住宠物 → 自主行为暂停
 [pet][behavior] 用户松开宠物 → 自主行为恢复
+[pet][renderer] 命中评估 css=(1,42) → 空白 ｜ 帧 row=0 col=1 ｜ 换算 local=(1,58) scale=0.7
+[pet] 命中状态 → 整窗穿透
+[pet][renderer] 命中评估 css=(64,77) → 实体 ｜ 帧 row=0 col=1 ｜ 换算 local=(91,107) scale=0.7
+[pet] 命中状态 → 可交互（光标在宠物实体上）
 [pet] 控制条显示（唤出即抢焦点；Esc 或点到别处可收）
-[probe] 位置：宠物 134x146@790,437 → 面板 260x72@727,591 ｜ 下间距=8（宠物包声明 8）水平偏差=0 ｜ 高度 72（无会话时期望 72）
+[probe] 位置：宠物 134x146@790,437 → 面板 260x132@727,591 ｜ 下间距=8（宠物包声明 8）水平偏差=0 ｜ 高度 132（无会话时期望 132）
 [pet][status] 状态 idle → running @a（rev=1）
 [pet][status] 推送 running → running rev=1
 [pet][source] 文件状态：a → running（a）
@@ -72,7 +86,7 @@ spawned electron pid=195336 probe=probe-control.js
 [pet][status] 状态 running → needs-input @b（rev=2）
 [pet][status] 推送 needs-input → waiting rev=2 角标=1
 [pet][renderer] 状态 needs-input → waiting rev=2 ｜ 气泡「需要输入」 ｜ 另有 1 条活动会话
-[probe] 面板内容：摘要「需要输入 · 2 条会话」｜行数=2 确认按钮=1｜宠物名「淘淘」｜高度 128（2 条会话期望 128）｜
+[probe] 面板内容：摘要「需要输入 · 2 条会话」｜行数=2 确认按钮=1｜宠物名「淘淘」｜高度 188（2 条会话期望 188）｜动作按钮 9 个（期望 9）｜
         行0: b · 等你拍板需要输入2 秒前确认
         行1: a · a运行中2 秒前
 [pet][status] 用户确认：b
@@ -88,15 +102,15 @@ spawned electron pid=195336 probe=probe-control.js
 [probe] 拖动宠物 {"dx":-170,"dy":-80} → 面板 727,591 → 557,511 → ✅ 跟随
 [pet][behavior] 用户抓住宠物 → 自主行为暂停
 [pet][behavior] 用户松开宠物 → 自主行为恢复
-[probe] 宠物拖到工作区底边 y=877（底边 1023，工作区底 1027） → 面板 739,128 → ✅ 已翻到上方
+[probe] 宠物拖到工作区底边 y=877（底边 1023，工作区底 1027） → 面板 679,188 → ✅ 已翻到上方
 [probe] 已保存 control-shot.png
 [probe] 控制条扩展样式 = 0x188，WS_EX_TOOLWINDOW=true
 [pet] 控制条收起
 [probe] 点面板 × ：clicked:close-bar → 面板可见=false（期望 false） ｜ 1.5 秒后仍不可见=true（期望 true）
 [pet] 控制条显示（唤出即抢焦点；Esc 或点到别处可收）
 [pet] 控制条收起
-[probe] 右键宠物：唤出=true（状态机 {"visible":true,"hasFocus":true,"hideAt":null}） → 再右键一次收起=true
-[pet][renderer] 命中评估 css=(-53,-74) → 空白 ｜ 帧 row=7 col=4 ｜ 换算 local=(-76,-106) scale=0.7
+[probe] 右键宠物：唤出=true（状态机 {"visible":true,"hasFocus":true,"hideAt":null,"restoreAfterWalk":false}） → 再右键一次收起=true
+[pet][renderer] 命中评估 css=(-53,-104) → 空白 ｜ 帧 row=7 col=2 ｜ 换算 local=(-76,-149) scale=0.7
 [pet] 命中状态 → 整窗穿透
 [probe] 悬停不再唤出：停在宠物上 1.8 秒 → 可见=false（期望 false）｜停在旧面板矩形内 1.8 秒 → 可见=false（期望 false）
 [pet][renderer] 命中评估 css=(67,73) → 实体 ｜ 帧 row=7 col=1 ｜ 换算 local=(95,104) scale=0.7
@@ -107,18 +121,65 @@ spawned electron pid=195336 probe=probe-control.js
 [pet][status] 推送 idle → idle rev=4
 [pet] 已清空全部会话（文件 + 适配器记忆 + 仲裁器记录）
 [pet][renderer] 状态 idle → idle rev=4
-[probe] 清空会话：行数 2 → 0（期望 0）｜菜单计数 2 → 0（期望 0）｜面板高度 128 → 72（期望回落 72）｜摘要「运行中 · 2 条会话」→「空闲」
+[probe] 清空会话：行数 2 → 0（期望 0）｜菜单计数 2 → 0（期望 0）｜面板高度 188 → 132（期望回落 132）｜摘要「运行中 · 2 条会话」→「空闲」
+[probe] 动作排：9 个按钮（期望 9）｜与 sidecar 一致=true｜待机|idle / 左走|running-left / 右走|running-right / 拜一拜|waving / 跳一下|jumping / 趴下|failed / 等一等|waiting / 过生日|running / 炒菜|review
+[pet][manual] 动画覆盖 → running（循环）
+[pet][manual] 开始「过生日」（running，原地），最多演 6s
+[pet][renderer] 动画覆盖：running（循环）
+[probe] 点「过生日」：clicked:过生日 → 主进程在演=running｜面板高亮=true｜渲染层确实切过去了=true
+[pet][manual] 动画覆盖 → 交回仲裁器
+[pet][manual] 结束（到点／走到位）：running → 交回仲裁器
+[probe] 6 秒后：仍在演=false（期望 false）｜已交回仲裁器=true｜结束日志=true｜面板高亮已清=true（期望 true）｜面板高度 132 → 把玩中 132 → 结束 132（高亮不该改变布局）
 [pet] 控制条收起
+[pet] 控制条收起
+[pet][manual] 动画覆盖 → running-left（循环）
+[pet][manual] 开始「左走」（running-left，走 左 → x=422），最多演 5.6s
+[pet][renderer] 动画覆盖：running-left（循环）
+[pet][renderer] 命中评估 css=(121,73) → 空白 ｜ 帧 row=2 col=0 ｜ 换算 local=(172,84) scale=0.7
+[pet] 命中状态 → 整窗穿透
+[pet][manual] 动画覆盖 → 交回仲裁器
+[pet] 控制条显示（唤出即抢焦点；Esc 或点到别处可收）
+[pet][manual] 结束（到点／走到位）：running-left → 交回仲裁器
+[probe] 点「左走」：clicked → 目标 x=422｜窗口 620 → 422（走了 -198px，声明区间 180–300）｜走完已交回=true
+[pet][manual] 动画覆盖 → review（循环）
+[pet][manual] 开始「炒菜」（review，原地），最多演 6s
+[pet][renderer] 动画覆盖：review（循环）
+[pet][manual] 动画覆盖 → 交回仲裁器
+[pet][manual] 结束（再点一次同一个按钮）：review → 交回仲裁器
+[probe] 再点一次同一个按钮：clicked → 在演=review → clicked → 已停止=true（期望 true）｜高亮已清=true（期望 true）
+[pet][manual] 动画覆盖 → waiting（循环）
+[pet][manual] 开始「等一等」（waiting，原地），最多演 6s
+[pet][renderer] 动画覆盖：waiting（循环）
+[pet][manual] 动画覆盖 → 交回仲裁器
+[pet][manual] 结束（再点一次同一个按钮）：waiting → 交回仲裁器
+[probe] 真实鼠标点击（基线）：clicked → 在演=waiting（期望 waiting）｜再点一次已停=true
+[pet] 控制条收起
+[pet][manual] 动画覆盖 → running-left（循环）
+[pet][manual] 开始「左走」（running-left，走 左 → x=161），最多演 6.9s
+[pet][renderer] 动画覆盖：running-left（循环）
+[pet][manual] 动画覆盖 → 交回仲裁器
+[pet] 控制条显示（唤出即抢焦点；Esc 或点到别处可收）
+[pet][manual] 结束（到点／走到位）：running-left → 交回仲裁器
+[probe] 走路：clicked → 走路中面板收起=true（期望 true）｜目标 x=161｜宠物 620→161（走了 -261px）｜走完面板自己回来=true（期望 true）｜回来后水平偏差=1｜高亮已清=true
+[pet][manual] 动画覆盖 → waiting（循环）
+[pet][manual] 开始「等一等」（waiting，原地），最多演 6s
+[pet][renderer] 动画覆盖：waiting（循环）
+[probe] 隐藏→显示之后的真实鼠标点击：clicked → 在演=waiting（期望 waiting —— 若这里为空而基线通过，就是 ADR 009 在控制条上复现了）
+[pet][manual] 动画覆盖 → 交回仲裁器
+[pet][manual] 结束（再点一次同一个按钮）：waiting → 交回仲裁器
 [pet] 控制条收起
 [pet] 控制条跟随隐藏（宠物已隐藏）
 [pet] 已隐藏宠物（进程与托盘仍在，可从托盘恢复）
 [probe] hide-pet → 宠物可见=false（期望 false）面板可见=false（期望 false）
+[pet] 控制条：宠物原本是隐藏的，先恢复宠物再唤出
+[pet] 控制条显示（唤出即抢焦点；Esc 或点到别处可收）
+[pet][status] 推送 idle → idle rev=4（重载补推，不重播一次性动作）
+[pet][renderer] 精灵图就绪 1536x1872，DPR=1.5；按 alpha<16 清空 2000388 个空白像素
+[pet][renderer] 命中评估 css=(18,-67) → 空白 ｜ 帧 row=0 col=0 ｜ 换算 local=(25,-98) scale=0.7
+[pet][renderer] 状态 idle → idle rev=4（重载补推）
+[probe] 菜单关闭回调：抓到 1 个｜面板存活时 ok=true｜面板已销毁时 ok=true（期望 true —— 用户报的就是这里抛）
 [probe] 判定：PASS
 [pet] 用户从菜单退出
-[uncaught] TypeError: Object has been destroyed
-    at Timeout.tickBehaviorLayer [as _onTimeout] (<工程目录>\dist\main\index.js:668:43)
-    at listOnTimeout (node:internal/timers:685:17)
-    at process.processTimers (node:internal/timers:618:7)
 
 探针判定：PASS
 

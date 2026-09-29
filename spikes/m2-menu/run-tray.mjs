@@ -18,6 +18,7 @@ for (const f of [REPORT, LOG, STATUS_FILE]) { try { fs.rmSync(f, { force: true }
 
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
+env.PET_ALLOW_MULTI = '1';   // 单实例锁的逃生开关：探针要能独立起实例（P0-6）
 
 const child = spawn(EXE, [PROBE], { cwd: ROOT, detached: true, stdio: 'ignore', env, windowsHide: true });
 const pid = child.pid;

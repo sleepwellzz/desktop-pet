@@ -62,3 +62,7 @@
 {"sessionId":"a","status":"running","title":"a","ts":1790638718109,"origin":"file","recvAt":1790638718168}
 {"sessionId":"a","status":"running","title":"a","ts":1790638720135,"origin":"file","recvAt":1790638720197}
 {"sessionId":"b","status":"needs-input","title":"b","ts":1790638720135,"origin":"file","recvAt":1790638720197}
+{"sessionId":"a","status":"running","title":"a","ts":1790715051190,"origin":"file","recvAt":1790715051252}
+{"sessionId":"a","status":"running","title":"a","ts":1790715051914,"origin":"file","recvAt":1790715051988}
+{"sessionId":"a","status":"running","title":"a","ts":1790715053936,"origin":"file","recvAt":1790715053996}
+{"sessionId":"b","status":"needs-input","title":"b","ts":1790715053936,"origin":"file","recvAt":1790715053996}

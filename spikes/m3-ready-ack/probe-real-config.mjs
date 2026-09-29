@@ -149,8 +149,16 @@ console.log('\n=== 场景 C：ready 到期（60s）后的行为 ===');
   pump(player, 40);
   console.log(`  60 秒后 tick 变化=${t} 主状态=${arbiter.state.status} 播放器=${player.stateId}(行${states[player.stateId]?.row})`);
   check('到期后自动回 idle', player.stateId, 'idle');
-  const v = arbiter.viewSessions()[0];
-  check('面板把该会话标为 expired', v.expired, true);
+  // —— 2026-09-29 更新断言（判据过期，不是产品回归）——
+  // 原断言期望"到期的会话仍留在面板视图里、只是标了 expired"。ADR 024 修 #14 改的正是这件事：
+  // 过期的通报要**同时从仲裁输出与面板视图退场**，否则面板长期挂着「（已过期）」的僵尸行。
+  // ⇒ 改为断言"视图里不再有它"，并把原意图（记录别被误杀）换成：上游改口即回来。
+  check('到期的 ready 不再挂在面板视图里（ADR 024：过期项同时从输出与视图退场）',
+    arbiter.viewSessions().length, 0);
+  clock += 1000;
+  arbiter.ingest({ sessionId: 'wb:1', status: 'running', ts: clock });
+  check('原始记录仍保留：上游改口 running 时主状态回到 running', arbiter.state.status, 'running');
+  check('…而且这一行重新出现在面板视图里（防误杀）', arbiter.viewSessions().length, 1);
 }
 
 const failed = results.filter((x) => !x.ok);

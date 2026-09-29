@@ -1,3 +1,26 @@
+// ran-at: 2026-09-29T20:52:34+00:00
+// git-head: a8e6498df7fa1756827ad76e88f5f42e557c1372
+// cmd: node tools/status-arbiter.test.mjs
+
+
+⓪ dist 新鲜度（本次测试测的是哪一份构建）
+  ok   dist 与当前 src 内容一致（有构建戳且哈希相符）
+  ok   dist 必备产物齐全（构建没跑完）
+
+⓪b 探针静态一致性（必跑判据现在还调得到主进程的钩子吗）
+  ok   探针用到的每个 dbg.* 钩子都还在 __petDebug 桥上
+  ok   确实核到了探针调用（否则这一节是真空的）
+
+⓪c 入库探针证据的卫生检查（不阻断，只提醒）
+  ok   扫到证据文件（为 0 则本节真空）
+  ok   没有“内含未捕获异常却报通过”的证据
+
+⓪d 宠物包合规体检（工程根自己也要过）
+  warn  包内没有 tray.ico ⇒ 托盘会用工程默认图标（不是这个宠物的脸）。生成：python tools/make-tray-icon.py <图集路径>
+  ok   工程根是一个合规的宠物包（可分发）
+  ok   状态集非空（否则上面那条是真空的）
+  ok   托盘图标**不再**写死工程根（换包后托盘得换脸）
+  ok   托盘图标缺失时会给提示而不是静默用错的
 
 ① statusMap → 动画（用 desktop-pet.json 的真实配置）
   ok   running → running
@@ -92,7 +115,9 @@
 
 ⑨ 气泡显示策略
   ok   策略来自宠物包：needs-input 常驻
+  ok   策略来自宠物包：blocked 也常驻（区分 blocked 与打盹的唯一手段）
   ok   策略来自宠物包：running 2 秒
+  ok   blocked 不再挂在定时表上（它走常驻那一支）
   ok   idle（无文案）→ 不显示
   ok   running → 显示
   ok   running 的到期时刻 = now+2000
@@ -105,17 +130,44 @@
   ok   needs-input → 显示
   ok   needs-input 常驻（hideAt=null）
   ok   常驻状态永不到期
+  ok   blocked → 显示
+  ok   blocked 常驻（hideAt=null）
+  ok   blocked 常驻不过期
   ok   状态变化后换成新文案
-  ok   状态变化后重新计时（4 秒）
+  ok   状态变化后重新计时（6 秒）
 
-⑩ 快捷键人话 → Electron accelerator
-  ok   Win+Alt+P → Super+Alt+P（Windows 键在 Electron 里叫 Super）
-  ok   小写 ctrl 归一化
-  ok   裸单字符键名大写
-  ok   已是 Electron 写法则不变
-  ok   windows 别名
-  ok   多字符键名保留
-  ok   宠物包里的默认值归一化后可用
+⑨b ready 的通报时效
+  ok   策略来自宠物包：ready 通报 60 秒
+  ok   策略来自宠物包：ready 比 needs-input 粘滞（5 分钟）短得多
+  ok   前置：running
+  ok   干完了 → ready
+  ok   动画是 waving → review（小厨师）
+  ok   59 秒仍在 ready（用户还来得及看见）
+  ok   59 秒时状态没变
+  ok   超过 60 秒 → 通报到期，输出变化
+  ok   回落到 idle（宠物松手）
+  ok   角标也不再把这条算成活动会话
+  ok   前置：ready
+  ok   唯一的输出变化只能是「到点退场」
+  ok   10 次心跳里只有一次输出变化（就是到点退场那次）
+  ok   退场发生在第 60 秒（时效没被心跳推后）
+  ok   累计 100 秒 → 已退场
+  ok   时间没走就不退场（判据是时刻而不是 tick 次数）
+  ok   前置：ready
+  ok   单击宠物（ack）立刻改变输出
+  ok   已读 → 回 idle，不用等 60 秒
+  ok   ack 之后的 ready 重报不会把它复活
+  ok   第一次通报到期
+  ok   又跑起来了
+  ok   第二次干完照样通报
+  ok   第二次通报也照样到期（机制可重复生效）
+  ok   前置：ready 压住别的
+  ok   两条都 ready 时最近的那条为主
+  ok   两条都到期 → 全部回 idle（不是只退一条）
+  ok   刚 ready 时未标记过期
+  ok   原始状态如实暴露
+  ok   到期后不再出现在面板上
+  ok   原始记录仍保留（内核不替 UI 说谎，只是不展示）
 
 ⑪ 控制条显示策略
   ok   策略来自宠物包：失焦 200ms 收起
@@ -137,6 +189,36 @@
   ok   宠物回来后也不会自动重现
   ok   隐藏后清掉焦点记账
   ok   隐藏后不留收起计划
+  ok   前置：面板可见
+  ok   走路开始 → 面板收起
+  ok   走路开始 → 记下"待恢复"
+  ok   收起时不留收起计划
+  ok   收起时放弃焦点记账
+  ok   走路期间 tick 不会让它冒出来
+  ok   走路期间 tick 也不会把欠账清掉
+  ok   走路结束 → 面板回来
+  ok   欠账结清
+  ok   没有欠账 ⇒ 面板不会凭空出现
+  ok   没有欠账 ⇒ 状态原样返回（连新对象都不造）
+  ok   面板本来就不可见 ⇒ 不产生欠账
+  ok   面板本来就不可见 ⇒ 走完也不会冒出来
+  ok   用户自己唤回面板
+  ok   用户唤回 ⇒ 欠账作废
+  ok   于是走完不会再自作主张开一次
+  ok   用户显式关掉 ⇒ 欠账作废
+  ok   于是走完不会自己冒出来
+  ok   宠物被隐藏 ⇒ 欠账作废
+  ok   于是走完不会把面板开在半空
+  ok   走路期间的失焦不改变可见性
+  ok   走路期间的失焦不丢欠账
+  ok   走完照样能还回去
+  ok   走路收起只在"真的会移动窗口"时触发（原地降级不收面板）
+  ok   走路结束会把面板还回去
+  ok   宠物名只有一处定义
+  ok   没有第二处各写一遍宠物名
+  ok   托盘悬停提示不再写死 desktop-pet（那是产品/进程名）
+  ok   托盘悬停提示取自宠物包的名字
+  ok   宠物窗口标题仍是 desktop-pet（探针靠它找窗口，别顺手改）
 
 ⑫ 会话视图 viewSessions
   ok   两条会话都列出
@@ -152,6 +234,18 @@
   ok   确认之后的普通状态变化仍受限流约束
   ok   窗格到期后照常生效
   ok   静默过期的会话不出现在视图里
+
+⑫b 过期的 ready 通报不再占面板（ADR 024）
+  ok   前置：面板列出这一行
+  ok   通报到点：主状态回 idle（本就正确）
+  ok   通报到点：面板不再列出这一行（本次修的就是这条）
+  ok   记录本身仍在（只是不展示）
+  ok   上游改口 running ⇒ 面板重新列出这一行
+  ok   主状态跟着回 running（没被"已过期"误杀）
+  ok   这一行不再标"已过期"
+  ok   idle 与 blocked 不受这条过滤影响（仍在面板上）
+  ok   已确认的 needs-input 仍出现在面板上（带「已确认」标签）
+  ok   它确实被标为已确认
 
 ⑬ 清空会话：记录 / 视图 / 确认位一起清
   ok   清空前：主状态是 needs-input
@@ -248,5 +342,208 @@
   ok   总开关关掉后不动
   ok   总开关关掉后不播任何覆盖
 
+⑮ 双通道冲突告警（只告警，不改状态）
+  ok   同一会话 10 秒内换通道 ⇒ 告警
+  ok   同一通道反复上报 ⇒ 不告警
+  ok   隔 2 分钟才换通道 ⇒ 不告警（是换挂载，不是同时被盯）
+  ok   两个不同会话各走一条通道 ⇒ 不告警
+  ok   60 秒内反复交替只告警一次（有冷却）
+  ok   冷却过后再次冲突会重新告警
+  ok   无来源的事件不参与双通道判断
+
+⑮c 双通道逐出（hook 优先，不按到达顺序）
+  ok   前置：hook 主导下宠物在跑
+  ok   被动源的「干完了」被丢弃（宠物不会被打回 idle）
+  ok   丢弃留了日志（可诊断，不是静默消失）
+  ok   hook 随后到达即接管（不会被被动源锁在门外）
+  ok   未到 holdMs：被动源仍被丢弃
+  ok   超过 holdMs：被动源接管生效（宠物不会永久失明）
+  ok   b 走被动源不受 a 的 hook 影响
+  ok   enabled=false：被动源照样生效（退回旧行为）
+  ok   人工喂状态不被逐出（否则手动干预会静默失效）
+  ok   但人工喂状态不改变主导通道：hook 仍然把被动源挡在外面
+  ok   被丢弃的上报不会顶掉 hook 的 ready
+  ok   ready 的通报时效照常到期（丢弃者没干扰它的计时）
+  ok   前置：举手
+  ok   用户确认后松手
+  ok   被动源重报被丢弃：宠物不会"点完又举手"（ADR 022 那个缺陷的机制被切断）
+
+⑮b 状态文件的 origin 透传
+  ok   写侧自称的通道被透传
+  ok   没写 origin 的条目由适配器标为 file
+  ok   非法来源取值被丢弃（不原样透传）
+
+⑯ isAckable 真值表（五种状态 × 已确认 × 已过期）
+  ok   状态集合取自内核（加状态会自己进真值表）
+  ok   idle / 已确认=false / 已过期=false ⇒ false
+  ok   idle / 已确认=false / 已过期=true ⇒ false
+  ok   idle / 已确认=true / 已过期=false ⇒ false
+  ok   idle / 已确认=true / 已过期=true ⇒ false
+  ok   running / 已确认=false / 已过期=false ⇒ false
+  ok   running / 已确认=false / 已过期=true ⇒ false
+  ok   running / 已确认=true / 已过期=false ⇒ false
+  ok   running / 已确认=true / 已过期=true ⇒ false
+  ok   needs-input / 已确认=false / 已过期=false ⇒ true
+  ok   needs-input / 已确认=false / 已过期=true ⇒ false
+  ok   needs-input / 已确认=true / 已过期=false ⇒ false
+  ok   needs-input / 已确认=true / 已过期=true ⇒ false
+  ok   blocked / 已确认=false / 已过期=false ⇒ false
+  ok   blocked / 已确认=false / 已过期=true ⇒ false
+  ok   blocked / 已确认=true / 已过期=false ⇒ false
+  ok   blocked / 已确认=true / 已过期=true ⇒ false
+  ok   ready / 已确认=false / 已过期=false ⇒ true
+  ok   ready / 已确认=false / 已过期=true ⇒ false
+  ok   ready / 已确认=true / 已过期=false ⇒ false
+  ok   ready / 已确认=true / 已过期=true ⇒ false
+  ok   20 组里恰好 2 组为真（needs-input 与 ready，且未确认、未过期）
+  ok   ack() 对 idle 的记账与谓词一致
+  ok   ack() 对 running 的记账与谓词一致
+  ok   ack() 对 needs-input 的记账与谓词一致
+  ok   ack() 对 blocked 的记账与谓词一致
+  ok   ack() 对 ready 的记账与谓词一致
+  ok   控制条渲染层从内核取判据
+  ok   控制条渲染层不再自己写状态判据
+
+⑰ 手动把玩：动作清单解析 + 演出时长 + 位移（纯函数 + 虚拟时钟）
+  ok   动作个数 = sidecar 清单长度
+  ok   顺序与清单一致
+  ok   文字取自 sidecar（"过生日"是画面语义，不在 pet.json 里）
+  ok   解析真实清单时零告警
+  ok   dwellMs 取自 sidecar
+  ok   位移距离区间取自 sidecar
+  ok   running-left 的朝向 = left
+  ok   running-right 的朝向 = right
+  ok   过生日（循环、非位移）不位移
+  ok   待机不位移
+  ok   waving 是一次性
+  ok   waving 的片长 = frames / fps
+  ok   不存在的动作被丢弃（不让宠物卡住）
+  ok   丢弃时告警
+  ok   重复项只保留第一次
+  ok   留下的那一条是合法项
+  ok   省略 list ⇒ 回落到全部状态（面板不能没有可点的动作）
+  ok   省略 list 时的文字回落为状态 id
+  ok   空 list ⇒ 回落到全部状态（面板不能没有可点的动作）
+  ok   空 list 时的文字回落为状态 id
+  ok   清单是权威：动作数 = 清单长度（不按行号自动补齐）
+  ok   循环动作演 dwellMs
+  ok   循环动作不位移
+  ok   第一条命令就带"演这个"
+  ok   一次性动作不位移
+  ok   一次性动作的时长 < dwellMs（不能用它 —— loop:false 会冻在末帧）
+  ok   一次性动作至少演满自己一个片长（落定姿势要看得见）
+  ok   到点前仍在演
+  ok   到点 → 交回仲裁器
+  ok   交回时是显式的 play:null（渲染层没人替我们撤销覆盖）
+  ok   往左走的目标在当前位置左侧
+  ok   走出的距离落在 sidecar 声明的区间内
+  ok   第一条命令带位移姿态
+  ok   走到目标点后结束
+  ok   落点正好是目标点
+  ok   是走出去的，不是瞬移
+  ok   目标被夹进工作区右边界
+  ok   夹取后的距离小于声明的区间下限
+  ok   贴左边缘时"往左走"降级为原地演
+  ok   降级后按 dwellMs 演
+  ok   降级时仍然播位移姿态（动作本身要看得见）
+  ok   贴右边缘时"往右走"降级为原地演
+  ok   工作区比宠物还窄 ⇒ 原地演，不乱走
+  ok   面板高度算式含有动作排（主进程按 sidecar 算）
+  ok   控制条渲染层的白名单镜像含 play-action
+  ok   渲染层的动作排排版取自下发参数（不自己写死行高）
+  ok   CSS 里不写死动作排的行高/列数（否则改 sidecar 就两边对不上）
+  ok   play-action 不调用仲裁器（手动把玩不产生气泡，也不改 agent 状态）
+
+⑱ 版本号：唯一真源与派生
+  ok   package.json 的 version 是 x.y.z 三段 semver
+  ok   主进程的版本号来自 app.getVersion()，源码里没有版本字面量
+  ok   托盘悬停提示不含版本号（用户 2026-09-22 明确要求）
+  ok   打包脚本从 package.json 读版本，不手写第二份
+  ok   exe 数值版 FileVersion（系统/安装器比较大小用）
+  ok   exe 数值版 ProductVersion
+  ok   exe 字符串版 FileVersion（属性页显示的就是它）
+  ok   exe 字符串版 ProductVersion
+  ok   清掉 Electron 的 CompanyName
+  ok   清掉 Electron 的 LegalCopyright
+  ok   清掉 OriginalFilename=electron.exe
+  ok   分发 zip 名带版本号
+  ok   打包目录名不带版本号（自启注册表记的是绝对路径，改名会让老用户的条目失效）
+  ok   真实菜单模板里确实有一行版本
+  ok   版本行的值来自视图，不是模板自己编的
+  ok   版本行是只读的（可点会让人以为点它能升级）
+  ok   退出仍是最后一项（版本行不许挤到它后面）
+
+⑲ 销毁之后不许再碰它
+  ok   菜单关闭回调用 isDestroyed() 守卫（`if (!bar)` 守不住任何东西）
+  ok   回调里不再出现"只判包装对象"的写法
+  ok   托盘销毁后 refresh 直接返回（不再碰 setToolTip / setContextMenu）
+  ok   托盘 destroy 先置位再销毁（反过来的话中间仍有缝）
+  ok   未捕获异常会把完整堆栈写进 pet.log
+  ok   每一个定时器都能被关闭（setInterval / *Watch 的句柄都被接住）
+  ok   打包脚本不再调用外部 tar（那个 -a 会静默失效）
+  ok   打包脚本回读最终 zip 的**完整性**（头签名 + EOCD），不是只看体积/退出码
+  ok   zip 先写临时文件、校验通过后才换名（坏产物不占用最终文件名）
+  ok   打包走 staging 目录并原子换入（失败不留"看起来成功"的半成品）
+  ok   发行包默认排除 sourcemap（要保留得显式 --keep-maps）
+  ok   产物头部是 PK\x03\x04（真 ZIP，不是 tar）
+  ok   verifyZip 对完整产物判通过（含 EOCD 条目数）
+  ok   verifyZip 对**截断**产物判失败 —— 这正是"只看头 4 字节"抓不到的情形
+  ok   找得到 EOCD（结构完整，不是被截断的半成品）
+  ok   中央目录里的条目数 = 顶层目录 + 子目录 + 2 个文件
+  ok   zipDirectory 报的条目数一致
+  ok   第 1 个中央目录条目签名正确
+  ok   第 2 个中央目录条目签名正确
+  ok   第 3 个中央目录条目签名正确
+  ok   第 4 个中央目录条目签名正确
+  ok   条目名保留了顶层目录（解压出来是一个目录，不是散落一地）
+  ok   文本内容往返一致（deflate 正确）
+  ok   二进制内容往返一致（含 0x00 与 >0x7f 的字节）
+
+㉑ 减少动态效果：策略解析 + 动画不该被系统开关冻住
+  ok   缺省 → animate（宠物包漏配也必须动起来）
+  ok   显式 animate
+  ok   显式 freeze-frame
+  ok   写错的策略回落 animate（不会因为手误变成石头）
+  ok   策略写成数字这种离谱值也回落
+  ok   frameIndex 缺省 0
+  ok   frameIndex 照抄
+  ok   frameIndex 小数取整
+  ok   frameIndex 负数回落 0
+  ok   frameIndex NaN 回落 0
+  ok   animate 下推进帧
+  ok   animate 下推进帧（系统开关开着的情形也一样）
+  ok   freeze-frame 下才不推进帧
+  ok   说明文案不是空话（日志里要能看懂它意味着什么）
+  ok   tick 不再用 `!reducedMotion` 关帧推进（那会让用户点动作却看到静态图）
+  ok   帧推进由策略判据决定
+  ok   判据下沉在策略模块里，渲染层不自己发明一套
+  ok   系统开关仍然上报给主进程（行为层要靠它决定要不要漫游，ADR 018 这条不动）
+  ok   sidecar 默认策略是 animate
+  ok   验收清单里没有与 package.json 不一致的版本串（防止再次过期）
+  ok   启动日志会打出系统开关与策略（下次一眼看出原因，不用两台机器对照）
+
+㉓ 事件日志：轮转与 recvAt
+  ok   两条事件都落盘
+  ok   recvAt 是**宠物收到它的时刻**，不是 ts 的副本
+  ok   recvAt 跟着时钟推进（第二次写入晚 1 秒）
+  ok   recvAt ≥ ts（恒为 0 的"零延迟"正是这条要挡的假象）
+  ok   超过上限后发生轮转（长驻场景不会无限增长）
+  ok   轮转把旧内容留成 <文件>.1，而不是直接丢掉
+  ok   轮转后当前文件小于上限（真的压下来了）
+  ok   close() 幂等（重复调用不抛）
+
+㉔ 零覆盖补课：warnMissing 与 rearmBehavior
+  ok   缺映射时**只告警一次**（不是每次读状态都刷屏）
+  ok   告警文案里带上回落目标（否则只知道错了、不知道现在在演什么）
+  ok   空闲时被摸：打盹计时从这一下重新开始
+  ok   空闲时被摸：phase 回到 idle
+  ok   空闲时被摸：清掉本次目标与演出时长
+  ok   空闲时被摸：下次踱步 = null（本来就没在踱步）
+  ok   空闲时被摸：重新排了下次漫游与下次微动作
+  ok   **踱步中**被摸：idleSinceAt 保持 null（否则会在任务进行中开始打盹）
+  ok   **踱步中**被摸：仍然排下一次踱步（否则用户碰一下就把踱步彻底关掉了）
+  ok   窗口 closed 事件也会停定时器（窗口销毁时 hide 不会触发）
+  ok   行为层 tick 内有 isDestroyed 守卫（清表之后仍可能有一次已排期的回调）
+
 ────────────────────────────────────────────────────────
-全部通过：219 项断言
+全部通过：481 项断言

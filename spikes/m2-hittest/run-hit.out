@@ -1,13 +1,17 @@
-spawned electron pid=201300 probe=probe.js
+// ran-at: 2026-09-29T20:51:16+00:00
+// git-head: a8e6498df7fa1756827ad76e88f5f42e557c1372
+// cmd: node spikes/m2-hittest/run.mjs
+
+spawned electron pid=334232 probe=probe.js
 [t+6s] report=false log=861B
 [t+12s] report=false log=861B
 [t+18s] report=false log=861B
 [t+24s] report=false log=861B
-[t+30s] report=false log=1399B
-[t+36s] report=false log=1399B
-[t+42s] report=false log=1399B
-[t+48s] report=false log=1399B
-[t+54s] report=true log=2089B
+[t+30s] report=false log=1420B
+[t+36s] report=false log=1420B
+[t+42s] report=false log=1420B
+[t+48s] report=false log=1420B
+[t+54s] report=true log=1830B
 --- probe.js 日志 ---
 [probe] boot electron=44.4.0
 [probe] 包=taotao-new scale=0.7 期望内容区=134x146 DIP
@@ -64,20 +68,16 @@ spawned electron pid=201300 probe=probe.js
   0
  ],
  "cursor": {
-  "x": 1868,
-  "y": 1450
+  "x": 2124,
+  "y": 1245
  }
 }
-[probe] 修复后·拖动前：采样 156 点 | 被宠物吃掉 42 | 穿透到靶窗 114 | 都没收到 0 | 都收到 0
-[probe] 修复后·拖动前 与"应该命中"比对：命中且吃到 42 | 应命中却穿透 2 | 应穿透却被吃 0 | 应穿透且穿透 112
-[probe] 修复后·拖动前 漏吃点明细（2 个，均为轮廓边缘）：(88,8) alpha=16 / (24,56) alpha=31
+[probe] 修复后·拖动前：采样 156 点 | 被宠物吃掉 38 | 穿透到靶窗 118 | 都没收到 0 | 都收到 0
+[probe] 修复后·拖动前 与"应该命中"比对：命中且吃到 37 | 应命中却穿透 3 | 应穿透却被吃 1 | 应穿透且穿透 115
+[probe] 修复后·拖动前 漏吃点明细（3 个，均为轮廓边缘）：(88,8) alpha=16 / (40,104) alpha=18 / (72,136) alpha=99
 [probe] 拖动：pointermove 收到 25 次；窗口 {"x":1549,"y":857,"width":135,"height":147} → {"x":1217,"y":617,"width":135,"height":147}（已移动）
-[probe] 修复后·拖动后：采样 156 点 | 被宠物吃掉 42 | 穿透到靶窗 114 | 都没收到 0 | 都收到 0
-[probe] 修复后·拖动后 与"应该命中"比对：命中且吃到 42 | 应命中却穿透 2 | 应穿透却被吃 0 | 应穿透且穿透 112
-[probe] 修复后·拖动后 漏吃点明细（2 个，均为轮廓边缘）：(88,8) alpha=16 / (24,56) alpha=31
+[probe] 修复后·拖动后：采样 156 点 | 被宠物吃掉 40 | 穿透到靶窗 116 | 都没收到 0 | 都收到 0
+[probe] 修复后·拖动后 与"应该命中"比对：命中且吃到 39 | 应命中却穿透 2 | 应穿透却被吃 1 | 应穿透且穿透 114
+[probe] 修复后·拖动后 漏吃点明细（2 个，均为轮廓边缘）：(88,8) alpha=16 / (40,104) alpha=18
 [probe] 已写出 report.json
-[uncaught] TypeError: Object has been destroyed
-    at Timeout.tickBehaviorLayer [as _onTimeout] (<工程目录>\dist\main\index.js:668:43)
-    at listOnTimeout (node:internal/timers:685:17)
-    at process.processTimers (node:internal/timers:618:7)
 

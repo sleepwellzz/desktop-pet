@@ -29,6 +29,7 @@ const readEvents = () => {
 
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;   // 宿主注入，否则 Electron 退化成纯 Node
+env.PET_ALLOW_MULTI = '1';   // 单实例锁的逃生开关：探针要能独立起实例（P0-6）
 const child = spawn(EXE, ['.'], { cwd: ROOT, detached: true, stdio: 'ignore', env, windowsHide: true });
 child.unref();
 console.log(`已启动桌宠（pid=${child.pid}），等它起来 …`);

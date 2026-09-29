@@ -16,7 +16,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 import { checkTimers } from './check-timers.mjs';
-import { zipDirectory } from './zip-dir.mjs';
+import { zipDirectory, verifyZip } from './zip-dir.mjs';
 import { REQUIRED_DIST, verifyDist } from './stamp-build.mjs';
 import { checkProbeHooks } from './check-probe-hooks.mjs';
 import { checkEvidence } from './check-evidence.mjs';
@@ -52,9 +52,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * 起因（2026-09-22）：`tray.ts` 里那句"**不再用 `desktop-pet`**"的**注释**本身含有那个字符串，
  * 于是"托盘不再写死 desktop-pet"这条断言被自己的注释判红 —— **断言比它要测的东西更脆**。
  * 结构性检查一律先过这一步。
+ *
+ * ⚠️ **2026-09-29 重写（这是一个"吞掉代码"的真缺陷）**：原实现是
+ * `src.replace(/ 块注释正则 /g, '')` —— 它比对一个**跨行的**块注释区间。
+ * 而本工程的注释里会写出「`dist/` 紧跟两个星号」（markdown 加粗紧跟在路径后面），
+ * 那正好构成一个**块注释开始符**；一旦它后面任何地方出现块注释的**结束符**
+ * （例如某个空 catch 里的短注释），中间那几百行**代码**就会被整段删掉。
+ *
+ * 实测：改 `make-portable.mjs` 后单测里 9 条打包相关断言全部失败，根因就是这个 ——
+ * 被剥掉的是**被断言的那段代码本身**。这类失效最危险的地方在于它**不报错**：
+ * 断言只是安静地找不到字符串，看起来像"代码写错了"。
+ *
+ * ⇒ 改为**逐行**处理：只删除"整行都是注释"的行。代价是行尾注释不再被剥，
+ * 但换来的是**不可能吞掉代码**（宁可偶尔多匹配一点，也不能让断言凭空消失）。
  */
 const stripComments = (src) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  src.split('\n')
+    .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))   // 整行注释：双斜杠 与 JSDoc 的行首星号
+    .join('\n');
 
 /** 虚拟时钟：一切与时间有关的断言都在它上面做，不依赖机器快慢。 */
 function makeClock(start = 1_000_000) {
@@ -1868,10 +1883,26 @@ section('⑰ 手动把玩：动作清单解析 + 演出时长 + 位移（纯函�
   // ① 结构性：打包脚本不许再去调外部的 tar
   const mpRaw = stripComments(readFileSync(join(root, 'tools/make-portable.mjs'), 'utf8'));
   check('打包脚本不再调用外部 tar（那个 -a 会静默失效）', !/spawnSync\(\s*'tar'/.test(mpRaw));
-  check('打包脚本压完会回读魔数（只看体积会被静默失败骗过去）',
-    /!==\s*'504b0304'/.test(mpRaw));
+  // 判据在 2026-09-29 **升级**过（审计 P1-1）：原先只回读 4 字节魔数（`504b0304`），
+  // 但那是**任何** ZIP 的第一个本地文件头 —— 实测一个因条目数溢出而截断的 7.3 MB 残包，
+  // 头部照样合法。**截断包与完整包在"只看魔数"的判据眼里完全一样**，而这一个 zip
+  // 就是"要发给别人的那个文件"。现在要求调用 `verifyZip()`（头签名 + 末尾 EOCD +
+  // 中央目录偏移自洽），且**换名之后**再对最终文件回读一次 ⇒ 至少出现两次。
+  check('打包脚本回读最终 zip 的**完整性**（头签名 + EOCD），不是只看体积/退出码',
+    (mpRaw.match(/verifyZip\(/g) ?? []).length >= 2);
+  // ② P0-5：zip 也必须事务化 —— 先写临时名、校验通过再换名，
+  // 否则"坏 zip 占着最终文件名"这个状态会被真实地存在过一小段时间。
+  check('zip 先写临时文件、校验通过后才换名（坏产物不占用最终文件名）',
+    /renameSync\(\s*zipTmp\s*,\s*zipPath\s*\)/.test(mpRaw));
+  // ③ P0-5：目录也要事务化 —— 写到 staging，成功后原子换入。
+  check('打包走 staging 目录并原子换入（失败不留"看起来成功"的半成品）',
+    /\.staging-\$\{process\.pid\}/.test(mpRaw) && /swapIntoPlace\(\s*STAGE\s*,\s*FINAL_OUT\s*\)/.test(mpRaw));
+  // ④ P1-2：发行包默认不带 sourcemap（esbuild 的 .map 内嵌 sourcesContent =
+  //    完整 TS 源码连注释一起发出去；绿色版是任人转发的产物）。
+  check('发行包默认排除 sourcemap（要保留得显式 --keep-maps）',
+    /endsWith\('\.map'\)/.test(mpRaw) && /--keep-maps/.test(mpRaw));
 
-  // ② 功能性：真压一次小目录，再**自己解析 zip** 把内容读回来
+  // ⑤ 功能性：真压一次小目录，再**自己解析 zip** 把内容读回来
   const dir = mkdtempSync(join(tmpdir(), 'dp-zip-'));
   try {
     mkdirSync(join(dir, 'sub'), { recursive: true });
@@ -1884,6 +1915,18 @@ section('⑰ 手动把玩：动作清单解析 + 演出时长 + 位移（纯函�
 
     const buf = readFileSync(out);
     check('产物头部是 PK\\x03\\x04（真 ZIP，不是 tar）', buf.subarray(0, 4).toString('hex') === '504b0304');
+
+    // —— verifyZip：完整性判定的**非真空**验证（P1-1）——
+    // 只验"完整产物判通过"是不够的：旧判据（只比头 4 字节）对**截断产物也报通过**，
+    // 所以这里必须同时验"截断产物判失败"，否则不知道新判据是不是空的。
+    const okRes = verifyZip(out);
+    check('verifyZip 对完整产物判通过（含 EOCD 条目数）',
+      okRes.ok && okRes.entries === 4, JSON.stringify(okRes));
+    const truncated = join(dir, '..', `${basename(dir)}-trunc.zip`);
+    writeFileSync(truncated, buf.subarray(0, Math.max(4, buf.length - 40)));
+    const badRes = verifyZip(truncated);
+    check('verifyZip 对**截断**产物判失败 —— 这正是"只看头 4 字节"抓不到的情形',
+      !badRes.ok && badRes.reasons.length > 0, JSON.stringify(badRes.reasons));
 
     // EOCD：从尾部往前找签名，拿到中央目录的偏移与条目数
     let eocd = -1;
@@ -1987,6 +2030,121 @@ section('㉑ 减少动态效果：策略解析 + 动画不该被系统开关冻�
   const mainRaw = stripComments(readFileSync(join(root, 'src/main/index.ts'), 'utf8'));
   check('启动日志会打出系统开关与策略（下次一眼看出原因，不用两台机器对照）',
     /减少动态效果：系统开关=/.test(mainRaw) && /策略=/.test(mainRaw));
+}
+
+// —— ㉓ 事件日志：轮转 + `recvAt` 语义（审计 P1-6 / P1-10）——
+//
+// `~/.desktop-pet/events.jsonl` 是判据 6（端到端延迟）的**数据来源**，而它原先
+// 只是主进程里一行 `appendFileSync`：同步阻塞、无上限、且 `recvAt` 的语义没有任何覆盖。
+// `recvAt` 若被误写成 `ts` 的副本，延迟会恒为 0 —— 而 `tools/measure-latency.mjs`
+// 仍会输出一张**看起来完全合理**的延迟分布图（ADR 029 记的那类静默失败）。
+section('㉓ 事件日志：轮转与 recvAt');
+{
+  const { createEventLogWriter } = require(join(root, 'dist/source/event-log.js'));
+  const dir = mkdtempSync(join(tmpdir(), 'dp-eventlog-'));
+  const file = join(dir, 'events.jsonl');
+  const T0 = 1_700_000_000_000;
+  let now = T0;
+
+  const w = createEventLogWriter({ path: file, maxBytes: 400, now: () => now });
+  w.append({ ts: T0 - 500, sessionId: 'wb:1', status: 'running' });
+  now = T0 + 1000;
+  w.append({ ts: T0 + 400, sessionId: 'wb:1', status: 'needs-input' });
+  w.close();
+  await sleep(120);
+
+  const lines = readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  eq('两条事件都落盘', lines.length, 2);
+  eq('recvAt 是**宠物收到它的时刻**，不是 ts 的副本', lines[0].recvAt, T0);
+  eq('recvAt 跟着时钟推进（第二次写入晚 1 秒）', lines[1].recvAt, T0 + 1000);
+  check('recvAt ≥ ts（恒为 0 的"零延迟"正是这条要挡的假象）',
+    lines.every((e) => e.recvAt >= e.ts), JSON.stringify(lines));
+
+  // 轮转：超过上限时旧文件改名为 `.1`（保留一份），新文件从零开始
+  const w2 = createEventLogWriter({ path: file, maxBytes: 200, now: () => now });
+  for (let i = 0; i < 12; i++) w2.append({ ts: now, i, pad: 'x'.repeat(60) });
+  w2.close();
+  await sleep(160);
+  check('超过上限后发生轮转（长驻场景不会无限增长）', w2.rotations() >= 1, `rotations=${w2.rotations()}`);
+  check('轮转把旧内容留成 <文件>.1，而不是直接丢掉', existsSync(file + '.1'));
+  check('轮转后当前文件小于上限（真的压下来了）', readFileSync(file).length < 200 * 2, String(readFileSync(file).length));
+  w2.close();
+  check('close() 幂等（重复调用不抛）', true);
+
+  rmSync(dir, { recursive: true, force: true });
+}
+
+// —— ㉔ 两处零覆盖的判据（审计 P1-8 / P1-9）——
+//
+// 这两处都是"用户可见行为"的判据真空：
+//   - `warnMissing` 是**宠物包少配一个 statusMap 时唯一的诊断入口**；
+//   - `rearmBehavior` 管的是"用户碰了宠物之后要不要重新排程"。
+// 覆盖率实测显示两者**整个函数体一行未执行** ⇒ 把实现改坏也不会有任何断言变红。
+section('㉔ 零覆盖补课：warnMissing 与 rearmBehavior');
+{
+  // ① warnMissing：只告警一次 + 文案要带上回落目标
+  {
+    const logs = [];
+    const arb = new StatusArbiter({
+      // 故意缺 `running` 的映射 —— 这是自定义宠物包最常见的配置错误
+      statusMap: { idle: { state: 'idle' }, 'needs-input': { state: 'waiting' } },
+      defaultState: 'idle',
+      now: () => 1000,
+      log: (m) => logs.push(m),
+    });
+    arb.ingest({ sessionId: 'wb:1', status: 'running', origin: 'hook' });
+    void arb.state;
+    void arb.state;
+    void arb.state;
+    const warn = logs.filter((m) => m.includes('statusMap 缺少'));
+    eq('缺映射时**只告警一次**（不是每次读状态都刷屏）', warn.length, 1);
+    check('告警文案里带上回落目标（否则只知道错了、不知道现在在演什么）',
+      Boolean(warn[0]) && warn[0].includes('idle'), warn[0]);
+  }
+
+  // ② rearmBehavior：用户碰了宠物之后的重新排程
+  {
+    const { parseBehaviorPolicy, rearmBehavior, BEHAVIOR_IDLE } =
+      require(join(root, 'dist/kernel/behavior.js'));
+    const stateTable = {};
+    for (const [id, s] of Object.entries(runtimeManifest.states)) {
+      stateTable[id] = { frames: s.frames, fps: s.fps, role: s.role };
+    }
+    const policy = parseBehaviorPolicy(
+      runtimeManifest.behavior, { states: stateTable, scale: runtimeManifest.render.defaultScale }, () => {},
+    );
+    const rng = () => 0.5;
+    const NOW = 10_000;
+
+    const idle = rearmBehavior(BEHAVIOR_IDLE, policy, NOW, rng);
+    eq('空闲时被摸：打盹计时从这一下重新开始', idle.idleSinceAt, NOW);
+    eq('空闲时被摸：phase 回到 idle', idle.phase, 'idle');
+    eq('空闲时被摸：清掉本次目标与演出时长', `${idle.targetX}-${idle.actUntil}`, 'null-null');
+    eq('空闲时被摸：下次踱步 = null（本来就没在踱步）', idle.nextPaceAt, null);
+    check('空闲时被摸：重新排了下次漫游与下次微动作',
+      idle.nextRoamAt > NOW && idle.nextActionAt > NOW);
+
+    const pacing = rearmBehavior({ ...BEHAVIOR_IDLE, busySinceAt: NOW - 1000 }, policy, NOW, rng);
+    eq('**踱步中**被摸：idleSinceAt 保持 null（否则会在任务进行中开始打盹）', pacing.idleSinceAt, null);
+    check('**踱步中**被摸：仍然排下一次踱步（否则用户碰一下就把踱步彻底关掉了）',
+      typeof pacing.nextPaceAt === 'number' && pacing.nextPaceAt > NOW, String(pacing.nextPaceAt));
+  }
+
+  // ③ 退出路径的窗口守卫（2026-09-29 由重跑 m3-ready-exit 探针抓到的真缺陷）
+  //
+  // 症状：探针判定 PASS **之后**日志里出现
+  // `[uncaught] TypeError: Object has been destroyed at Timeout.tickBehaviorLayer` ——
+  // 功能全对，退出路径崩了一次。两条成因，两道守卫都要在：
+  //   ① 停表挂在 `hide` 上，而**窗口销毁不触发 `hide`** ⇒ 补 `closed` 监听；
+  //   ② `clearInterval` 之后**已排期的那次回调仍会跑** ⇒ 回调内要有 `isDestroyed()` 守卫。
+  {
+    const mainSrc = readFileSync(join(root, 'src/main/index.ts'), 'utf8');
+    check('窗口 closed 事件也会停定时器（窗口销毁时 hide 不会触发）',
+      /on\('closed',\s*stopTimers\)/.test(mainSrc));
+    const at = mainSrc.indexOf('function tickBehaviorLayer');
+    check('行为层 tick 内有 isDestroyed 守卫（清表之后仍可能有一次已排期的回调）',
+      at >= 0 && mainSrc.slice(at, at + 1200).includes('isDestroyed()'));
+  }
 }
 
 // —— 汇总 ——

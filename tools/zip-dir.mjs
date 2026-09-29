@@ -21,7 +21,7 @@
 // 压缩后的条目在 zip 里的顶层名 = 源目录的 basename（与 `tar -C <父目录> <目录名>` 同语义），
 // 所以解压出来正好是一个 `desktop-pet/` 目录。
 
-import { closeSync, openSync, readdirSync, readFileSync, statSync, writeSync } from 'node:fs';
+import { closeSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, writeSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { deflateRawSync } from 'node:zlib';
 
@@ -92,11 +92,14 @@ export function zipDirectory(srcDir, outZip, opts = {}) {
   let offset = 0;
   let stored = 0;
   let deflated = 0;
+  let closed = false;
 
   const w = (buf) => {
     writeSync(fd, buf);
     offset += buf.length;
   };
+
+  const closeOnce = () => { if (!closed) { closed = true; closeSync(fd); } };
 
   try {
     for (const e of entries) {
@@ -185,11 +188,65 @@ export function zipDirectory(srcDir, outZip, opts = {}) {
     eocd.writeUInt32LE(cdOffset, 16);
     eocd.writeUInt16LE(0, 20);
     w(eocd);
+  } catch (e) {
+    // 失败时**必须把残包删掉**（审计 P1-1）：本轮实测过"条目数溢出抛 RangeError，
+    // 但残留的 7.3 MB 截断文件照样存在、头部照样是合法的 `504b0304`" ——
+    // 一个 7 MB 的残包和一个 164 MB 的完整包在"只看头 4 字节"的判据眼里一模一样。
+    // 而这一个 zip 就是**要发给别人的那个文件**。
+    closeOnce();
+    try { rmSync(outZip, { force: true }); } catch { /* 删不掉也不能掩盖原始异常 */ }
+    throw e;
   } finally {
-    closeSync(fd);
+    closeOnce();
   }
 
   return { bytes: offset, entries: entries.length, stored, deflated };
+}
+
+/**
+ * 回读产物，自证"它是不是一个**完整**的 ZIP"。
+ *
+ * 为什么不能只看头 4 字节（审计 P1-1）：`504b0304` 是任何 ZIP 的第一个本地文件头，
+ * **截断与写入中断的产物都以它开头**。判据必须升级为三条一起看：
+ *   ① 头 4 字节是本地文件头签名；
+ *   ② **末尾 22 字节是 EOCD 签名** `0x06054b50` —— 这一条才真正判"有没有写完"；
+ *   ③ EOCD 里记的「中央目录偏移 + 中央目录长度 + 22」正好等于文件长度。
+ *
+ * 本模块自己写 EOCD 时注释长度为 0，所以 EOCD 必然落在**末尾 22 字节**，
+ * 可以直接断言位置（不需要搜索扫描）。
+ *
+ * 顺带修掉 P2-11：原实现用 `readFileSync(整个 164 MB).subarray(0,4)` 只为了看 4 个字节，
+ * 这里改为 `readSync` 定点读，内存占用与文件大小无关。
+ */
+export function verifyZip(zipPath) {
+  const size = statSync(zipPath).size;
+  const reasons = [];
+  if (size < 22) {
+    return { ok: false, bytes: size, entries: 0, reasons: [`文件只有 ${size} 字节（短于最短 ZIP 的 22 字节）`] };
+  }
+  const fd = openSync(zipPath, 'r');
+  try {
+    const head = Buffer.alloc(4);
+    readSync(fd, head, 0, 4, 0);
+    if (head.readUInt32LE(0) !== 0x04034b50) {
+      reasons.push(`头部不是 ZIP 本地文件头（读到 ${head.toString('hex')}）`);
+    }
+    const eocd = Buffer.alloc(22);
+    readSync(fd, eocd, 0, 22, size - 22);
+    if (eocd.readUInt32LE(0) !== 0x06054b50) {
+      reasons.push(`末尾不是 EOCD 签名（读到 ${eocd.toString('hex').slice(0, 8)}）⇒ 产物被截断或根本没写完`);
+      return { ok: false, bytes: size, entries: 0, reasons };
+    }
+    const entries = eocd.readUInt16LE(10);
+    const cdSize = eocd.readUInt32LE(12);
+    const cdOffset = eocd.readUInt32LE(16);
+    if (cdOffset + cdSize + 22 !== size) {
+      reasons.push(`中央目录位置与文件长度不符（${cdOffset} + ${cdSize} + 22 ≠ ${size}）`);
+    }
+    return { ok: reasons.length === 0, bytes: size, entries, reasons };
+  } finally {
+    closeSync(fd);
+  }
 }
 
 // —— CLI ——
@@ -206,4 +263,11 @@ if (isCli) {
   console.log(`[zip] ${relative(process.cwd(), out) || out}`);
   console.log(`[zip] ${r.entries} 个条目（deflate ${r.deflated} / store ${r.stored}）·`
     + ` ${mb(r.bytes)} MB · ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  // 写完就回读自证：只打印体积不算验证（ADR 044 / 审计 P1-1）
+  const v = verifyZip(out);
+  if (!v.ok) {
+    console.error('[zip] ❌ 产物校验未通过：\n  - ' + v.reasons.join('\n  - '));
+    process.exit(1);
+  }
+  console.log(`[zip] 校验通过：头签名 ✓ 末尾 EOCD ✓，条目数 ${v.entries}`);
 }
