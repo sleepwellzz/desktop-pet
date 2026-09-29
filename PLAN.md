@@ -280,6 +280,16 @@ hook 通道 71 条中位 61ms。取数：`node tools/measure-latency.mjs --since
 而 **`dist/main/index.js` 两包逐字节相同** ⇒ **运行时行为完全一致，属「同物」不是「同名不同物」**。
 已推送两个提交到 `origin/main`（走 GitHub API 独立核实：远端只有 `main`、无本机路径残留）。
 
+**2026-09-29 上午补：GitHub Release 已创建** —— 用户要求补上发布包（改变了 2026-09-28
+“不上传 164 MB zip”的决定）。**Release <https://github.com/sleepwellzz/desktop-pet/releases/tag/v1.0.1>
+已上线，附件 `desktop-pet-1.0.1-win-x64.zip`（157 MB）**，
+README「装上它」已改为直链下载。⚠️ **`v1.0.1` tag 指向未被改动**（仍 `49d82e5`）——
+`gh release create` 没有改写它，符合 ADR 045「已发出去的版本号不能回收」。
+上传前做了**公开附件隐私体检**：全包扫本机路径/用户名/邮箱，
+唯一命中的 `LICENSES.chromium.html` 经 SHA-256 比对确认是 **Electron 官方包原件、未被改动**
+（与 `node_modules/electron/dist/` 那份逐字节一致）⇒ 不是泄露；
+另扫文件名与 `resources/app/`：**无 `pet.log`、无 `.jsonl`、无路径残留**。
+
 **GitHub 发布（2026-09-22 ✅ 已上线 · 已转公开）** —— 详见 `docs/HANDOFF-2026-09-22.md`。
 - **仓库：<https://github.com/sleepwellzz/desktop-pet>**，默认分支 `main`。
 - 上线与转公开都核验过（走 GitHub API，不信本地 git 的自述）：**306 个文件**、最新提交 = 本地 HEAD、

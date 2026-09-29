@@ -50,8 +50,7 @@
 
 ## 装上它
 
-> 仓库目前**没有公开发布的预编译包**（安装包 164 MB，我不想随手往公开仓库丢这么大的二进制）。
-> 要现成的找作者要压缩包；愿意自己装的全程 3 分钟。
+**Windows x64，直接下载：** [**desktop-pet-1.0.1-win-x64.zip**](https://github.com/sleepwellzz/desktop-pet/releases/download/v1.0.1/desktop-pet-1.0.1-win-x64.zip)（157 MB · [Release 页](https://github.com/sleepwellzz/desktop-pet/releases/tag/v1.0.1)）
 
 1. 拿到压缩包，**整个解压**到一个固定位置 —— 别放「下载」文件夹，也别放会被系统清理的临时目录
 2. 双击里面的 `desktop-pet.exe`
