@@ -1977,6 +1977,13 @@ section('㉑ 减少动态效果：策略解析 + 动画不该被系统开关冻�
   // sidecar 的默认值：必须是 animate，否则又会变成石头
   eq('sidecar 默认策略是 animate', runtimeManifest.reducedMotion.strategy, 'animate');
 
+  // 验收文档与唯一真源不能漂移（审计 P0-8：六处写 1.0.0 而实际 1.0.1，照单验收必然假判红）
+  const acceptance = readFileSync(join(root, 'docs/acceptance.md'), 'utf8');
+  const verLiterals = [...acceptance.matchAll(/\b\d+\.\d+\.\d+\b/g)].map((m) => m[0]);
+  const staleVers = [...new Set(verLiterals)].filter((v) => v !== runtimeManifest.version);
+  check('验收清单里没有与 package.json 不一致的版本串（防止再次过期）',
+    staleVers.length === 0, `发现 ${staleVers.join('、')}`);
+
   const mainRaw = stripComments(readFileSync(join(root, 'src/main/index.ts'), 'utf8'));
   check('启动日志会打出系统开关与策略（下次一眼看出原因，不用两台机器对照）',
     /减少动态效果：系统开关=/.test(mainRaw) && /策略=/.test(mainRaw));

@@ -16,6 +16,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, r
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { zipDirectory } from './zip-dir.mjs';
+import { verifyDist } from './stamp-build.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../', import.meta.url)));
 const OUT = join(ROOT, 'dist-win', 'desktop-pet');
@@ -71,6 +72,21 @@ function runExe(exe, args, cwd) {
 }
 
 if (!existsSync(ELECTRON_DIST)) die('找不到 Electron 运行时：' + ELECTRON_DIST);
+
+// —— P0-4：打包前必须确认 dist/ 与 src/ 同步（ADR 050）——
+//
+// 原先这里只判 `dist/main/index.js` **存在**，不看它新不新。
+// 后果具体到可复现：改完 `src/` 直接打包，脚本拿**上一次的 dist/** 配上
+// **新的 package.json 版本号**，产出「1.0.2 版装着 1.0.1 代码」的包 ——
+// 而它在属性页 / zip 名 / 日志横幅 / 托盘菜单**四处全都自洽地显示 1.0.2，没有一处会露馅**。
+//
+// 用 `stamp-build.mjs` 的 verifyDist()：比对构建戳里的 `src/` 内容哈希（ADR 047）。
+// **不比较 mtime** —— 那个方法在本项目骗过人一次（见 ADR 047）。
+const distCheck = verifyDist();
+if (!distCheck.ok) {
+  die('dist/ 与 src/ 不同步，拒绝打包：\n  - ' + distCheck.reasons.join('\n  - ')
+    + '\n先跑：node tools/run-build.cjs');
+}
 if (!existsSync(join(ROOT, 'dist', 'main', 'index.js'))) die('dist/ 没构建好，先跑 npm run build');
 for (const f of ['package.json', 'pet.json', 'spritesheet.webp', 'desktop-pet.json', 'behavior-map.json']) {
   if (!existsSync(join(ROOT, f))) die('缺少 ' + f);

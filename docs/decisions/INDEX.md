@@ -277,3 +277,22 @@
     **不重复** `loadPack` 已有的校验（ADR 044 §2：判据不该被它测以外的东西判红）。
     ③ **运行时切换 UI 仍不做**：会动窗口生命周期，而 **ADR 035/038/042 三个崩溃都出在这条路上**。
     ⇒ 建议顺序：**先有 ≥2 个真实包跑通 `check-pet-swap` → 再考虑 UI**。（ADR 049）
+
+- **050 · 构建链的三处「静默失真」** —— 审计 P0-2/3/4/8 同一种病：
+    **构建链会产出"看起来成功"的东西，而它其实是坏的。**
+    ① **P0-2 类型检查进链**：`build` 原先**完全不跑** preload 类型检查
+    ⇒ 通道名拼错照样产出"成功"的 dist，只在用户点开控制条时表现为"按钮没反应"。
+    加 `prebuild` 钩子 + `run-build.cjs` 最前面两步 noEmit（**最前面**：类型不过就不该产生产物）。
+    ② **P0-3 renderer 不许被 tsc 碰**：`tsconfig.json` 的 `include: ["src/**/*.ts"]`
+    **覆盖了 `src/renderer`** ⇒ tsc 把 renderer 编成 **CommonJS** 并**同名覆盖** esbuild 的 **IIFE**
+    ⇒ 浏览器里 `require`/`exports` 未定义 ⇒ **白屏**。正式 build 一直是靠"tsc 先、esbuild 后"的顺序侥幸掩盖。
+    修法与 ADR 023 对 preload 同构：从 `exclude` 掉（**写目录而非逐个文件** ——
+    将来新增 renderer 源文件时没人会记得改 exclude）+ 新增 `tsconfig.renderer.json` 承担类型检查。
+    `watch` 重写为 `tools/watch.mjs`（与正式构建同步骤 + esbuild watch API，
+    并补上原来漏掉的 `renderer/*.html` 监听）。
+    ③ **P0-4 打包前校验 dist**：原先只判 `dist/main/index.js` **存在**，不看新不新
+    ⇒ 改完 `src` 直接打包会产出"**1.0.2 版装着 1.0.1 代码**"的包，
+    且属性页/zip 名/日志/托盘**四处自洽**。改调 `verifyDist()` 比 **`src/` 内容哈希**（不比较 mtime）。
+    ④ **P0-8 验收清单不许硬写版本号**：改为 `<版本号>` + 唯一真源指向 `package.json`，
+    并加断言扫 `acceptance.md` 的版本串与 `package.json` 比对（**只改数字下次跳号还会漂**）。
+    判据：**456 → 457 项**；四处都做了非真空验证（注入错误后精确红、撤销后恢复）。（ADR 050）

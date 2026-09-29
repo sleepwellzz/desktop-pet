@@ -26,6 +26,14 @@ function run(label, exe, args) {
 
 let ok = true;
 
+// —— 类型检查：preload 与 renderer 都是 **esbuild 独占产出**的模块，
+//    tsc 不能碰它们（碰了就是同名覆盖：preload 盖出永不加载的诱饵，
+//    renderer 盖出 CommonJS ⇒ 浏览器白屏，ADR 023 / ADR 050）。
+//    但“排除”不等于“放弃类型检查”，所以这里用两份 noEmit 配置把它们补回来。
+//    放在**最前面**：类型不过就不该产生任何产物（半成品 dist 会污染 dist 新鲜度）。
+ok = run('tsc (preload typecheck)', NODE, [tscJs, '-p', 'tsconfig.preload.json']) && ok;
+ok = run('tsc (renderer typecheck)', NODE, [tscJs, '-p', 'tsconfig.renderer.json']) && ok;
+
 ok = run('tsc (main + kernel + host + source)', NODE, [tscJs, '-p', 'tsconfig.json']) && ok;
 
 const esbuildTargets = [

@@ -1,0 +1,20 @@
+// renderer 的**只做类型检查**配置（不产出）。
+//
+// 为什么需要（ADR 050 / P0-3）：renderer 由 esbuild 打成 **IIFE**（浏览器直接执行），
+// 而 `tsconfig.json` 的 `include: ["src/**/*.ts"]` 覆盖了 `src/renderer` ⇒ tsc 会把同一批
+// 源码编成 **CommonJS** 并**同名覆盖** `dist/renderer/*.js`。
+// 浏览器里没有 `require` / `exports` ⇒ **宠物窗口白屏**，而构建输出看起来一切正常。
+//
+// 正式 build 靠"tsc 先跑、esbuild 后跑"侥幸掩盖；一旦只跑 tsc 或跑 `tsc --watch` 就暴露。
+// 已实测复现（见 ADR 050 的判据记录）。
+//
+// 与 `tsconfig.preload.json` 同一套处理：**从主配置排除，类型检查单独用 noEmit 承担。**
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src/renderer/**/*.ts"],
+  // 必须显式清空：`exclude` 会被 `extends` 一起继承，而主配置正是靠它排除 renderer 的。
+  "exclude": []
+}

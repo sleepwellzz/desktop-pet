@@ -19,6 +19,14 @@
   // —— `dist/main/preload-bar.js` / `preload-bubble.js` **全仓无任何引用、永不被加载**，
   // 却会随源码同步更新，制造"只跑 tsc 也已生效"的假象（真实加载的那份纹丝未动）。
   // 类型检查没有因此丢掉：见 `tsconfig.preload.json`（`npm run typecheck` 会跑它）。
+  //
+  // ⚠️ `src/renderer` 同理，而且后果比 preload **更严重**（ADR 050 / P0-3）：
+  // renderer 由 esbuild 打成 **IIFE**（浏览器直接执行），而 tsc 会把同一批源码编成
+  // **CommonJS**（`Object.defineProperty(exports, "__esModule", …)`）——
+  // **同名文件、直接覆盖**。正式 build 靠"tsc 先跑、esbuild 后跑"侥幸掩盖；
+  // 一旦只跑 tsc（或 tsc --watch），浏览器里 `require`/`exports` 未定义 ⇒ **宠物窗口白屏**，
+  // 而构建输出看起来一切正常。类型检查改由 `tsconfig.renderer.json` 承担。
   "exclude": ["node_modules", "dist", "spikes",
-    "src/main/preload.ts", "src/main/preload-bar.ts", "src/main/preload-bubble.ts"]
+    "src/main/preload.ts", "src/main/preload-bar.ts", "src/main/preload-bubble.ts",
+    "src/renderer"]
 }
