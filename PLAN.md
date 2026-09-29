@@ -266,8 +266,19 @@ hook 通道 71 条中位 61ms。取数：`node tools/measure-latency.mjs --since
 **交付纪律（2026-09-22 用户明确要求）**：**凡是用户能看见的改动（新功能 / 修复），做完就直接打包，
 不要问"要不要打包"** —— 他唯一的验证途径是双击那个 exe。命令：先 `node tools/run-build.cjs`
 （打包脚本只复制 `dist/`、自己不构建），再 `node tools/make-portable.mjs --zip`。
-本轮产物已产出：`dist-win/desktop-pet/` + `dist-win/desktop-pet-1.0.0-win-x64.zip`
-（**zip 名从 `package.json` 的 `version` 派生**，改版本号即改名）。
+本轮产物已产出：`dist-win/desktop-pet/` + `dist-win/desktop-pet-1.0.1-win-x64.zip`
+（**zip 名从 `package.json` 的 `version` 派生**，改版本号即改名；zip 名里的版本号当时写错成
+`1.0.0` 的一次，现已改正，实际产物一直是 `1.0.1`）。
+
+**2026-09-28 夜又打了一次包（版本号不变）**：用户要求做一次 release。
+本轮**产品代码零改动**（`src/` 最后一次改动仍是 09-23 的 `0228f7e`），改的全是工具/判据/文档
+⇒ 按 ADR 045 **不跳号**，保持 `1.0.1`；`v1.0.1` tag **保持不动**（Git 不允许同名 tag 改指向，
+且 ADR 045 明写「已发出去的版本号不能回收」）。
+⚠️ **打包后做了一次回读核验**（ADR 044 纪律）：新旧 zip 大小差 269 字节，
+用 `Expand-Archive` 独立解压两份做**全量 SHA-256 比对** —— 差异只有 4 项
+（`README.txt` 的打包时间戳 / `package.json` 的本轮脚本 / `displayName`「淘淘 New」→「淘淘」/ 新增构建戳），
+而 **`dist/main/index.js` 两包逐字节相同** ⇒ **运行时行为完全一致，属「同物」不是「同名不同物」**。
+已推送两个提交到 `origin/main`（走 GitHub API 独立核实：远端只有 `main`、无本机路径残留）。
 
 **GitHub 发布（2026-09-22 ✅ 已上线 · 已转公开）** —— 详见 `docs/HANDOFF-2026-09-22.md`。
 - **仓库：<https://github.com/sleepwellzz/desktop-pet>**，默认分支 `main`。
