@@ -5,7 +5,7 @@
 //   - 宿主（src/host）负责窗口与系统能力 —— 目前只有覆盖窗口与全屏检测
 //   - 播帧循环跑在渲染层：避免每帧 IPC，内核代码放哪都能跑
 import { app, ipcMain, Menu, screen } from 'electron';
-import { appendFileSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { loadPack } from '../kernel/pack';
@@ -516,8 +516,25 @@ function boot(): void {
   // （原「全局快捷键」装配段已整块删除，ADR 032 —— 见上方装配索引的注记。）
   // 控制条的唤出现在只有两条显式路径：右键宠物 / 托盘菜单「控制条」。
 
-  // 托盘图标：脚本从图集生成（tools/make-tray-icon.py）。生成失败/缺失只降级不致命。
-  const trayIcon = join(__dirname, '..', '..', 'assets', 'tray.ico');
+  // 托盘图标：**随宠物包走**（ADR 049）。
+  //
+  // 原先写死工程根的 `assets/tray.ico`（`join(__dirname, '..', '..')`）——
+  // 而 `make-tray-icon.py` 的开头就写着「换一只宠物包就该换一次图标」，
+  // 两边是矛盾的：用 `--pet=<别处>` 换包之后，托盘上还是上一只宠物的脸，
+  // 而**没有任何报错**。托盘图标是用户在任务栏唯一能看到的那个形象。
+  //
+  // 解析顺序：包内 `tray.ico` → 工程的 `assets/tray.ico`（向后兼容现有布局）。
+  // 两条都找不到时降级不致命（`createTray` 内部另有兜底），但**必须打印**——
+  // 静默用一个错的图标，比没有图标更难排查。
+  const packTray = join(packDir, 'tray.ico');
+  const rootTray = join(__dirname, '..', '..', 'assets', 'tray.ico');
+  const trayIcon = existsSync(packTray) ? packTray : (existsSync(rootTray) ? rootTray : rootTray);
+  if (!existsSync(trayIcon)) {
+    console.warn(`[pet] 找不到托盘图标（先试 ${packTray}，再试 ${rootTray}）。`
+      + '用 python tools/make-tray-icon.py 生成 —— 否则托盘会用默认图标，不是这只宠物的脸。');
+  } else if (trayIcon !== packTray) {
+    console.log(`[pet] 托盘图标来自工程默认（包内无 tray.ico）：${trayIcon} —— 换宠物包时记得重新生成`);
+  }
   try {
     tray = createTray({ iconPath: trayIcon, getView: petMenuView, actions });
     console.log('[pet] 托盘已创建：' + trayIcon);

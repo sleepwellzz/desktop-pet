@@ -20,6 +20,7 @@ import { zipDirectory } from './zip-dir.mjs';
 import { REQUIRED_DIST, verifyDist } from './stamp-build.mjs';
 import { checkProbeHooks } from './check-probe-hooks.mjs';
 import { checkEvidence } from './check-evidence.mjs';
+import { checkPack } from './check-pet-swap.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
@@ -146,6 +147,28 @@ function makeRng(seed = 12345) {
     if (warns.length) process.stdout.write(`  warn 另有 ${warns.length} 份含异常但未声称通过（可能是有意留证的失败现场）\n`);
     passed += 1; // 明确记一条通过：检查确实执行了，结论是“有待清理”
   }
+}
+
+// ⓪d 换宠物流程的判据（ADR 049）——
+//
+// 体检**工程根自己**：这是分发前的最后一道闸门。工程根天天在用，但它是不是一个
+// **合规的宠物包**从未被任何判据问过 —— 而“换宠物”这件事的全部意义就是
+// “别的包也要能过同一套检查”。**自己过不了的判据没有资格要求别人过。**
+{
+  const r = checkPack(root);
+  section('⓪d 宠物包合规体检（工程根自己也要过）');
+  for (const e of r.errors) process.stdout.write(`  FAIL  ${e}\n`);
+  for (const w of r.warnings) process.stdout.write(`  warn  ${w}\n`);
+  check('工程根是一个合规的宠物包（可分发）', r.errors.length === 0, r.errors.join('；'));
+  check('状态集非空（否则上面那条是真空的）', r.info.states.length > 0, `${r.info.states.length} 个状态`);
+
+  // —— 钉住“托盘图标随包走”（ADR 049 修的真 bug）——
+  const trayCode = stripComments(readFileSync(join(root, 'src/main/index.ts'), 'utf8'));
+  check('托盘图标**不再**写死工程根（换包后托盘得换脸）',
+    /join\(packDir,\s*'tray\.ico'\)/.test(trayCode),
+    '未找到 packDir/tray.ico 的解析 —— 托盘图标仍绑死在工程根');
+  check('托盘图标缺失时会给提示而不是静默用错的',
+    /找不到托盘图标/.test(trayCode));
 }
 
 // —— ① 真实宠物包的 statusMap 解析契约 ——
