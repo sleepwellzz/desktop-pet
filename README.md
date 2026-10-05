@@ -1,7 +1,7 @@
 <h1 align="center">桌面宠物软件 - 淘淘</h1>
 
 <p align="center">
-  <b>一只住在 Windows 桌面上的狗，替你盯着 AI agent 干到哪一步了。</b><br>
+  <b>一只住在 Windows 桌面上的狗，黄白相间、长毛、胖乎乎又有点严肃的淘淘，替你盯着 AI agent 干到哪一步了。</b><br>
   <sub>个人项目 · 非官方 · 仅 Windows</sub>
 </p>
 
